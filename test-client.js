@@ -9,7 +9,8 @@ var Player = (initPack) => {
 
 var client = Client({
     keyToConstructor: {
-        'PLAYER': Player
+        'PLAYER': Player,
+        'ANIMAL': Player
     }
 })
 

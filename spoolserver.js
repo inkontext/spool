@@ -12,6 +12,8 @@ const {
     KI_MOV_DOWN
 } = require('./spoolmessagecodes.js')
 
+const CHUNK_SIZE = 400;
+
 const {
     SpoolMath
 } = require('./spoolmath.js')
@@ -153,10 +155,12 @@ var Server = (initObject, clientFolder = '/client', htmlFile = 'index.html') => 
 
 /**
  * Handler is object that handles all objects in the game
+ * Handles chunks, each update objects are assigned to their chunk - used in collision, gravity and more
  */
 var ServerHandler = () => {
     var self = {
         objects: {}, // All objects in the game
+        chunks: {},
 
         somethingToAdd: false, // If there was an object added -> true ->
         initPack: {}, // Package containing all the information about added objects -> in update sent to clients
@@ -168,6 +172,49 @@ var ServerHandler = () => {
     }
 
     //// UPDATING ////
+
+    self.updateObjectsChunk = (object) => {
+        var relocating = false;
+        var cx = Math.floor(object.x / CHUNK_SIZE);
+        var cy = Math.floor(object.y / CHUNK_SIZE);
+
+        if (!object.chunk) {
+            relocating = true;
+        } else {
+            var ccx = object.chunk.x;
+            var ccy = object.chunk.y;
+            if (ccx != cx || ccy != cy) {
+                relocating = true;
+                object.chunk.remove(object);
+            } else {
+                return;
+            }
+        }
+
+        if (relocating) {
+            var key = `[${cx};${cy}]`
+
+            var chunk = undefined;
+
+            if (key in self.chunks) {
+                chunk = self.chunks[key];
+            } else {
+                chunk = ServerChunk({
+                    x: cx,
+                    y: cy,
+                    width: CHUNK_SIZE,
+                    height: CHUNK_SIZE,
+                    color: SpoolMath.randomHsvColor(0.5, 0.8)
+
+                })
+                self.chunks[key] = chunk;
+            }
+
+            chunk.add(object)
+            object.chunk = chunk;
+            object.color = chunk.color;
+        }
+    }
 
     /**
      * updates all of the objects
@@ -188,14 +235,15 @@ var ServerHandler = () => {
                     self.preManagers[i].update(object);
                 }
 
-                var update = object.update();
+                object.update();
+
+                self.updateObjectsChunk(object);
 
                 for (var i = 0; i < self.managers.length; i++) {
                     self.managers[i].update(object);
                 }
 
                 currPackage.push(object.updatePack())
-
             }
             if (currPackage.length != 0) {
                 pack[key] = currPackage;
@@ -235,6 +283,11 @@ var ServerHandler = () => {
     self.remove = (type, id) => {
         // Remove object from handler
         if (type in self.objects) {
+            if (self.objects[type][id]) {
+                if (self.objects[type][id].chunk) {
+                    self.objects[type][id].chunk.removeObj(self.objects[type][id])
+                }
+            }
             delete self.objects[type][id];
         }
 
@@ -296,9 +349,57 @@ var ServerHandler = () => {
         self.preManagers.push(preManager);
     }
 
+    self.getChunks = (min_x, min_y, max_x, max_y) => {
+        result = []
+        for (var x = min_x; x <= max_x; x++) {
+            for (var y = min_y; y <= max_y; y++) {
+                var key = `[${x};${y}]`;
+                if (key in self.chunks) {
+                    result.push(self.chunks[key]);
+                }
+            }
+        }
+        return result;
+    }
+
     // Return 
     return self;
 };
+
+var ServerChunk = (initObject) => {
+
+    var self = {
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+
+        objects: {},
+
+        ...initObject
+    }
+
+    self.add = (obj) => {
+        // Add to handler
+        if (!(obj.objectType in self.objects)) {
+            self.objects[obj.objectType] = {};
+        }
+        self.objects[obj.objectType][obj.id] = obj;
+    }
+
+    self.remove = (type, id) => {
+        // Remove object from handler
+        if (type in self.objects) {
+            delete self.objects[type][id];
+        }
+    }
+
+    self.removeObj = (obj) => {
+        self.remove(obj.objectType, obj.id)
+    }
+
+    return self;
+}
 
 /**
  * Manager that simulates circle type of collision 
@@ -311,23 +412,38 @@ var CollisionManager = (handler, colPairs) => {
         colPairs // array of objects that contain a and b object types
     }
 
+    self.getNeededChunks = (object) => {
+        var x = Math.floor(object.x / CHUNK_SIZE);
+        var y = Math.floor(object.y / CHUNK_SIZE);
+        var xx = Math.floor(object.px / CHUNK_SIZE);
+        var yy = Math.floor(object.py / CHUNK_SIZE);
+
+        return self.handler.getChunks(Math.min(x, xx) - object.radius, Math.min(y, yy) - object.radius, Math.max(x, xx) + object.radius, Math.max(y, yy) + object.radius);
+
+    }
+
     self.update = (object) => {
         var objectType = object.objectType;
 
-        if (!object.ground) {
-            if (objectType in handler.objects) {
-                for (var i = 0; i < self.colPairs.length; i++) {
 
-                    var aType = self.colPairs[i].a;
+        if (objectType in handler.objects) {
+            for (var i = 0; i < self.colPairs.length; i++) {
+
+                var aType = self.colPairs[i].a;
 
 
-                    if (objectType == aType) {
-                        var bType = self.colPairs[i].b;
+                if (objectType == aType) {
+                    var bType = self.colPairs[i].b;
 
-                        if (bType in handler.objects) {
-                            for (bKey in handler.objects[bType]) {
+                    var chunks = self.getNeededChunks(object);
+                    for (var j = 0; j < chunks.length; j++) {
+                        var chunk = chunks[j];
+                        if (objectType == 'PLAYER');
+
+                        if (bType in chunk.objects) {
+                            for (bKey in chunk.objects[bType]) {
                                 var a = object;
-                                var b = handler.objects[bType][bKey];
+                                var b = chunk.objects[bType][bKey];
 
                                 if (a.objectType != b.objectType || a.id != b.id) {
                                     if (!colPairs[i].exception ? true : !colPairs[i].exception(a, b)) {
@@ -598,6 +714,7 @@ var Entity = (initPack = {}) => {
         return {
             x: self.x,
             y: self.y,
+            color: self.color,
             rotation: self.rotation,
             id: self.id
         };

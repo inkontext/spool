@@ -83,6 +83,8 @@ const SpoolMath = {
         };
     },
 
+    //// LERP ////
+
     lerp: (start, end, t) => {
         t = t > 1 ? 1 : t < 0 ? 0 : t;
         return start + ((end - start) * t);
@@ -91,6 +93,12 @@ const SpoolMath = {
     lerpRotation: (start, end, t) => {
         var shortest_angle = ((((end - start) % (Math.PI * 2)) + 540 * (Math.PI / 180)) % (Math.PI * 2)) - Math.PI;
         return start + (shortest_angle * t) % (Math.PI * 2);
+    },
+
+    //// RANDOM ////
+
+    randomInt: (min, max) => {
+        return min + parseInt(Math.random() * (max - min));
     }
 }
 
