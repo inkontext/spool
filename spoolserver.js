@@ -12,7 +12,11 @@ const {
     KI_MOV_DOWN
 } = require('./spoolmessagecodes.js')
 
-const CHUNK_SIZE = 400;
+const {
+    FileReader
+} = require('./spoolfilereader.js')
+
+const CHUNK_SIZE = 600;
 
 const {
     SpoolMath
@@ -119,11 +123,19 @@ var Server = (initObject, clientFolder = '/client', htmlFile = 'index.html') => 
         });
     }
 
-    self.startGameLoop = () => {
+    self.startGameLoop = (callback = null) => {
         // Start game loop
         setInterval(() => {
             // Update the game state and get update package
             var pack = self.handler.update();
+
+            if (callback) {
+                callback()
+            }
+
+            if (self.updateCallback) {
+                self.updateCallback(self)
+            }
 
             // Go through all the sockets
             for (var i in self.socketList) {
@@ -175,44 +187,60 @@ var ServerHandler = () => {
 
     self.updateObjectsChunk = (object) => {
         var relocating = false;
-        var cx = Math.floor(object.x / CHUNK_SIZE);
-        var cy = Math.floor(object.y / CHUNK_SIZE);
+        var cx = Math.floor((object.x - object.width / 2) / CHUNK_SIZE);
+        var cy = Math.floor((object.y - object.height / 2) / CHUNK_SIZE);
+        var cxx = Math.floor((object.x + object.width / 2) / CHUNK_SIZE);
+        var cyy = Math.floor((object.y + object.height / 2) / CHUNK_SIZE);
 
-        if (!object.chunk) {
+        if (!object.chunks) {
+            relocating = true;
+        } else if (!object.chunks.length == 0) {
             relocating = true;
         } else {
-            var ccx = object.chunk.x;
-            var ccy = object.chunk.y;
-            if (ccx != cx || ccy != cy) {
+            if (cx != object.chunksX || cy != object.chunksY || cxx != object.chunksXX || cyy != object.chunksYY) {
                 relocating = true;
-                object.chunk.remove(object);
+                object.chunks.forEach(chunk => {
+                    chunk.removeObj(object);
+                })
             } else {
                 return;
             }
         }
 
+        object.chunksX = cx;
+        object.chunksY = cy;
+        object.chunksXX = cxx;
+        object.chunksYY = cyy;
+
+        object.chunks = [];
+
         if (relocating) {
-            var key = `[${cx};${cy}]`
+            for (var x = cx; x < cxx + 1; x++) {
+                for (var y = cy; y < cyy + 1; y++) {
+                    var key = `[${x};${y}]`
 
-            var chunk = undefined;
+                    var chunk = undefined;
 
-            if (key in self.chunks) {
-                chunk = self.chunks[key];
-            } else {
-                chunk = ServerChunk({
-                    x: cx,
-                    y: cy,
-                    width: CHUNK_SIZE,
-                    height: CHUNK_SIZE,
-                    color: SpoolMath.randomHsvColor(0.5, 0.8)
+                    if (key in self.chunks) {
+                        chunk = self.chunks[key];
+                    } else {
+                        chunk = ServerChunk({
+                                x: x,
+                                y: y,
+                                width: CHUNK_SIZE,
+                                height: CHUNK_SIZE,
+                                color: SpoolMath.randomHsvColor(0.5, 0.8)
 
-                })
-                self.chunks[key] = chunk;
+                            },
+                            self)
+                        self.chunks[key] = chunk;
+                    }
+
+                    chunk.add(object)
+                    object.chunks.push(chunk);
+                    object.color = chunk.color;
+                }
             }
-
-            chunk.add(object)
-            object.chunk = chunk;
-            object.color = chunk.color;
         }
     }
 
@@ -222,6 +250,11 @@ var ServerHandler = () => {
      */
     self.update = () => {
         var pack = {};
+
+
+
+        self.emptyObjectType('SPL_LINE');
+        self.emptyObjectType('SPL_POINT');
 
         for (key in self.objects) {
             var objList = self.objects[key];
@@ -362,17 +395,29 @@ var ServerHandler = () => {
         return result;
     }
 
+    self.emptyObjectType = (key) => {
+
+        if (key in self.objects) {
+            var objects = self.objects[key];
+            var ids = Object.keys(objects);
+            ids.forEach(id => {
+                self.remove(key, id);
+            })
+        }
+    }
+
     // Return 
     return self;
 };
 
-var ServerChunk = (initObject) => {
+var ServerChunk = (initObject, handler) => {
 
     var self = {
         x: 0,
         y: 0,
         width: 0,
         height: 0,
+        handler: handler,
 
         objects: {},
 
@@ -409,36 +454,48 @@ var ServerChunk = (initObject) => {
 var CollisionManager = (handler, colPairs) => {
     var self = {
         handler,
-        colPairs // array of objects that contain a and b object types
+        colPairs, // array of objects that contain a and b object types
     }
 
     self.getNeededChunks = (object) => {
-        var x = Math.floor(object.x / CHUNK_SIZE);
-        var y = Math.floor(object.y / CHUNK_SIZE);
-        var xx = Math.floor(object.px / CHUNK_SIZE);
-        var yy = Math.floor(object.py / CHUNK_SIZE);
 
-        return self.handler.getChunks(Math.min(x, xx) - object.radius, Math.min(y, yy) - object.radius, Math.max(x, xx) + object.radius, Math.max(y, yy) + object.radius);
+        if (object.x > object.px) {
+            var x = object.px - object.width / 2;
+            var xx = object.x + object.width / 2;
+        } else {
+            var x = object.x - object.width / 2;
+            var xx = object.px + object.width / 2;
+        }
 
+        if (object.y > object.py) {
+            var y = object.py - object.height / 2;
+            var yy = object.y + object.height / 2;
+        } else {
+            var y = object.y - object.height / 2;
+            var yy = object.py + object.height / 2;
+        }
+
+        return self.handler.getChunks(
+            Math.floor(x / CHUNK_SIZE),
+            Math.floor(y / CHUNK_SIZE),
+            Math.floor(xx / CHUNK_SIZE),
+            Math.floor(yy / CHUNK_SIZE))
     }
 
     self.update = (object) => {
         var objectType = object.objectType;
 
-
         if (objectType in handler.objects) {
             for (var i = 0; i < self.colPairs.length; i++) {
-
                 var aType = self.colPairs[i].a;
-
 
                 if (objectType == aType) {
                     var bType = self.colPairs[i].b;
 
                     var chunks = self.getNeededChunks(object);
+
                     for (var j = 0; j < chunks.length; j++) {
                         var chunk = chunks[j];
-                        if (objectType == 'PLAYER');
 
                         if (bType in chunk.objects) {
                             for (bKey in chunk.objects[bType]) {
@@ -447,8 +504,22 @@ var CollisionManager = (handler, colPairs) => {
 
                                 if (a.objectType != b.objectType || a.id != b.id) {
                                     if (!colPairs[i].exception ? true : !colPairs[i].exception(a, b)) {
-                                        if (self.objectCollision(a, b) && colPairs[i].func) {
-                                            colPairs[i].func(a, b);
+
+                                        if (a.bodyType == 'oval' && b.bodyType == 'oval') {
+                                            var collision = self.objectOvalCollision;
+                                        } else {
+                                            var collision = self.objectRectCollision;
+                                        }
+
+                                        collisionPoint = collision(a, b);
+
+                                        if (collisionPoint) {
+                                            a.x = parseInt(collisionPoint.x);
+                                            a.y = parseInt(collisionPoint.y);
+                                            if (colPairs[i].func) {
+
+                                                colPairs[i].func(a, b);
+                                            }
                                         }
                                     }
                                 }
@@ -460,13 +531,17 @@ var CollisionManager = (handler, colPairs) => {
         }
     }
 
-    self.objectCollision = (a, b) => {
-        if (SpoolMath.distance(a.x, a.y, b.x, b.y) < a.radius + b.radius) {
+    self.objectOvalCollision = (a, b) => {
+
+        aradius = Math.max(a.width, a.height) / 2;;
+        bradius = Math.max(b.width, b.height) / 2;
+
+        if (SpoolMath.distance(a.x, a.y, b.x, b.y) < aradius + bradius) {
             var b1 = parseInt(a.px);
             var b2 = parseInt(a.py);
             var b3 = parseInt(a.x);
             var b4 = parseInt(a.y);
-            var r = b.radius + a.radius;
+            var r = bradius + aradius;
 
             var a1 = parseInt(b.x);
             var a2 = parseInt(b.y);
@@ -518,39 +593,144 @@ var CollisionManager = (handler, colPairs) => {
                 }
             }
 
-
-
-
-            var alpha = SpoolMath.globalAngle(b1, b2, a1, a2);
-            var beta = SpoolMath.globalAngle(b1, b2, b3, b4);
-
-            var delta = alpha - beta;
-
-            var dist = Math.cos(delta) * SpoolMath.distance(b1, b2, b3, b4);
-
-            var cx = b1 + Math.cos(delta) * dist;
-            var cy = b2 + Math.sin(delta) * dist;
-
-            var diffX = b3 - cx;
-            var diffY = b4 - cy;
-
-            a.x = newX;
-            a.y = newY;
-
-
-            if (b.groundable && a.findingGround) {
-
-                a.ground = b;
-                a.velX = 0;
-                a.velY = 0;
-
-            }
-
-            return true;
+            return {
+                x: newX,
+                y: newY
+            };
         }
 
-        return false;
+        return null;
     }
+
+    self.objMovementLine = obj => {
+        return {
+            x: obj.px,
+            y: obj.py,
+            xx: obj.x,
+            yy: obj.y
+        }
+    }
+
+    self.objectRectCollision = (a, b) => {
+
+        var rx = parseInt(b.x - b.width / 2 - a.width / 2);
+        var ry = parseInt(b.y - b.height / 2 - a.height / 2);
+        var rxx = parseInt(b.x + b.width / 2 + a.width / 2);
+        var ryy = parseInt(b.y + b.height / 2 + a.height / 2);
+
+
+        var objMovementLine = self.objMovementLine(a);
+
+        if (Math.abs(a.x - b.x) >= Math.abs(a.px - b.x) && Math.abs(a.y - b.y) >= Math.abs(a.py - b.y)) {
+            return null;
+        }
+
+        var intersections = [];
+        var lines = [{
+            x: rx,
+            y: ry,
+            xx: rx,
+            yy: ryy
+        }, {
+            x: rxx,
+            y: ry,
+            xx: rxx,
+            yy: ryy
+        }, {
+            x: rx,
+            y: ryy,
+            xx: rxx,
+            yy: ryy
+        }, {
+            x: rx,
+            y: ry,
+            xx: rxx,
+            yy: ry
+        }]
+
+        var active = [b.leftColIgnore, b.rightColIgnore, b.topColIgnore, b.bottomColIgnore]
+        var counter = 0;
+        lines.forEach(line => {
+            if (!active[counter]) {
+                var intersection = self.lineIntersection(line, objMovementLine);
+                intersections.push(intersection);
+            } else {
+                intersections.push(null);
+            }
+            counter++;
+        })
+
+
+
+        var closestIntersection = null;
+        var smallestDistance = null;
+        var smallestIndex = null;
+        counter = 0;
+        intersections.forEach(intersection => {
+            if (intersection) {
+                var dist = SpoolMath.distance(a.px, a.py, intersection.x, intersection.y);
+
+                if (smallestDistance ? dist < smallestDistance : true) {
+                    smallestIndex = counter;
+                    smallestDistance = dist;
+                    closestIntersection = intersection;
+                }
+            }
+            counter++;
+        })
+
+        if (closestIntersection) {
+
+            if (smallestIndex <= 1) {
+                closestIntersection.y = a.y;
+            } else {
+                closestIntersection.x = a.x;
+            }
+            return closestIntersection
+        } else {
+            return null;
+        }
+    }
+
+    /**
+     * finds the intersection point of two lines
+     * @param {object} a - line defined as {x, y, xx, yy}
+     * @param {object} b - line defined as {x, y, xx, yy}
+     */
+    self.lineIntersection = (a, b) => {
+        var x1 = a.x;
+        var x2 = a.xx;
+        var y1 = a.y;
+        var y2 = a.yy;
+
+        var x3 = b.x;
+        var x4 = b.xx;
+        var y3 = b.y;
+        var y4 = b.yy;
+
+        var denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+        if (denominator == 0)
+            return null;
+
+        var xNominator = (x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4);
+        var yNominator = (x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4);
+
+        var px = xNominator / denominator;
+        var py = yNominator / denominator;
+
+        var offset = 2;
+
+        if (SpoolMath.inInterval(px, x1, x2, offset) && SpoolMath.inInterval(px, x3, x4, offset) && SpoolMath.inInterval(py, y1, y2, offset) && SpoolMath.inInterval(py, y3, y4, offset)) {
+            return {
+                x: px,
+                y: py
+            }
+        } else {
+            return null;
+        }
+    }
+
+
 
     return self;
 }
@@ -616,7 +796,7 @@ var GravityManager = (handler, colPairs) => {
                                 var a = object;
                                 var b = handler.objects[bType][bKey];
 
-                                if (SpoolMath.objDistance(a, b) < b.radius * GRAVITY_RADIUS_COEF) {
+                                if (SpoolMath.objDistance(a, b) < bradius * GRAVITY_RADIUS_COEF) {
                                     a.addToAcc("gravity", self.objectGravity(a, b), SpoolMath.objGlobalAngle(a, b));
                                 }
                             }
@@ -642,6 +822,166 @@ var InputManager = () => {
 
 }
 
+////// OBJECTSPAWNER //////
+var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
+    var self = {
+        keyToConstAndDefs: keyToConstAndDefs, // keyToConstAndDefs[key] = {const: object's constructor - funcpointer, defs: initPack - {object}}
+        handler: handler,
+        ...inputObject
+    }
+
+    self.spawnInRadius = (key, radius, amount, cx = 0, cy = 0) => {
+        if (key in self.keyToConstAndDefs) {
+            var pair = keyToConstAndDefs[key];
+            for (var i = 0; i < amount; i++) {
+                var angle = Math.random() * Math.PI * 2;
+                var distance = Math.random() * radius;
+
+                var px = cx + distance * Math.cos(angle);
+                var py = cy + distance * Math.sin(angle);
+
+                var object = pair.const({
+                    ...pair.defs,
+                    x: px,
+                    y: py
+                })
+
+                self.handler.add(object);
+            }
+        }
+    }
+
+    self.spawnInRectangle = (key, size, amount, cx = 0, cy = 0) => {
+        if (key in self.keyToConstAndDefs) {
+            var pair = keyToConstAndDefs[key];
+            for (var i = 0; i < amount; i++) {
+                var px = cx - size / 2 + size * Math.random();
+                var py = cy - size / 2 + size * Math.random();
+
+                var object = pair.const({
+                    ...pair.defs,
+                    x: px,
+                    y: py
+                })
+
+                self.handler.add(object);
+            }
+        }
+    }
+
+    self.spawnFromKeyArray = (array, gx, gy) => {
+        for (var y = 0; y < array.length; y++) {
+            for (var x = 0; x < array[y].length; x++) {
+                if (array[y][x]) {
+                    var pair = keyToConstAndDefs[array[y][x]];
+                    var object = pair.const({
+                        ...pair.defs,
+                        x: x * gx,
+                        y: -y * gy
+                    })
+
+                    if (object.gridColRemoval) {
+                        if (x > 0) {
+                            if (array[y][x - 1] == array[y][x]) {
+                                object.leftColIgnore = true;
+                            }
+                        }
+                        if (x < array[y].length - 1) {
+                            if (array[y][x + 1] == array[y][x]) {
+                                object.rightColIgnore = true;
+                            }
+                        }
+
+                        if (y > 0) {
+                            if (array[y - 1][x] == array[y][x]) {
+                                object.topColIgnore = true;
+                            }
+                        }
+                        if (y < array.length - 1) {
+                            if (array[y + 1][x] == array[y][x]) {
+                                object.bottomColIgnore = true;
+                            }
+                        }
+
+                    }
+
+                    self.handler.add(object);
+                }
+            }
+        }
+    }
+
+    self.spawnFromIndexMap = (fileName, gx, gy, separator = ' ', lineSeparator = '\r\n') => {
+        FileReader.readFile(fileName, (data) => {
+
+            var array = [];
+
+            var objectKeys = Object.keys(self.keyToConstAndDefs);
+
+            console.log(data);
+
+            var lines = data.split(lineSeparator);
+            lines.forEach(line => {
+                var keys = line.split(separator);
+                xPointer = 0;
+                var lineArray = [];
+                keys.forEach(key => {
+                    var pair = self.keyToConstAndDefs[objectKeys[parseInt(key) - 1]]
+                    if (pair) {
+                        lineArray.push(objectKeys[parseInt(key) - 1]);
+                    } else {
+                        lineArray.push(null);
+                    }
+                })
+                array.push(lineArray);
+            });
+
+            self.spawnFromKeyArray(array, gx, gy);
+
+        });
+
+
+
+    }
+
+    self.spawnFromImageMap = (fileName, colorToKey, gx, gy, separator = ' ', lineSeparator = '\r\n') => {
+        FileReader.readImage(fileName, (data) => {
+
+            var array = [];
+
+            var objectKeys = Object.keys(self.keyToConstAndDefs);
+
+            var pixels = data.data;
+            var shape = data.shape;
+
+            for (var y = 0; y < shape[1]; y++) {
+                var lineArray = []
+                for (var x = 0; x < shape[0]; x++) {
+                    var index = (y * shape[0] + x) * shape[2];
+                    var r = pixels[index];
+                    var g = pixels[index + 1];
+                    var b = pixels[index + 2];
+
+                    var key = colorToKey[SpoolMath.rgbToHex(r, g, b)];
+                    if (key) {
+                        lineArray.push(key);
+                    } else {
+                        lineArray.push(null);
+                    }
+                }
+                array.push(lineArray);
+            }
+
+            self.spawnFromKeyArray(array, gx, gy);
+        });
+
+
+
+    }
+
+    return self;
+}
+
 ////// OBJECTS //////
 
 /**
@@ -661,13 +1001,21 @@ var Entity = (initPack = {}) => {
         accelerations: {}, // acc[id] = {acc: double, angle: double} -> list of accelerations that are used in velocity calculations
         velocities: {}, // vel[id] = {vel: double, angle:double * in radians} -> list of velocities that are used in position calculations (added velocities)
 
+        chunks: [],
+        chunksX: 0,
+        chunksY: 0,
+        chunksXX: 0,
+        chunksYY: 0,
+
         color: 'red',
 
         //// GRAVITY PARAMETERS ////
-        ...gravityParameters,
+        ...GravityParameters,
 
         //// COLLISION PARAMETERS ////
-        ...collisionParameters,
+        ...CollisionParameters,
+
+        ...OvalBodyParameters,
 
         id: Math.random(), // id of the object
         objectType: "BLANK_ENTITY", // type of the object (used in many dictionaries)
@@ -694,6 +1042,8 @@ var Entity = (initPack = {}) => {
         return change ? self.updatePack() : null;
     };
 
+
+
     /**
      * returns the initialization package -> package used to create object on clients side
      */
@@ -702,7 +1052,11 @@ var Entity = (initPack = {}) => {
             ...self.updatePack(),
 
             objectType: self.objectType,
-            radius: self.radius,
+
+            width: self.width,
+            height: self.height,
+            bodyType: self.bodyType,
+
             color: self.color
         }
     }
@@ -843,10 +1197,172 @@ var Entity = (initPack = {}) => {
     return self;
 };
 
+////// DEFAULT OBJECTS //////
+
+var Line = (initObject = {}) => {
+    var self = {
+        x: 0,
+        y: 0,
+        xx: 0,
+        yy: 0,
+        color: 'red',
+        id: Math.random(),
+        objectType: 'SPL_LINE',
+        followObjectA: null,
+        followObjectB: null,
+
+        ...initObject
+    }
+
+    self.update = () => {
+        if (self.followObjectA) {
+            self.x = self.followObjectA.x
+            self.y = self.followObjectA.y
+        }
+        if (self.followObjectB) {
+            self.xx = self.followObjectB.x
+            self.yy = self.followObjectB.y
+        }
+    }
+
+    self.initPack = () => {
+        return {
+            x: self.x,
+            y: self.y,
+            xx: self.xx,
+            yy: self.yy,
+            color: self.color,
+            objectType: self.objectType,
+            id: self.id
+        }
+    }
+
+    self.updatePack = () => {
+        return {
+            x: self.x,
+            y: self.y,
+            xx: self.xx,
+            yy: self.yy,
+            id: self.id
+        }
+    }
+
+    self.toStr = () => {
+        return `Line [${self.x}, ${self.y}, ${self.xx}, ${self.yy}]`
+    }
+
+    return self;
+
+}
+
+var Point = (initObject = {}) => {
+
+    var self = {
+        x: 0,
+        y: 0,
+        color: 'red',
+        id: Math.random(),
+        objectType: 'SPL_POINT',
+        followObjectA: null,
+
+        invisible: false,
+
+        ...initObject
+    }
+
+    self.initPack = () => {
+        return {
+            x: self.x,
+            y: self.y,
+            color: self.color,
+            objectType: self.objectType,
+            id: self.id
+        }
+    }
+
+    self.update = () => {
+        if (self.followObjectA) {
+            self.x = self.followObjectA.x
+            self.y = self.followObjectA.y
+        }
+    }
+    self.updatePack = () => {
+        return {
+            x: self.x,
+            y: self.y,
+            id: self.id
+        }
+    }
+
+    return self;
+}
+
+var Rectangle = (initObject = {}) => {
+    var self = {
+        x: 0,
+        y: 0,
+        xx: 0,
+        yy: 0,
+        color: 'red',
+        id: Math.random(),
+        objectType: 'SPL_RECT',
+        followObjectA: null,
+        followObjectB: null,
+
+        invisible: false,
+
+        ...initObject
+    }
+
+    self.update = () => {
+        if (self.followObjectA) {
+            self.x = self.followObjectA.x
+            self.y = self.followObjectA.y
+        }
+        if (self.followObjectB) {
+            self.xx = self.followObjectB.x
+            self.yy = self.followObjectB.y
+        }
+    }
+
+    self.initPack = () => {
+        return {
+            x: self.x,
+            y: self.y,
+            xx: self.xx,
+            yy: self.yy,
+            color: self.color,
+            objectType: self.objectType,
+            id: self.id,
+            invisible: self.invisible,
+            fill: self.fill
+        }
+    }
+
+    self.updatePack = () => {
+        return {
+            x: self.x,
+            y: self.y,
+            xx: self.xx,
+            yy: self.yy,
+            id: self.id,
+            invisible: self.invisible
+        }
+    }
+
+    self.toStr = () => {
+        return `Line [${self.x}, ${self.y}, ${self.xx}, ${self.yy}]`
+    }
+
+    return self;
+}
+
+////// OBJECT PARAMETERS //////
+
 /**
  * parameters needed for input induced movement 
  */
-var keyInputParameters = {
+var KeyInputParameters = {
     pressedLeft: false,
     pressedUp: false,
     pressedRight: false,
@@ -856,19 +1372,35 @@ var keyInputParameters = {
 /**
  * parameters needed for gravity manager
  */
-var gravityParameters = {
+var GravityParameters = {
     mass: 1,
-    gravityLock: false,
-    radius: 10,
+    gravityLock: false
 }
 
 /**
  * parameters needed for collision manager
  */
-var collisionParameters = {
+var CollisionParameters = {
     px: 0,
     py: 0
 }
+
+/**
+ * oval body parameters
+ */
+var OvalBodyParameters = {
+    bodyType: 'oval',
+    width: 10,
+    height: 10
+}
+
+var RectangleBodyParameters = {
+    bodyType: 'rect',
+    width: 10,
+    height: 10
+}
+
+
 
 
 ////// EXPORT //////
@@ -882,10 +1414,16 @@ module.exports = {
     OuterWorldManager,
     InputManager,
 
+    ObjectSpawner,
+
     Entity,
-    keyInputParameters,
-    gravityParameters,
-    collisionParameters,
+    Line,
+    Rectangle,
+    KeyInputParameters,
+    GravityParameters,
+    CollisionParameters,
+    OvalBodyParameters,
+    RectangleBodyParameters,
 
     SpoolMath
 }

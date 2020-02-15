@@ -1,18 +1,30 @@
 var Player = (initPack) => {
     var self = Entity(initPack);
-    self.velocity = 0;
-    self.lastX = 0;
-    self.lastY = 0;
+
+
+
+    self.superRender = self.render
+    self.render = (ctx, camera) => {
+        self.superRender(ctx, camera);
+
+        ctx.font = '15px Arial';
+        ctx.textAlign = "center";
+        textPoint = camera.transformPoint(self.x, self.y + self.radius + 10)
+        ctx.fillText(self.name, textPoint.x, textPoint.y)
+    }
 
     return self;
 }
 
 var client = Client({
     keyToConstructor: {
-        'PLAYER': Player,
-        'ANIMAL': Player
+        'PLAYER': ObjRectangle,
+        'ANIMAL': Player,
+        'WALL': ObjRectangle
     }
 })
+
+client.camera.lerp = true;
 
 client.preHandler = () => {
     if (!client.a) {

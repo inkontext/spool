@@ -99,6 +99,32 @@ const SpoolMath = {
 
     randomInt: (min, max) => {
         return min + parseInt(Math.random() * (max - min));
+    },
+
+    //// INTERVAL ////
+
+    toHex: num => {
+        var hex = Number(num).toString(16);
+        if (hex.length < 2) {
+            hex = "0" + hex;
+        }
+        return hex;
+    },
+
+    rgbToHex: (r, g, b) => {
+        return SpoolMath.toHex(r) + SpoolMath.toHex(g) + SpoolMath.toHex(b);
+    },
+
+    inInterval: (val, a, b, offset = 0) => {
+        if (a < b) {
+            var min = a;
+            var max = b;
+        } else {
+            var min = b;
+            var max = a;
+        }
+
+        return min - offset <= val && val <= max + offset;
     }
 }
 

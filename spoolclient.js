@@ -12,6 +12,11 @@ const CAMERA_MAXIMAL_SCALE_HANDLEVEL = 35;
 var Client = (initObject) => {
     var self = {
         keyToConstructor: {},
+        spoolKeyToConstructor: {
+            'SPL_POINT': Point,
+            'SPL_LINE': Line,
+            'SPL_RECT': Rectangle
+        },
         ...initObject
     }
 
@@ -34,6 +39,8 @@ var Client = (initObject) => {
 
     self.socketInit = () => {
         self.socket.on(MessageCodes.SM_PACK_INIT, (data) => {
+
+            console.log(data);
             for (key in data) {
 
                 // Constructor function, this pointer is filled with constructor function based on the object type
@@ -41,6 +48,8 @@ var Client = (initObject) => {
 
                 if (key in self.keyToConstructor) {
                     constFunction = self.keyToConstructor[key]
+                } else if (key in self.spoolKeyToConstructor) {
+                    constFunction = self.spoolKeyToConstructor[key]
                 }
 
                 // If there is constructor for that object type, run every data from that array through that constructor
@@ -343,7 +352,9 @@ var ClientHandler = () => {
     self.render = (ctx, camera) => {
         for (key in self.objects) {
             for (id in self.objects[key]) {
-                self.objects[key][id].render(ctx, camera);
+                if (!self.objects[key][id].invisible) {
+                    self.objects[key][id].render(ctx, camera);
+                }
             }
         }
     }
@@ -424,15 +435,15 @@ var Camera = (initPack = {}) => {
     };
 
     self.update = () => {
-        if (self.followObject) {
-            self.setFollowObject(self.followObject);
+        if (self.followObject && self.lerp) {
             //self.rotation += 0.0
 
             self.rotation = SpoolMath.lerpRotation(self.rotation, self.followObject.rotation - Math.PI / 2, self.rotationSpeed);
             //self.rotation = self.followObject.rotation - Math.PI / 2;
 
-            var wantedScale = SpoolMath.lerp(CAMERA_MAXIMAL_SCALE, CAMERA_MINIMAL_SCALE, self.followObject.velocity / CAMERA_MAXIMAL_SCALE_HANDLEVEL);
+            var vel = self.followObject.velocity ? self.followObject.velocity : 0;
 
+            var wantedScale = SpoolMath.lerp(CAMERA_MAXIMAL_SCALE, CAMERA_MINIMAL_SCALE, vel / CAMERA_MAXIMAL_SCALE_HANDLEVEL);
             self.scale = SpoolMath.lerp(self.scale, wantedScale, CAMERA_SCALE_SPEED);
 
             self.width = self.canvasWidth / self.scale;
@@ -443,6 +454,9 @@ var Camera = (initPack = {}) => {
                 self.x = SpoolMath.lerp(self.x, self.followObject.x, self.followSpeed);
                 self.y = SpoolMath.lerp(self.y, self.followObject.y, self.followSpeed);
             }
+        } else if (self.followObject) {
+            self.x = self.followObject.x;
+            self.y = self.followObject.y;
         }
     }
 
@@ -564,6 +578,148 @@ var Entity = (initPack) => {
 
     return self;
 }
+
+var ObjRectangle = (initObject) => {
+
+    var self = {
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+        color: 'green',
+        ...initObject
+    }
+
+    /**
+     * function that overrides the self state with data from update package
+     */
+    self.update = (data) => {
+        Object.assign(self, data);
+    }
+
+    self.render = (ctx, camera) => {
+        var bounds = camera.transformBounds(self.x, self.y, self.width, self.height)
+
+        ctx.beginPath();
+        ctx.lineWidth = "1";
+        ctx.rect(Math.floor(bounds.x - bounds.width / 2), Math.floor(bounds.y - bounds.height / 2), bounds.width, bounds.height);
+
+
+        ctx.fillStyle = self.color;
+        ctx.fill();
+
+    }
+
+    return self;
+}
+
+var Point = (initObject) => {
+    var self = {
+        x: 0,
+        y: 0,
+        xx: 0,
+        yy: 0,
+        color: 'green',
+        ...initObject
+    }
+
+    /**
+     * function that overrides the self state with data from update package
+     */
+    self.update = (data) => {
+        Object.assign(self, data);
+    }
+
+    self.render = (ctx, camera) => {
+        ctx.fillStyle = self.color;
+        ctx.beginPath();
+
+        let {
+            x,
+            y,
+            width
+        } = camera.transformBounds(self.x, self.y, 3, 3);
+
+        ctx.arc(x, y, width, 0, 360);
+        ctx.stroke();
+    }
+
+
+
+    return self;
+}
+
+var Line = (initObject) => {
+    var self = {
+        x: 0,
+        y: 0,
+        xx: 0,
+        yy: 0,
+        color: 'green',
+        ...initObject
+    }
+
+    /**
+     * function that overrides the self state with data from update package
+     */
+    self.update = (data) => {
+        Object.assign(self, data);
+    }
+
+    self.render = (ctx, camera) => {
+        let np = camera.transformPoint(self.x, self.y)
+        var npp = camera.transformPoint(self.xx, self.yy)
+
+        ctx.strokeStyle = self.color;
+        ctx.beginPath();
+        ctx.moveTo(np.x, np.y)
+        ctx.lineTo(npp.x, npp.y)
+        ctx.stroke()
+    }
+
+    return self;
+}
+
+
+var Rectangle = (initObject) => {
+    var self = {
+        x: 0,
+        y: 0,
+        xx: 0,
+        yy: 0,
+        color: 'green',
+        ...initObject
+    }
+
+    /**
+     * function that overrides the self state with data from update package
+     */
+    self.update = (data) => {
+        Object.assign(self, data);
+    }
+
+    self.render = (ctx, camera) => {
+        let np = camera.transformPoint(self.x, self.y)
+        var npp = camera.transformPoint(self.xx, self.yy)
+
+        ctx.beginPath();
+        ctx.lineWidth = "1";
+        ctx.rect(np.x, np.y, npp.x - np.x, npp.y - np.y);
+
+        if (self.fill) {
+            ctx.fillStyle = self.color;
+            ctx.fill();
+        } else {
+            ctx.strokeStyle = self.color;
+            ctx.stroke();
+        }
+    }
+
+
+
+    return self;
+}
+
 
 ////// LISTENERS //////
 

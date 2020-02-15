@@ -18,6 +18,8 @@
   "homepage": "https://github.com/sixkey/spool#readme",
   "dependencies": {
     "express": "^4.17.1",
+    "fs": "0.0.1-security",
+    "get-pixels": "^3.3.2",
     "http": "0.0.0",
     "nodemon": "^2.0.2",
     "socket.io": "^2.3.0"

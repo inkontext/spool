@@ -2,11 +2,44 @@ var {
     Server,
     Entity,
     SpoolMath,
-    CollisionManager
+    CollisionManager,
+    ObjectSpawner,
+    RectangleBodyParameters
 } = require('./spoolserver.js');
 
+const names = [
+    "Tam",
+    "Witty",
+    "Friendly",
+    "Pointy",
+    "Cutthroat",
+    "Jakoba",
+    "Jakoba",
+    "First",
+    "Dread",
+    "Captain",
+    "Sir",
+    "The",
+    "Cristina",
+    "Cap'n",
+    "Jakoba",
+    "Cristina",
+    "Admiral",
+    "Cristinaplan",
+    "Friendly",
+    "Brown"
+];
 
-var server = Server({}, '/')
+////// SETTING UP SERVER //////
+
+var server = Server({
+    port: 3000,
+    updateCallback: (self) => {
+
+    }
+}, '/')
+
+var GRID_SIZE = 80;
 
 ////// OBJECTS //////
 
@@ -15,13 +48,17 @@ var server = Server({}, '/')
  * @param {any} id - id of the socket player is connected from
  */
 var Player = (initPack = {}) => {
-    var self = Entity(initPack);
+    var self = Entity({
+        ...initPack,
+        ...RectangleBodyParameters
+    });
 
     // Constants 
     self.maxAcc = 10;
     self.jumpAcc = 10;
     self.groundSpeed = 0.2;
-    self.radius = 20;
+    self.width = 20;
+    self.height = 20;
 
     self.objectType = "PLAYER";
     self.name = 'NAME';
@@ -43,9 +80,7 @@ var Player = (initPack = {}) => {
     self.updatePack = () => {
         return {
             ...superUpdatePack(),
-            kills: self.kills,
-            deaths: self.deaths,
-            health: self.health
+            radius: self.radius
         };
     };
 
@@ -105,7 +140,7 @@ var Animal = (initPack = {}) => {
     self.radius = 10;
 
     self.objectType = "ANIMAL";
-    self.name = 'NAME';
+    self.name = names[SpoolMath.randomInt(0, names.length)];
 
     self.rotation = Math.PI / 2;
 
@@ -120,6 +155,14 @@ var Animal = (initPack = {}) => {
     self.maxDistance = 200;
     self.waitTime = SpoolMath.randomInt(0, 100);
 
+
+    var superInitPackage = self.initPack;
+    self.initPack = () => {
+        return {
+            ...superInitPackage(),
+            name: self.name,
+        }
+    }
     /**
      * Update override
      */
@@ -127,7 +170,7 @@ var Animal = (initPack = {}) => {
     self.update = () => {
 
         if (SpoolMath.distance(self.x, self.y, self.targetX, self.targetY) > 10) {
-            self.setVel('movement', self.speed, SpoolMath.globalAngle(self.x, self.y, self.targetX, self.targetY))
+            //self.setVel('movement', self.speed, SpoolMath.globalAngle(self.x, self.y, self.targetX, self.targetY))
         } else {
             self.setVel('movement', 0, 0)
         }
@@ -146,31 +189,83 @@ var Animal = (initPack = {}) => {
 
     return self;
 };
+/**
+ * Player represents the basic player, it extends entity to inherit its functionality but extends upon it via client connection and controls
+ * @param {any} id - id of the socket player is connected from
+ */
+var Wall = (initPack = {}) => {
+    var self = Entity({
+        ...initPack,
+        ...RectangleBodyParameters
+    });
 
+    self.width = GRID_SIZE;
+    self.height = GRID_SIZE;
+    self.objectType = "WALL";
+    self.rotation = Math.PI / 2;
+    self.color = self.color = SpoolMath.randomHsvColor(0.5, 0.8);
+
+    self.gridColRemoval = true;
+
+    self.addToHandler(server.handler);
+
+    return self;
+};
 ////// MANAGERS //////
 
 var collisionManager = CollisionManager(server.handler, [{
     a: 'PLAYER',
-    b: 'PLAYER',
+    b: 'WALL',
 }, {
     a: 'PLAYER',
     b: 'ANIMAL',
     func: function (a, b) {
+        a.radius = parseInt(Math.sqrt((a.radius * a.radius + b.radius * b.radius)))
         server.handler.removeObj(b)
+
     }
 }]);
 
 server.handler.addManager(collisionManager);
 
-////// SPAWN ANIMALS //////
+////// SPAWN WORLD //////
 
-for (var i = 0; i < 10; i++) {
-    animal = Animal({
-        x: SpoolMath.randomInt(-500, 1000),
-        y: SpoolMath.randomInt(-500, 1000)
+spawnAnimal = () => {
+
+    var x = SpoolMath.randomInt(-1000, 1000)
+    var y = SpoolMath.randomInt(-1000, 1000)
+    Animal({
+        x,
+        y
     })
-    server.handler.add(animal);
 }
+
+// for (var i = 0; i < 100; i++) {
+//     spawnAnimal()
+// }
+
+var objSpawner = ObjectSpawner(server.handler, {
+    'ANIMAL': {
+        const: Animal,
+        defs: {
+            x: 0,
+            y: 0
+        }
+    },
+    'WALL': {
+        const: Wall,
+        defs: {
+            x: 0,
+            y: 0
+        }
+    }
+})
+
+objSpawner.spawnFromImageMap('./image.png', {
+    'ffffff': 'WALL'
+}, GRID_SIZE, GRID_SIZE);
+
+
 
 ////// STARTING SERVER //////
 
