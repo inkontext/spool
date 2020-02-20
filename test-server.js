@@ -39,7 +39,11 @@ var server = Server({
     }
 }, '/')
 
-var GRID_SIZE = 80;
+server.handler.staticKeys = [
+    'WALL'
+]
+
+var GRID_SIZE = 96;
 
 ////// OBJECTS //////
 
@@ -57,8 +61,8 @@ var Player = (initPack = {}) => {
     self.maxAcc = 10;
     self.jumpAcc = 10;
     self.groundSpeed = 0.2;
-    self.width = 20;
-    self.height = 20;
+    self.width = 44;
+    self.height = 18;
 
     self.objectType = "PLAYER";
     self.name = 'NAME';
@@ -137,7 +141,6 @@ var Player = (initPack = {}) => {
 var Animal = (initPack = {}) => {
     var self = Entity(initPack);
 
-    self.radius = 10;
 
     self.objectType = "ANIMAL";
     self.name = names[SpoolMath.randomInt(0, names.length)];
@@ -155,6 +158,8 @@ var Animal = (initPack = {}) => {
     self.maxDistance = 200;
     self.waitTime = SpoolMath.randomInt(0, 100);
 
+    self.width = 30;
+    self.height = 15;
 
     var superInitPackage = self.initPack;
     self.initPack = () => {
@@ -170,7 +175,7 @@ var Animal = (initPack = {}) => {
     self.update = () => {
 
         if (SpoolMath.distance(self.x, self.y, self.targetX, self.targetY) > 10) {
-            //self.setVel('movement', self.speed, SpoolMath.globalAngle(self.x, self.y, self.targetX, self.targetY))
+            self.setVel('movement', self.speed, SpoolMath.globalAngle(self.x, self.y, self.targetX, self.targetY))
         } else {
             self.setVel('movement', 0, 0)
         }
@@ -204,6 +209,75 @@ var Wall = (initPack = {}) => {
     self.objectType = "WALL";
     self.rotation = Math.PI / 2;
     self.color = self.color = SpoolMath.randomHsvColor(0.5, 0.8);
+    self.static = true;
+
+    self.gridColRemoval = true;
+
+    self.addToHandler(server.handler);
+
+    return self;
+};
+
+/**
+ * Player represents the basic player, it extends entity to inherit its functionality but extends upon it via client connection and controls
+ * @param {any} id - id of the socket player is connected from
+ */
+var Fence = (initPack = {}) => {
+    var self = Entity({
+        ...initPack,
+        ...RectangleBodyParameters
+    });
+
+    self.width = GRID_SIZE;
+    self.height = GRID_SIZE;
+    self.objectType = "FENCE";
+    self.rotation = Math.PI / 2;
+    self.color = self.color = SpoolMath.randomHsvColor(0.5, 0.8);
+    self.static = true;
+
+    self.gridColRemoval = true;
+
+    self.addToHandler(server.handler);
+
+    return self;
+};
+
+var Ground = (initPack = {}) => {
+    var self = Entity({
+        objectType: "GROUND",
+        ...initPack,
+        ...RectangleBodyParameters
+    });
+
+    self.width = GRID_SIZE;
+    self.height = GRID_SIZE;
+
+    self.rotation = Math.PI / 2;
+    self.color = self.color = SpoolMath.randomHsvColor(0.5, 0.8);
+    self.static = true;
+
+    self.addToHandler(server.handler);
+
+    return self;
+};
+
+
+/**
+ * Player represents the basic player, it extends entity to inherit its functionality but extends upon it via client connection and controls
+ * @param {any} id - id of the socket player is connected from
+ */
+var Tree = (initPack = {}) => {
+    var self = Entity({
+        ...initPack,
+        ...RectangleBodyParameters
+    });
+
+    self.width = 48;
+    self.height = 20;
+    self.objectType = "TREE";
+    self.rotation = Math.PI / 2;
+    self.color = self.color = SpoolMath.randomHsvColor(0.5, 0.8);
+    self.static = true;
 
     self.gridColRemoval = true;
 
@@ -217,13 +291,14 @@ var collisionManager = CollisionManager(server.handler, [{
     a: 'PLAYER',
     b: 'WALL',
 }, {
+    a: 'ANIMAL',
+    b: 'WALL'
+}, {
     a: 'PLAYER',
-    b: 'ANIMAL',
-    func: function (a, b) {
-        a.radius = parseInt(Math.sqrt((a.radius * a.radius + b.radius * b.radius)))
-        server.handler.removeObj(b)
-
-    }
+    b: 'TREE'
+}, {
+    a: 'PLAYER',
+    b: 'FENCE'
 }]);
 
 server.handler.addManager(collisionManager);
@@ -258,13 +333,42 @@ var objSpawner = ObjectSpawner(server.handler, {
             x: 0,
             y: 0
         }
+    },
+    'FENCE': {
+        const: Fence,
+        defs: {
+            x: 0,
+            y: 0
+        }
+    },
+    'TREE': {
+        const: Tree,
+        defs: {}
+    },
+    'GROUND': {
+        const: Ground,
+        defs: {}
+    },
+    'GROUND_SAND': {
+        const: Ground,
+        defs: {
+            objectType: 'GROUND_SAND'
+        }
     }
 })
 
-objSpawner.spawnFromImageMap('./image.png', {
-    'ffffff': 'WALL'
+objSpawner.spawnRPGWorld({
+    objects: './map-objects.png',
+    ground: './map-ground.png'
+}, {
+    '00ff00': 'GROUND',
+    'fffe92': 'GROUND_SAND',
+    'ffffff': 'WALL',
+    '009000': 'TREE',
+    '7e541e': 'FENCE'
 }, GRID_SIZE, GRID_SIZE);
 
+objSpawner.spawnInRadius('ANIMAL', 100, 20)
 
 
 ////// STARTING SERVER //////

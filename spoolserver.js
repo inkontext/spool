@@ -37,7 +37,7 @@ var Server = (initObject, clientFolder = '/client', htmlFile = 'index.html') => 
         playerList: [],
 
         handler: ServerHandler(),
-
+        updateCounter: 0,
         ...initObject
     }
 
@@ -125,6 +125,8 @@ var Server = (initObject, clientFolder = '/client', htmlFile = 'index.html') => 
 
     self.startGameLoop = (callback = null) => {
         // Start game loop
+
+        self.lastMillis = Date.now();
         setInterval(() => {
             // Update the game state and get update package
             var pack = self.handler.update();
@@ -157,7 +159,17 @@ var Server = (initObject, clientFolder = '/client', htmlFile = 'index.html') => 
             }
             // Reset both the init package and remove package
             self.handler.resetPacks();
-        }, 1000 / 60);
+
+
+            var delta = Date.now() - self.lastMillis;
+            if (delta >= 1000) {
+                console.log('UPS: ', self.updateCounter);
+                self.updateCounter = 0;
+                self.lastMillis = Date.now()
+            } else {
+                self.updateCounter += 1;
+            }
+        }, 1000 / 65);
     }
 
     return self
@@ -179,6 +191,8 @@ var ServerHandler = () => {
         somethingToRemove: false, // If there was an object removed -> true s
         removePack: {}, // Package containing all the information about removed objects -> in update sent to clients
 
+        staticKeys: [],
+
         preManagers: [],
         managers: []
     }
@@ -194,7 +208,7 @@ var ServerHandler = () => {
 
         if (!object.chunks) {
             relocating = true;
-        } else if (!object.chunks.length == 0) {
+        } else if (object.chunks.length == 0) {
             relocating = true;
         } else {
             if (cx != object.chunksX || cy != object.chunksY || cxx != object.chunksXX || cyy != object.chunksYY) {
@@ -205,6 +219,10 @@ var ServerHandler = () => {
             } else {
                 return;
             }
+        }
+
+        if (!relocating) {
+            return;
         }
 
         object.chunksX = cx;
@@ -251,12 +269,15 @@ var ServerHandler = () => {
     self.update = () => {
         var pack = {};
 
-
-
         self.emptyObjectType('SPL_LINE');
         self.emptyObjectType('SPL_POINT');
 
         for (key in self.objects) {
+
+            if (self.staticKeys.includes(key)) {
+                continue;
+            }
+
             var objList = self.objects[key];
 
             var currPackage = [];
@@ -264,19 +285,37 @@ var ServerHandler = () => {
             for (objKey in objList) {
                 var object = objList[objKey];
 
-                for (var i = 0; i < self.preManagers.length; i++) {
-                    self.preManagers[i].update(object);
+                if (!object.static) {
+
+                    for (var i = 0; i < self.preManagers.length; i++) {
+                        self.preManagers[i].update(object);
+                    }
+
+                    var preUpdate = object.updatePack();
+
+                    object.update();
+
+                    self.updateObjectsChunk(object);
+
+                    for (var i = 0; i < self.managers.length; i++) {
+                        self.managers[i].update(object);
+                    }
+
+                    var postUpdate = object.updatePack();
+
+                    var change = false;
+                    for (valueKey in preUpdate) {
+                        if (preUpdate[valueKey] !== postUpdate[valueKey]) {
+                            change = true;
+                            break;
+                        }
+                    }
+
+                    if (change) {
+                        currPackage.push(postUpdate)
+                    }
                 }
 
-                object.update();
-
-                self.updateObjectsChunk(object);
-
-                for (var i = 0; i < self.managers.length; i++) {
-                    self.managers[i].update(object);
-                }
-
-                currPackage.push(object.updatePack())
             }
             if (currPackage.length != 0) {
                 pack[key] = currPackage;
@@ -298,6 +337,7 @@ var ServerHandler = () => {
             self.objects[obj.objectType] = {};
         }
         self.objects[obj.objectType][obj.id] = obj;
+        self.updateObjectsChunk(obj);
 
         // Add to init pack
         if (!(obj.objectType in self.initPack)) {
@@ -650,17 +690,20 @@ var CollisionManager = (handler, colPairs) => {
 
         var active = [b.leftColIgnore, b.rightColIgnore, b.topColIgnore, b.bottomColIgnore]
         var counter = 0;
+
         lines.forEach(line => {
+
             if (!active[counter]) {
                 var intersection = self.lineIntersection(line, objMovementLine);
+                // handler.add(Line({
+                //     ...line
+                // }));
                 intersections.push(intersection);
             } else {
                 intersections.push(null);
             }
             counter++;
         })
-
-
 
         var closestIntersection = null;
         var smallestDistance = null;
@@ -827,7 +870,29 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
     var self = {
         keyToConstAndDefs: keyToConstAndDefs, // keyToConstAndDefs[key] = {const: object's constructor - funcpointer, defs: initPack - {object}}
         handler: handler,
-        ...inputObject
+        ...inputObject,
+
+        colTexturingMap: [
+            [true, true, true, true],
+            [true, false, true, false],
+            [false, true, false, true],
+            [false, true, true, true],
+
+            [true, true, false, false],
+            [false, true, false, false],
+            [false, true, true, false],
+            [true, false, true, true],
+
+            [true, false, false, false],
+            [false, false, false, false],
+            [false, false, true, false],
+            [true, true, false, true],
+
+            [true, false, false, true],
+            [false, false, false, true],
+            [false, false, true, true],
+            [true, true, true, false]
+        ]
     }
 
     self.spawnInRadius = (key, radius, amount, cx = 0, cy = 0) => {
@@ -874,41 +939,65 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
             for (var x = 0; x < array[y].length; x++) {
                 if (array[y][x]) {
                     var pair = keyToConstAndDefs[array[y][x]];
-                    var object = pair.const({
-                        ...pair.defs,
-                        x: x * gx,
-                        y: -y * gy
-                    })
+                    if (pair) {
+                        var object = pair.const({
+                            ...pair.defs,
+                            x: parseInt((x - array[y].length / 2) * gx),
+                            y: parseInt((-y + array.length / 2) * gy)
+                        })
 
-                    if (object.gridColRemoval) {
-                        if (x > 0) {
-                            if (array[y][x - 1] == array[y][x]) {
-                                object.leftColIgnore = true;
+                        if (object.gridColRemoval) {
+                            if (x > 0) {
+                                if (array[y][x - 1] == array[y][x]) {
+                                    object.leftColIgnore = true;
+                                }
                             }
-                        }
-                        if (x < array[y].length - 1) {
-                            if (array[y][x + 1] == array[y][x]) {
-                                object.rightColIgnore = true;
+                            if (x < array[y].length - 1) {
+                                if (array[y][x + 1] == array[y][x]) {
+                                    object.rightColIgnore = true;
+                                }
                             }
+
+                            if (y > 0) {
+                                if (array[y - 1][x] == array[y][x]) {
+                                    object.topColIgnore = true;
+                                }
+                            }
+                            if (y < array.length - 1) {
+                                if (array[y + 1][x] == array[y][x]) {
+                                    object.bottomColIgnore = true;
+                                }
+                            }
+                            var textureId = self.getColTextureId([!object.leftColIgnore, !object.topColIgnore, !object.rightColIgnore, !object.bottomColIgnore]);
+                            object.textureId = textureId;
                         }
 
-                        if (y > 0) {
-                            if (array[y - 1][x] == array[y][x]) {
-                                object.topColIgnore = true;
-                            }
-                        }
-                        if (y < array.length - 1) {
-                            if (array[y + 1][x] == array[y][x]) {
-                                object.bottomColIgnore = true;
-                            }
-                        }
-
+                        self.handler.add(object);
                     }
-
-                    self.handler.add(object);
                 }
             }
         }
+    }
+
+    self.getColTextureId = (array) => {
+        for (var j = 0; j < self.colTexturingMap.length; j++) {
+            var map = self.colTexturingMap[j];
+
+            var mismatch = false;
+
+            for (var i = 0; i < array.length; i++) {
+                if (map[i] !== array[i]) {
+                    mismatch = true;
+                    break;
+                }
+            }
+
+            if (!mismatch) {
+                return j;
+            }
+        }
+
+        return 0;
     }
 
     self.spawnFromIndexMap = (fileName, gx, gy, separator = ' ', lineSeparator = '\r\n') => {
@@ -917,8 +1006,6 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
             var array = [];
 
             var objectKeys = Object.keys(self.keyToConstAndDefs);
-
-            console.log(data);
 
             var lines = data.split(lineSeparator);
             lines.forEach(line => {
@@ -944,7 +1031,7 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
 
     }
 
-    self.spawnFromImageMap = (fileName, colorToKey, gx, gy, separator = ' ', lineSeparator = '\r\n') => {
+    self.spawnFromImageMap = (fileName, colorToKey, gx, gy) => {
         FileReader.readImage(fileName, (data) => {
 
             var array = [];
@@ -974,9 +1061,11 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
 
             self.spawnFromKeyArray(array, gx, gy);
         });
+    }
 
-
-
+    self.spawnRPGWorld = (fileObject, colorToKey, gx, gy) => {
+        self.spawnFromImageMap(fileObject.ground, colorToKey, gx, gy);
+        self.spawnFromImageMap(fileObject.objects, colorToKey, gx, gy);
     }
 
     return self;
@@ -995,6 +1084,7 @@ var Entity = (initPack = {}) => {
 
         velX: 0, // velocity in x direction
         velY: 0, // velocity in y direction
+        movementAngle: 0,
 
         rotation: 0, // double in radians
 
@@ -1048,6 +1138,12 @@ var Entity = (initPack = {}) => {
      * returns the initialization package -> package used to create object on clients side
      */
     self.initPack = () => {
+        var addedValues = {};
+
+        if (self.textureId !== undefined) {
+            addedValues.textureId = self.textureId;
+        }
+
         return {
             ...self.updatePack(),
 
@@ -1057,7 +1153,9 @@ var Entity = (initPack = {}) => {
             height: self.height,
             bodyType: self.bodyType,
 
-            color: self.color
+            color: self.color,
+
+            ...addedValues
         }
     }
 
@@ -1070,7 +1168,9 @@ var Entity = (initPack = {}) => {
             y: self.y,
             color: self.color,
             rotation: self.rotation,
-            id: self.id
+            id: self.id,
+            movementAngle: self.movementAngle,
+            moving: self.moving
         };
     };
 
@@ -1094,7 +1194,14 @@ var Entity = (initPack = {}) => {
             self.x += vels.x;
             self.y += vels.y;
         }
-        return self.x !== self.px || self.y !== self.py
+        if (self.px != self.x || self.py != self.y) {
+            self.movementAngle = SpoolMath.globalAngle(self.px, self.py, self.x, self.y);
+            self.moving = true;
+            return true;
+        } else {
+            self.moving = false;
+            return true;
+        }
     }
 
     /**

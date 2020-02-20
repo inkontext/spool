@@ -123,7 +123,6 @@ const SpoolMath = {
             var min = b;
             var max = a;
         }
-
         return min - offset <= val && val <= max + offset;
     }
 }

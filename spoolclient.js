@@ -5,6 +5,8 @@ const CAMERA_MINIMAL_SCALE = 0.5;
 const CAMERA_MAXIMAL_SCALE = 1;
 const CAMERA_MAXIMAL_SCALE_HANDLEVEL = 35;
 
+const CHUNK_SIZE = 1000;
+
 /**
  * Client object wrapper essential for the basic Spool functionality 
  * @param {object} initObject - parameters wrapped in object wrapper 
@@ -17,6 +19,9 @@ var Client = (initObject) => {
             'SPL_LINE': Line,
             'SPL_RECT': Rectangle
         },
+
+        lastTime: 0,
+        frameCounter: 0,
         ...initObject
     }
 
@@ -26,8 +31,6 @@ var Client = (initObject) => {
     self.width = window.innerWidth;
     self.height = window.innerHeight;
 
-    self.socket = io();
-
     self.camera = Camera({
         width: self.width,
         height: self.height,
@@ -35,12 +38,12 @@ var Client = (initObject) => {
         canvasHeight: self.height
     });
     self.gameArea = GameArea(self.width, self.height);
-    self.handler = ClientHandler();
+    self.handler = ClientHandler(self);
 
     self.socketInit = () => {
+        self.socket = io();
         self.socket.on(MessageCodes.SM_PACK_INIT, (data) => {
-
-            console.log(data);
+            console.log(data)
             for (key in data) {
 
                 // Constructor function, this pointer is filled with constructor function based on the object type
@@ -55,7 +58,10 @@ var Client = (initObject) => {
                 // If there is constructor for that object type, run every data from that array through that constructor
                 if (constFunction) {
                     for (var i = 0; i < data[key].length; i++) {
-                        var obj = constFunction(data[key][i]);
+                        var obj = constFunction.const({
+                            ...constFunction.defs,
+                            ...data[key][i]
+                        });
                         obj.clientInstance = self;
                         self.handler.add(obj)
                     }
@@ -98,6 +104,7 @@ var Client = (initObject) => {
     }
 
     self.startGameLoop = () => {
+
         setInterval(() => {
             // Clear the canvas
             self.gameArea.clear();
@@ -112,11 +119,20 @@ var Client = (initObject) => {
             if (self.postHandler) {
                 self.postHandler();
             }
+
+            self.frameCounter += 1;
+
+            if (Date.now() - self.lastTime > 1000) {
+                console.log(self.frameCounter);
+                self.frameCounter = 0;
+                self.lastTime = Date.now();
+            }
         }, 1000 / 60)
     }
 
     return self;
 }
+
 
 /**
  * Creates the canvas, appends it to the object and holds its context
@@ -156,6 +172,88 @@ var GameArea = (width = 500, height = 500) => {
     return self;
 }
 
+/**
+ * 
+ * @param {object} objectTypeToTexturePairs - [objetType] = textureLinke
+ */
+var TextureManager = (objectTypeToTexturePairs) => {
+    var self = {
+        objectTypeToTexturePairs: objectTypeToTexturePairs,
+        textures: {},
+        onLoad: null,
+        loadCounter: 0,
+        targetLoad: 0
+    }
+
+    self.load = () => {
+        self.textures = {}
+
+        var keys = Object.keys(self.objectTypeToTexturePairs);
+
+        self.targetLoad = keys.length;
+
+        keys.forEach(key => {
+            var image = new Image();
+            image.onload = () => {
+                var canvas = document.createElement('canvas');
+                var context = canvas.getContext('2d');
+
+                var subWidth = image.width / self.objectTypeToTexturePairs[key].c;
+                var subHeight = image.height / self.objectTypeToTexturePairs[key].r;
+
+                canvas.width = subWidth;
+                canvas.height = subHeight;
+
+                var sprites = [];
+
+
+                var x = self.objectTypeToTexturePairs[key].x ? self.objectTypeToTexturePairs[key].x : 0;
+                var y = self.objectTypeToTexturePairs[key].y ? self.objectTypeToTexturePairs[key].y : 0;
+                var w = self.objectTypeToTexturePairs[key].w ? self.objectTypeToTexturePairs[key].w : self.objectTypeToTexturePairs[key].c;
+                var h = self.objectTypeToTexturePairs[key].h ? self.objectTypeToTexturePairs[key].h : self.objectTypeToTexturePairs[key].r;
+
+                for (var r = y; r < y + h; r++) {
+                    for (var c = x; c < x + w; c++) {
+                        context.clearRect(0, 0, subWidth, subHeight);
+                        context.imageSmoothingEnabled = false;
+                        context.drawImage(image, c * subWidth, r * subHeight, subWidth, subHeight, 0, 0, subWidth, subHeight);
+                        var sprite = new Image();
+                        sprite.src = canvas.toDataURL('image/png');
+                        sprites.push(sprite);
+                    }
+                }
+
+                self.textures[key] = {
+                    title: key,
+                    textureMap: image,
+                    rows: h,
+                    columns: w,
+                    sprites: sprites
+                }
+
+                self.loadCounter += 1;
+
+                if (self.loadCounter >= self.targetLoad && self.onLoad) {
+                    self.onLoad();
+                }
+            }
+
+            image.src = self.objectTypeToTexturePairs[key].src;
+        })
+    }
+
+    self.textureObj = (obj) => {
+        var texture = self.textures[obj.objectType];
+        if (texture) {
+            tid = obj.textureId ? obj.textureId : 0;
+            obj.sprite = texture.sprites[tid];
+            obj.texture = texture;
+        }
+    }
+
+    return self;
+}
+
 ////// MISC //////
 
 cameraContainsEntity = (camera, obj) => {
@@ -176,18 +274,18 @@ cameraContainsEntity = (camera, obj) => {
 var Grid = () => {
     var self = {
         rowGap: 200,
-        collumnGap: 200
+        columnGap: 200
     }
 
     self.render = (ctx, camera) => {
-        var collumn = camera.x - camera.width * CAMERA.scale;
+        var column = camera.x - camera.width * CAMERA.scale;
         var row = camera.y - camera.width * CAMERA.scale;
 
-        while (collumn < (camera.x + camera.width) / CAMERA.scale) {
+        while (column < (camera.x + camera.width) / CAMERA.scale) {
             var topY = camera.y - camera.width;
             var bottomY = camera.y + camera.width;
-            var topX = collumn + (-camera.x % self.collumnGap);
-            var bottomX = collumn + (-camera.x % self.collumnGap);
+            var topX = column + (-camera.x % self.columnGap);
+            var bottomX = column + (-camera.x % self.columnGap);
 
             let top = {
                 x,
@@ -211,7 +309,7 @@ var Grid = () => {
             ctx.lineTo(bottomX, bottomY);
             ctx.stroke();
 
-            collumn += self.collumnGap;
+            column += self.columnGap;
         }
         while (row < (camera.y + camera.width) / CAMERA.scale) {
             var leftY = row + (-camera.y % self.rowGap);
@@ -312,12 +410,81 @@ var ObjectRadar = (handler, camera, objectType, radius) => {
 /**
  *  Handler is object that takes cares of drawn elements  
  */
-var ClientHandler = () => {
+var ClientHandler = (client) => {
     var self = {
-        objects: {}
+        objects: {},
+        chunks: {},
+        client: client
     }
 
     //// UPDATING ////
+
+    self.updateObjectsChunk = (object) => {
+        var relocating = false;
+        var cx = Math.floor((object.x - object.width / 2) / CHUNK_SIZE);
+        var cy = Math.floor((object.y - object.height / 2) / CHUNK_SIZE);
+        var cxx = Math.floor((object.x + object.width / 2) / CHUNK_SIZE);
+        var cyy = Math.floor((object.y + object.height / 2) / CHUNK_SIZE);
+
+
+        if (!object.chunks) {
+            relocating = true;
+        } else if (object.chunks.length == 0) {
+            relocating = true;
+        } else {
+            if (cx != object.chunksX || cy != object.chunksY || cxx != object.chunksXX || cyy != object.chunksYY) {
+                relocating = true;
+                object.chunks.forEach(chunk => {
+                    chunk.removeObj(object);
+                })
+            } else {
+                return;
+            }
+        }
+
+
+
+        if (!relocating) {
+            return;
+        }
+
+        object.chunksX = cx;
+        object.chunksY = cy;
+        object.chunksXX = cxx;
+        object.chunksYY = cyy;
+
+        object.chunks = [];
+
+
+        if (relocating) {
+            for (var x = cx; x < cxx + 1; x++) {
+                for (var y = cy; y < cyy + 1; y++) {
+                    var key = `[${x};${y}]`
+
+                    var chunk = undefined;
+
+                    if (key in self.chunks) {
+                        chunk = self.chunks[key];
+                    } else {
+                        chunk = ClientChunk({
+                                x: x,
+                                y: y,
+                                width: CHUNK_SIZE,
+                                height: CHUNK_SIZE
+                            },
+                            self)
+                        self.chunks[key] = chunk;
+
+                        if (self.textureManager) {
+                            self.textureManager.textureObj(chunk);
+                        }
+                    }
+                    chunk.add(object)
+                    object.chunks.push(chunk);
+                }
+            }
+        }
+    }
 
     /**
      * @param {object} data   - update package from server ('update' message) 
@@ -339,6 +506,7 @@ var ClientHandler = () => {
                         };
                         delete updatePack.id;
                         self.objects[key][obj.id].update(updatePack);
+                        self.updateObjectsChunk(self.objects[key][obj.id]);
                     }
                 }
             }
@@ -350,12 +518,64 @@ var ClientHandler = () => {
      * @param {canvas context} ctx - context of the game canvas
      */
     self.render = (ctx, camera) => {
-        for (key in self.objects) {
-            for (id in self.objects[key]) {
-                if (!self.objects[key][id].invisible) {
-                    self.objects[key][id].render(ctx, camera);
+        // for (key in self.objects) {
+        //     for (id in self.objects[key]) {
+        //         if (!self.objects[key][id].invisible) {
+        //             self.objects[key][id].render(ctx, camera);
+        //         }
+        //     }
+        // }
+
+        if (client.camera.followObject) {
+
+            var min_x = Math.floor((camera.x - camera.width / 2) / CHUNK_SIZE);
+            var min_y = Math.floor((camera.y - camera.height / 2) / CHUNK_SIZE);
+            var max_x = Math.floor((camera.x + camera.width / 2) / CHUNK_SIZE);
+            var max_y = Math.floor((camera.y + camera.height / 2) / CHUNK_SIZE);
+            var chunks = self.getChunks(min_x, min_y, max_x, max_y)
+            // var chunks = client.camera.followObject.chunks;
+
+
+            var allObjects = {}
+
+            for (key in chunks) {
+                var chunk = chunks[key];
+                var objects = chunk.objects;
+                if (chunk.sprite) {
+                    var bounds = camera.transformBounds(chunk.x * CHUNK_SIZE, (chunk.y + 1) * CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+                    ctx.drawImage(chunk.sprite, bounds.x, bounds.y, bounds.width, bounds.height)
+                }
+                for (key in objects) {
+                    for (id in objects[key]) {
+                        var obj = chunk.objects[key][id];
+                        if (obj.layer in allObjects) {
+                            allObjects[obj.layer][id] = obj;
+                        } else {
+                            allObjects[obj.layer] = {
+                                id: obj
+                            };
+                        }
+                    }
                 }
             }
+
+
+
+            var sortedLayerKeys = Object.keys(allObjects).sort((a, b) => {
+                return parseInt(a) - parseInt(b);
+            })
+
+
+
+            sortedLayerKeys.forEach(layerKey => {
+                var sortedKeys = Object.keys(allObjects[layerKey]).sort((a, b) => {
+                    return allObjects[layerKey][b].y - allObjects[layerKey][a].y;
+                })
+
+                sortedKeys.forEach(key => {
+                    allObjects[layerKey][key].render(ctx, camera);
+                })
+            })
         }
     }
 
@@ -370,6 +590,10 @@ var ClientHandler = () => {
             self.objects[obj.objectType] = {};
         }
         self.objects[obj.objectType][obj.id] = obj;
+        self.updateObjectsChunk(obj);
+        if (self.textureManager) {
+            self.textureManager.textureObj(obj);
+        }
     }
 
     /**
@@ -409,6 +633,57 @@ var ClientHandler = () => {
                 }
             }
         }
+    }
+
+    self.getChunks = (min_x, min_y, max_x, max_y) => {
+        result = []
+        for (var x = min_x; x <= max_x; x++) {
+            for (var y = min_y; y <= max_y; y++) {
+                var key = `[${x};${y}]`;
+                if (key in self.chunks) {
+                    result.push(self.chunks[key]);
+                }
+            }
+        }
+        return result;
+    }
+
+    return self;
+}
+
+var ClientChunk = (initObject, handler) => {
+
+    var self = {
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+        handler: handler,
+
+        objectType: 'SPL_CHUNK',
+
+        objects: {},
+
+        ...initObject
+    }
+
+    self.add = (obj) => {
+        // Add to handler
+        if (!(obj.objectType in self.objects)) {
+            self.objects[obj.objectType] = {};
+        }
+        self.objects[obj.objectType][obj.id] = obj;
+    }
+
+    self.remove = (type, id) => {
+        // Remove object from handler
+        if (type in self.objects) {
+            delete self.objects[type][id];
+        }
+    }
+
+    self.removeObj = (obj) => {
+        self.remove(obj.objectType, obj.id)
     }
 
     return self;
@@ -549,7 +824,14 @@ var Entity = (initPack) => {
         rotation: 0,
         radius: 10, // radius of the object
         color: 'red', // color of the object
-        ...initPack // unpacking the init package
+        layer: 10,
+
+        animationCounter: 0,
+        animationTime: 0,
+        animationFrame: 0,
+        animationSize: 0,
+        ...initPack // unpacking the init package,
+
     };
 
     /**
@@ -563,41 +845,33 @@ var Entity = (initPack) => {
      * default render method
      */
     self.render = (ctx, camera) => {
-        ctx.fillStyle = self.color;
+        self.renderOval(ctx, camera);
+    }
+
+    /**
+     * default render method
+     */
+    self.renderOval = (ctx, camera, color = self.color) => {
+        ctx.fillStyle = color;
         ctx.beginPath();
+
+
+        var radius = Math.min(self.width, self.height);
 
         let {
             x,
             y,
             width
-        } = camera.transformBounds(self.x, self.y, self.radius, self.radius);
+        } = camera.transformBounds(self.x, self.y, radius, radius);
 
         ctx.arc(x, y, width, 0, 360);
         ctx.fill();
     }
 
-    return self;
-}
-
-var ObjRectangle = (initObject) => {
-
-    var self = {
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0,
-        color: 'green',
-        ...initObject
-    }
-
     /**
-     * function that overrides the self state with data from update package
+     * default render method
      */
-    self.update = (data) => {
-        Object.assign(self, data);
-    }
-
-    self.render = (ctx, camera) => {
+    self.renderRectangle = (ctx, camera, color = self.color) => {
         var bounds = camera.transformBounds(self.x, self.y, self.width, self.height)
 
         ctx.beginPath();
@@ -605,11 +879,114 @@ var ObjRectangle = (initObject) => {
         ctx.rect(Math.floor(bounds.x - bounds.width / 2), Math.floor(bounds.y - bounds.height / 2), bounds.width, bounds.height);
 
 
-        ctx.fillStyle = self.color;
+        ctx.fillStyle = color;
         ctx.fill();
+    }
+
+
+    /**
+     * render texture in bounds
+     */
+    self.renderSprite = (ctx, camera, sprite = self.sprite) => {
+        if (sprite) {
+
+            var width = self.width;
+            var height = self.height;
+            var x = self.x;
+            var y = self.y;
+
+            if (self.clientWidth) {
+                width = self.clientWidth;
+            }
+            if (self.clientHeight) {
+                height = self.clientHeight;
+            }
+
+            var bounds = camera.transformBounds(x, y, width, height);
+
+            var offsetX = self.width / 2;
+            var offsetY = self.height / 2;
+
+            if (self.clientOffsetX) {
+                offsetX = self.clientOffsetX;
+            }
+            if (self.clientOffsetY) {
+                offsetY = self.clientOffsetY;
+            }
+
+            var offsetBounds = camera.transformBounds(x, y, offsetX, offsetY);
+
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(sprite, bounds.x - offsetBounds.width, bounds.y - offsetBounds.height, bounds.width, bounds.height)
+            if (self.showBounds) {
+                self.renderRectangle(ctx, camera, self.color);
+            }
+        } else {
+            self.renderRectangle(ctx, camera, 'violet')
+        }
+    }
+
+    self.renderMovementAnimation = (ctx, camera) => {
+
+        if (self.animationCounter == self.animationTime) {
+            if (self.texture) {
+                self.animationFrame += 1;
+                if (self.animationFrame == self.texture.columns) {
+                    self.animationFrame = 0;
+                }
+            }
+
+            self.animationCounter = 0;
+        } else {
+            self.animationCounter += 1;
+        }
+
+        if (self.moving) {
+
+            var angleCoef = self.movementAngle;
+            if (angleCoef < 0) {
+                angleCoef += 2 * Math.PI;
+            }
+
+            angleCoef = angleCoef / Math.PI / 2;
+
+            var row = Math.round(angleCoef * (self.texture.rows - 1)) % self.texture.columns + 1;
+        } else {
+            var row = 0;
+        }
+
+        //console.log('sprite');
+        var index = row * self.texture.columns + self.animationFrame;
+        //console.log(index);
+        self.renderSprite(ctx, camera, self.texture.sprites[index])
 
     }
 
+    return self;
+}
+
+var RectangleEntity = (initObject) => {
+    var self = Entity(initObject);
+    self.render = (ctx, camera) => {
+        self.renderRectangle(ctx, camera);
+    }
+    return self;
+}
+
+var SpriteEntity = (initObject) => {
+    var self = Entity(initObject);
+    self.render = (ctx, camera) => {
+        self.renderSprite(ctx, camera);
+    }
+    return self;
+}
+
+var MovementAnimationEntity = (initObject) => {
+    var self = Entity(initObject);
+    self.animationTime = 5;
+    self.render = (ctx, camera) => {
+        self.renderMovementAnimation(ctx, camera);
+    }
     return self;
 }
 
