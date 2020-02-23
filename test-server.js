@@ -37,11 +37,22 @@ var server = Server({
     updateCallback: (self) => {
 
     }
-}, '/')
+}, ['/', '/textures'])
 
 server.handler.staticKeys = [
     'WALL'
 ]
+
+server.mouseEvent = (data, socket, player) => {
+    var fireBall = Fireball({
+        x: player.x,
+        y: player.y,
+        velX: player.calculatedVelX,
+        velY: player.calculatedVelY
+    })
+
+    fireBall.impulse(20, SpoolMath.globalAngle(player.x, player.y, data.clickedX, data.clickedY))
+}
 
 var GRID_SIZE = 96;
 
@@ -218,6 +229,52 @@ var Wall = (initPack = {}) => {
     return self;
 };
 
+var Fireball = (initPack = {}) => {
+    var self = Entity(initPack);
+
+    self.objectType = 'FIREBALL';
+
+    self.rotation = Math.PI / 2;
+
+    self.width = 20;
+    self.height = 20;
+
+    self.z = 50;
+    self.velZ = 0;
+    self.dmg = 10;
+
+
+    var superInitPack = self.initPack;
+    self.initPack = () => {
+        return {
+            ...superInitPack(),
+            z: self.z
+        }
+    }
+
+    var superUpdatePack = self.updatePack;
+    self.updatePack = () => {
+        return {
+            ...superUpdatePack(),
+            z: self.z
+        }
+    }
+
+    var superUpdate = self.update;
+
+    self.update = () => {
+        self.z -= self.velZ;
+        self.velZ += 0.2;
+        if (self.z < 0) {
+            server.handler.removeObj(self);
+        }
+        superUpdate()
+    }
+
+    self.addToHandler(server.handler);
+    return self;
+}
+
 /**
  * Player represents the basic player, it extends entity to inherit its functionality but extends upon it via client connection and controls
  * @param {any} id - id of the socket player is connected from
@@ -288,18 +345,24 @@ var Tree = (initPack = {}) => {
 ////// MANAGERS //////
 
 var collisionManager = CollisionManager(server.handler, [{
-    a: 'PLAYER',
-    b: 'WALL',
-}, {
-    a: 'ANIMAL',
-    b: 'WALL'
-}, {
-    a: 'PLAYER',
-    b: 'TREE'
-}, {
-    a: 'PLAYER',
-    b: 'FENCE'
-}]);
+        a: ['PLAYER', 'ANIMAL'],
+        b: ['WALL', 'TREE', 'FENCE'],
+    }, {
+        a: ['FIREBALL'],
+        b: ['ANIMAL'],
+        func: function (a, b) {
+            server.handler.removeObj(b);
+            server.handler.removeObj(a);
+        }
+    }, {
+        a: ['FIREBALL'],
+        b: ['WALL', 'TREE', 'FENCE'],
+        func: function (a, b) {
+            server.handler.removeObj(a)
+        }
+    }
+
+]);
 
 server.handler.addManager(collisionManager);
 
@@ -358,8 +421,8 @@ var objSpawner = ObjectSpawner(server.handler, {
 })
 
 objSpawner.spawnRPGWorld({
-    objects: './map-objects.png',
-    ground: './map-ground.png'
+    objects: './maps/map-objects.png',
+    ground: './maps/map-ground.png'
 }, {
     '00ff00': 'GROUND',
     'fffe92': 'GROUND_SAND',

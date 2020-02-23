@@ -5,8 +5,6 @@ const CAMERA_MINIMAL_SCALE = 0.5;
 const CAMERA_MAXIMAL_SCALE = 1;
 const CAMERA_MAXIMAL_SCALE_HANDLEVEL = 35;
 
-const CHUNK_SIZE = 1000;
-
 /**
  * Client object wrapper essential for the basic Spool functionality 
  * @param {object} initObject - parameters wrapped in object wrapper 
@@ -22,6 +20,7 @@ var Client = (initObject) => {
 
         lastTime: 0,
         frameCounter: 0,
+        chunkSize: 1000,
         ...initObject
     }
 
@@ -38,12 +37,11 @@ var Client = (initObject) => {
         canvasHeight: self.height
     });
     self.gameArea = GameArea(self.width, self.height);
-    self.handler = ClientHandler(self);
-
+    self.handler = ClientHandler(self.chunkSize, self);
+    self.uiHandler = SpoolUIHandler();
     self.socketInit = () => {
         self.socket = io();
         self.socket.on(MessageCodes.SM_PACK_INIT, (data) => {
-            console.log(data)
             for (key in data) {
 
                 // Constructor function, this pointer is filled with constructor function based on the object type
@@ -120,6 +118,10 @@ var Client = (initObject) => {
                 self.postHandler();
             }
 
+            if (self.uiHandler) {
+                self.uiHandler.render(self.gameArea.ctx);
+            }
+
             self.frameCounter += 1;
 
             if (Date.now() - self.lastTime > 1000) {
@@ -176,10 +178,12 @@ var GameArea = (width = 500, height = 500) => {
  * 
  * @param {object} objectTypeToTexturePairs - [objetType] = textureLinke
  */
-var TextureManager = (objectTypeToTexturePairs) => {
+var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
     var self = {
-        objectTypeToTexturePairs: objectTypeToTexturePairs,
-        textures: {},
+        spriteSheetInitObject: spriteSheetInitObject,
+        objectSheetInitObject: objectSheetInitObject,
+        spriteSheets: {},
+        objectSheets: {},
         onLoad: null,
         loadCounter: 0,
         targetLoad: 0
@@ -188,7 +192,7 @@ var TextureManager = (objectTypeToTexturePairs) => {
     self.load = () => {
         self.textures = {}
 
-        var keys = Object.keys(self.objectTypeToTexturePairs);
+        var keys = Object.keys(self.spriteSheetInitObject);
 
         self.targetLoad = keys.length;
 
@@ -198,56 +202,190 @@ var TextureManager = (objectTypeToTexturePairs) => {
                 var canvas = document.createElement('canvas');
                 var context = canvas.getContext('2d');
 
-                var subWidth = image.width / self.objectTypeToTexturePairs[key].c;
-                var subHeight = image.height / self.objectTypeToTexturePairs[key].r;
+                var r = self.spriteSheetInitObject[key].r ? self.spriteSheetInitObject[key].r : 1;
+                var c = self.spriteSheetInitObject[key].c ? self.spriteSheetInitObject[key].c : 1;
+
+                var subWidth = image.width / c;
+                var subHeight = image.height / r;
 
                 canvas.width = subWidth;
                 canvas.height = subHeight;
 
                 var sprites = [];
+                var shadowSprites = [];
 
 
-                var x = self.objectTypeToTexturePairs[key].x ? self.objectTypeToTexturePairs[key].x : 0;
-                var y = self.objectTypeToTexturePairs[key].y ? self.objectTypeToTexturePairs[key].y : 0;
-                var w = self.objectTypeToTexturePairs[key].w ? self.objectTypeToTexturePairs[key].w : self.objectTypeToTexturePairs[key].c;
-                var h = self.objectTypeToTexturePairs[key].h ? self.objectTypeToTexturePairs[key].h : self.objectTypeToTexturePairs[key].r;
-
-                for (var r = y; r < y + h; r++) {
-                    for (var c = x; c < x + w; c++) {
+                for (var y = 0; y < r; y++) {
+                    for (var x = 0; x < c; x++) {
                         context.clearRect(0, 0, subWidth, subHeight);
                         context.imageSmoothingEnabled = false;
-                        context.drawImage(image, c * subWidth, r * subHeight, subWidth, subHeight, 0, 0, subWidth, subHeight);
+                        context.drawImage(image, x * subWidth, y * subHeight, subWidth, subHeight, 0, 0, subWidth, subHeight);
+
+                        // Getting sprite
+
                         var sprite = new Image();
                         sprite.src = canvas.toDataURL('image/png');
                         sprites.push(sprite);
+
+                        // Getting shadow sprite
+
+                        var shadowSprite = new Image();
+                        var imgData = context.getImageData(0, 0, canvas.width, canvas.height);
+                        var pixels = imgData.data;
+
+                        var newPixels = [];
+                        for (var siy = canvas.height - 1; siy > -1; siy--) {
+                            var newRow = [];
+                            for (var six = 0; six < canvas.width; six++) {
+                                newRow.push(0, 0, 0, pixels[siy * canvas.width * 4 + six * 4 + 3] / 2)
+                            }
+                            newPixels.push(...newRow)
+                        }
+
+                        for (var i = 0, n = pixels.length; i < n; i++) {
+                            pixels[i] = newPixels[i];
+                        }
+
+                        context.putImageData(imgData, 0, 0);
+                        shadowSprite.src = canvas.toDataURL('image/png');
+                        shadowSprites.push(shadowSprite);
                     }
                 }
 
-                self.textures[key] = {
+                self.spriteSheets[key] = {
                     title: key,
                     textureMap: image,
-                    rows: h,
-                    columns: w,
-                    sprites: sprites
+                    rows: r,
+                    columns: c,
+                    sprites: sprites,
+                    shadowSprites: shadowSprites
                 }
 
                 self.loadCounter += 1;
 
                 if (self.loadCounter >= self.targetLoad && self.onLoad) {
-                    self.onLoad();
+                    self.prepareObjectSheets();
                 }
             }
 
-            image.src = self.objectTypeToTexturePairs[key].src;
+            image.src = self.spriteSheetInitObject[key].src;
         })
     }
 
+    self.getSubSpriteSheet = (key, x, y, xx, yy) => {
+
+        var c = xx - x + 1;
+        var r = yy - y + 1;
+
+        var sprites = [];
+        var shadowSprites = [];
+
+        var spriteSheet = self.spriteSheets[key];
+
+        for (var yyy = y; yyy <= yy; yyy++) {
+            for (var xxx = x; xxx <= xx; xxx++) {
+                var index = yyy * spriteSheet.columns + xxx;
+                sprites.push(spriteSheet.sprites[index]);
+                shadowSprites.push(spriteSheet.shadowSprites[index])
+            }
+        }
+
+
+        return {
+            textureMap: spriteSheet.textureMap,
+            rows: r,
+            columns: c,
+            sprites: sprites,
+            shadowSprites: shadowSprites
+        }
+    }
+
+    self.getSprite = (key, x, y) => {
+        return self.spriteSheets[key].sprites[y * self.spriteSheets[key].columns + x];
+    }
+
+    self.prepareObjectSheets = () => {
+        var keys = Object.keys(self.objectSheetInitObject);
+
+        self.targetLoad = keys.length;
+
+
+        keys.forEach(key => {
+            var objSheetInfo = objectSheetInitObject[key];
+            var spriteSheet = self.spriteSheets[objSheetInfo.src];
+            var x = objSheetInfo.x ? objSheetInfo.x : 0;
+            var y = objSheetInfo.y ? objSheetInfo.y : 0;
+            var xx = objSheetInfo.xx ? objSheetInfo.xx : spriteSheet.columns - 1;
+            var yy = objSheetInfo.yy ? objSheetInfo.yy : spriteSheet.rows - 1;
+
+            var temp = self.getSubSpriteSheet(objSheetInfo.src, x, y, xx, yy);
+
+
+            console.log(key, temp);
+
+            temp.title = key;
+            self.objectSheets[key] = temp;
+        })
+
+        self.onLoad();
+    }
+
     self.textureObj = (obj) => {
-        var texture = self.textures[obj.objectType];
+        var texture = self.objectSheets[obj.objectType];
         if (texture) {
             tid = obj.textureId ? obj.textureId : 0;
+
             obj.sprite = texture.sprites[tid];
+            obj.shadowSprite = texture.shadowSprites[tid];
             obj.texture = texture;
+        }
+    }
+
+    self.bakeIn = (originalTexture, bakedTexture, dBounds, callback, attributes = null) => {
+        var canvas = document.createElement('canvas');
+        var context = canvas.getContext('2d');
+
+        canvas.width = originalTexture.width;
+        canvas.height = originalTexture.height;
+
+        context.imageSmoothingEnabled = false;
+        context.drawImage(originalTexture, 0, 0);
+        context.drawImage(bakedTexture, dBounds.x, dBounds.y, dBounds.width, dBounds.height);
+
+        var sprite = new Image();
+        sprite.src = canvas.toDataURL('image/png');
+
+        sprite.onload = () => {
+            callback(sprite, attributes);
+        }
+    }
+
+    self.bakeBatch = (originalTexture, bakingArray, callback, attributes) => {
+
+        var canvas = document.createElement('canvas');
+        var context = canvas.getContext('2d');
+
+        canvas.width = originalTexture.width;
+        canvas.height = originalTexture.height;
+
+        context.imageSmoothingEnabled = false;
+
+
+        context.drawImage(originalTexture, 0, 0);
+
+        bakingArray.forEach(bObject => {
+            context.drawImage(
+                bObject.bakedTexture,
+                bObject.dBounds.x,
+                bObject.dBounds.y,
+                bObject.dBounds.width,
+                bObject.dBounds.height);
+        })
+        var sprite = new Image();
+        sprite.src = canvas.toDataURL('image/png');
+
+        sprite.onload = () => {
+            callback(sprite, attributes);
         }
     }
 
@@ -396,7 +534,6 @@ var ObjectRadar = (handler, camera, objectType, radius) => {
                     ctx.closePath();
                     ctx.fill();
                     //
-                    ctx.drawPolygonn
                 }
             }
         }
@@ -410,21 +547,22 @@ var ObjectRadar = (handler, camera, objectType, radius) => {
 /**
  *  Handler is object that takes cares of drawn elements  
  */
-var ClientHandler = (client) => {
+var ClientHandler = (chunkSize, client) => {
     var self = {
         objects: {},
         chunks: {},
-        client: client
+        client: client,
+        chunkSize: chunkSize
     }
 
     //// UPDATING ////
 
     self.updateObjectsChunk = (object) => {
         var relocating = false;
-        var cx = Math.floor((object.x - object.width / 2) / CHUNK_SIZE);
-        var cy = Math.floor((object.y - object.height / 2) / CHUNK_SIZE);
-        var cxx = Math.floor((object.x + object.width / 2) / CHUNK_SIZE);
-        var cyy = Math.floor((object.y + object.height / 2) / CHUNK_SIZE);
+        var cx = Math.floor((object.x - object.width / 2) / self.chunkSize);
+        var cy = Math.floor((object.y - object.height / 2) / self.chunkSize);
+        var cxx = Math.floor((object.x + object.width / 2) / self.chunkSize);
+        var cyy = Math.floor((object.y + object.height / 2) / self.chunkSize);
 
 
         if (!object.chunks) {
@@ -469,8 +607,9 @@ var ClientHandler = (client) => {
                         chunk = ClientChunk({
                                 x: x,
                                 y: y,
-                                width: CHUNK_SIZE,
-                                height: CHUNK_SIZE
+                                width: self.chunkSize,
+                                height: self.chunkSize,
+                                key: key
                             },
                             self)
                         self.chunks[key] = chunk;
@@ -528,37 +667,117 @@ var ClientHandler = (client) => {
 
         if (client.camera.followObject) {
 
-            var min_x = Math.floor((camera.x - camera.width / 2) / CHUNK_SIZE);
-            var min_y = Math.floor((camera.y - camera.height / 2) / CHUNK_SIZE);
-            var max_x = Math.floor((camera.x + camera.width / 2) / CHUNK_SIZE);
-            var max_y = Math.floor((camera.y + camera.height / 2) / CHUNK_SIZE);
+            var min_x = Math.floor((camera.x - camera.width / 2) / self.chunkSize);
+            var min_y = Math.floor((camera.y - camera.height / 2) / self.chunkSize);
+            var max_x = Math.floor((camera.x + camera.width / 2) / self.chunkSize);
+            var max_y = Math.floor((camera.y + camera.height / 2) / self.chunkSize);
             var chunks = self.getChunks(min_x, min_y, max_x, max_y)
             // var chunks = client.camera.followObject.chunks;
 
 
             var allObjects = {}
 
-            for (key in chunks) {
-                var chunk = chunks[key];
+            var bakingObjects = {}
+
+            for (chunkKey in chunks) {
+                var chunk = chunks[chunkKey];
                 var objects = chunk.objects;
                 if (chunk.sprite) {
-                    var bounds = camera.transformBounds(chunk.x * CHUNK_SIZE, (chunk.y + 1) * CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+                    var bounds = camera.transformBounds(chunk.x * self.chunkSize, (chunk.y + 1) * self.chunkSize, self.chunkSize, self.chunkSize)
                     ctx.drawImage(chunk.sprite, bounds.x, bounds.y, bounds.width, bounds.height)
                 }
                 for (key in objects) {
                     for (id in objects[key]) {
                         var obj = chunk.objects[key][id];
-                        if (obj.layer in allObjects) {
-                            allObjects[obj.layer][id] = obj;
+
+                        if (obj.bakeIn) {
+                            if (obj.bakedIn ? !obj.bakedIn.includes(chunk.key) : true) {
+
+
+                                var renderBounds = obj.getRenderBounds();
+
+
+                                var coefX = chunk.sprite.width / self.chunkSize;
+                                var coefY = chunk.sprite.height / self.chunkSize;
+
+                                var bakingObject = {
+                                    bakedTexture: obj.sprite,
+                                    dBounds: {
+                                        x: (renderBounds.x - chunk.x * self.chunkSize) * coefX,
+                                        y: (self.chunkSize - (renderBounds.y - chunk.y * self.chunkSize) - renderBounds.height) * coefY,
+                                        width: renderBounds.width * coefX,
+                                        height: renderBounds.height * coefY
+                                    },
+                                    callback: (newSprite, attributes) => {
+                                        attributes.chunk.sprite = newSprite
+                                        attributes.obj.bakedIn = true;
+                                    },
+                                    attributes: {
+                                        obj: obj,
+                                        chunk: chunk
+                                    }
+                                };
+
+                                var cKey = chunk.key;
+
+                                if (cKey in bakingObjects) {
+                                    bakingObjects[cKey].push(bakingObject);
+                                } else {
+                                    bakingObjects[cKey] = [bakingObject];
+                                }
+                            }
                         } else {
-                            allObjects[obj.layer] = {
-                                id: obj
-                            };
+                            if (obj.layer in allObjects) {
+                                allObjects[obj.layer][id] = obj;
+                            } else {
+                                allObjects[obj.layer] = {
+                                    id: obj
+                                };
+                            }
                         }
                     }
                 }
             }
 
+            //// BAKING OBJECTS //// 
+
+            for (key in bakingObjects) {
+                if (key in self.chunks) {
+                    var bakingArray = [];
+                    var waitingList = [];
+                    bakingObjects[key].forEach(bo => {
+                        bakingArray.push({
+                            bakedTexture: bo.bakedTexture,
+                            dBounds: bo.dBounds
+                        })
+
+                        waitingList.push(bo.attributes.obj)
+                    })
+
+                    callback = (sprite, attributes) => {
+                        self.chunks[attributes.key].sprite = sprite;
+                        waitingList.forEach(o => {
+                            if (!o.bakedIn) {
+                                o.bakedIn = [attributes.key]
+                            } else {
+                                o.bakedIn.push(attributes.key)
+                            }
+                        })
+                    }
+
+                    self.textureManager.bakeBatch(
+                        self.chunks[key].sprite,
+                        bakingArray,
+                        callback, {
+                            key: key
+                        }
+                    );
+                } else {
+                    console.warn('invalid chunk added to baking');
+                }
+            }
+
+            //// RENDERING OBJECTS ////
 
 
             var sortedLayerKeys = Object.keys(allObjects).sort((a, b) => {
@@ -601,7 +820,10 @@ var ClientHandler = (client) => {
      * @param {object} obj - object being removed 
      */
     self.remove = (obj) => {
-        if (obj.objectType in objects) {
+        if (obj.objectType in self.objects) {
+            obj.chunks.forEach(chunk => {
+                chunk.removeObj(obj);
+            })
             delete self.objects[obj.objectType][obj.id];
         }
     }
@@ -628,7 +850,7 @@ var ClientHandler = (client) => {
             if (key in self.objects) { // If object type in handler (PLAYER type etc.)
                 for (var i = 0; i < data[key].length; i++) {
                     if (data[key][i] in self.objects[key]) { // If objects id is in the sub-objects list (If object is in handler)
-                        delete self.objects[key][data[key][i]] // Remove object with the id
+                        self.remove(self.objects[key][data[key][i]]) // Remove object with the id
                     }
                 }
             }
@@ -768,6 +990,10 @@ var Camera = (initPack = {}) => {
         }
     }
 
+    self.transformDimension = (d) => {
+        return self.scale * d;
+    }
+
     self.clickTransfer = (x, y) => {
         var dist = SpoolMath.distance(x, y, self.width / 2, self.height / 2);
 
@@ -883,51 +1109,63 @@ var Entity = (initPack) => {
         ctx.fill();
     }
 
-
     /**
      * render texture in bounds
      */
-    self.renderSprite = (ctx, camera, sprite = self.sprite) => {
+    self.renderSprite = (ctx, camera, sprite = self.sprite, hardBounds = null) => {
         if (sprite) {
+            var finalBounds;
+            if (!hardBounds) {
+                var width = self.width;
+                var height = self.height;
+                var x = self.x;
+                var y = self.y;
 
-            var width = self.width;
-            var height = self.height;
-            var x = self.x;
-            var y = self.y;
+                if (self.clientWidth) {
+                    width = self.clientWidth;
+                }
+                if (self.clientHeight) {
+                    height = self.clientHeight;
+                }
 
-            if (self.clientWidth) {
-                width = self.clientWidth;
+                var bounds = camera.transformBounds(x, y, width, height);
+
+                var offsetX = self.width / 2;
+                var offsetY = self.height / 2;
+
+                if (self.clientOffsetX) {
+                    offsetX = self.clientOffsetX;
+                }
+                if (self.clientOffsetY) {
+                    offsetY = self.clientOffsetY;
+                }
+
+                var offsetBounds = camera.transformBounds(x, y, offsetX, offsetY);
+
+                ctx.imageSmoothingEnabled = false;
+
+                finalBounds = {
+                    x: bounds.x - offsetBounds.width,
+                    y: bounds.y - offsetBounds.height,
+                    width: bounds.width,
+                    height: bounds.height
+                }
+            } else {
+                finalBounds = hardBounds;
             }
-            if (self.clientHeight) {
-                height = self.clientHeight;
-            }
 
-            var bounds = camera.transformBounds(x, y, width, height);
-
-            var offsetX = self.width / 2;
-            var offsetY = self.height / 2;
-
-            if (self.clientOffsetX) {
-                offsetX = self.clientOffsetX;
-            }
-            if (self.clientOffsetY) {
-                offsetY = self.clientOffsetY;
-            }
-
-            var offsetBounds = camera.transformBounds(x, y, offsetX, offsetY);
-
-            ctx.imageSmoothingEnabled = false;
-            ctx.drawImage(sprite, bounds.x - offsetBounds.width, bounds.y - offsetBounds.height, bounds.width, bounds.height)
+            ctx.drawImage(sprite, finalBounds.x, finalBounds.y, finalBounds.width, finalBounds.height)
             if (self.showBounds) {
                 self.renderRectangle(ctx, camera, self.color);
             }
+            return finalBounds;
         } else {
             self.renderRectangle(ctx, camera, 'violet')
+            return null;
         }
     }
 
     self.renderMovementAnimation = (ctx, camera) => {
-
         if (self.animationCounter == self.animationTime) {
             if (self.texture) {
                 self.animationFrame += 1;
@@ -941,6 +1179,8 @@ var Entity = (initPack) => {
             self.animationCounter += 1;
         }
 
+        var animationRowsNumber = (self.texture.rows - 1);
+
         if (self.moving) {
 
             var angleCoef = self.movementAngle;
@@ -948,18 +1188,50 @@ var Entity = (initPack) => {
                 angleCoef += 2 * Math.PI;
             }
 
-            angleCoef = angleCoef / Math.PI / 2;
+            angleCoef = angleCoef / Math.PI / 2 + 1 / animationRowsNumber / 2;
+            if (angleCoef < 0) {
+                angleCoef += 1;
+            }
+            angleCoef %= 1;
 
-            var row = Math.round(angleCoef * (self.texture.rows - 1)) % self.texture.columns + 1;
+            var row = Math.floor(angleCoef * animationRowsNumber) % animationRowsNumber + 1;
         } else {
             var row = 0;
         }
 
         //console.log('sprite');
         var index = row * self.texture.columns + self.animationFrame;
-        //console.log(index);
-        self.renderSprite(ctx, camera, self.texture.sprites[index])
 
+        return [self.renderSprite(ctx, camera, self.texture.sprites[index]), index]
+
+
+    }
+
+    self.getRenderBounds = (camera = null) => {
+
+
+        if (!camera) {
+            var offsetX = self.width / 2;
+            var offsetY = self.height / 2;
+
+            if (self.clientOffsetX) {
+                offsetX = self.clientOffsetX;
+            }
+            if (self.clientOffsetY) {
+                offsetY = self.clientOffsetY;
+            }
+
+            var bounds = {
+                x: self.x - offsetX,
+                y: self.y - offsetY,
+                width: self.width,
+                height: self.height
+            }
+        } else {
+            console.warn('not yet implemented');
+        }
+
+        return bounds;
     }
 
     return self;
@@ -982,8 +1254,11 @@ var SpriteEntity = (initObject) => {
 }
 
 var MovementAnimationEntity = (initObject) => {
-    var self = Entity(initObject);
-    self.animationTime = 5;
+    var self = Entity({
+        ...initObject,
+        animationTime: 5
+    });
+
     self.render = (ctx, camera) => {
         self.renderMovementAnimation(ctx, camera);
     }
@@ -1166,18 +1441,34 @@ var KeyboardListener = (socket) => {
  * Listener for mouse clicks
  * @param {object} socket - socket.io socket instance important for communication 
  */
-var MouseListener = (socket) => {
+var MouseListener = (client) => {
     var self = {
-        socket
+        client
     };
+
+    self.mouseEvent = (event) => {
+        if (event.button === 0) {
+            self.client.socket.emit(MessageCodes.SM_MOUSE_CLICKED, {
+                clickedX: event.clientX,
+                clickedY: event.clientY
+            })
+        }
+    }
+
+    self.cameraMouseEvent = (event) => {
+        if (event.button === 0) {
+            var point = self.client.camera.inverseTransformPoint(event.clientX, event.clientY);
+            self.client.socket.emit(MessageCodes.SM_MOUSE_CLICKED, {
+                clickedX: point.x,
+                clickedY: point.y
+            })
+        }
+    }
 
     self.initListener = () => {
         document.onmousedown = event => {
-            if (event.button === 0) {
-                self.socket.emit(MessageCodes.SM_MOUSE_CLICKED, {
-                    clickedX: event.clientX,
-                    clickedY: event.clientY
-                })
+            if (!self.client.uiHandler.mouseEvent(event)) {
+                self.mouseEvent(event);
             }
         }
     }

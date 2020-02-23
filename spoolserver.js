@@ -30,7 +30,7 @@ const {
  * @param {string} clientFolder - static folder 
  * @param {string} htmlFile - name of the index.html file 
  */
-var Server = (initObject, clientFolder = '/client', htmlFile = 'index.html') => {
+var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') => {
     var self = {
         port: 2000,
         socketList: [],
@@ -54,11 +54,13 @@ var Server = (initObject, clientFolder = '/client', htmlFile = 'index.html') => 
 
     self.start = () => {
         self.app.get("/", function (req, res) {
-            res.sendFile(__dirname + `${clientFolder}/${htmlFile}`);
+            res.sendFile(__dirname + `${clientFolders[0]}/${htmlFile}`);
         });
 
-        self.app.use(`/`, self.express.static(__dirname + `${clientFolder}`));
-
+        clientFolders.forEach(clientFolder => {
+            console.log(clientFolder)
+            self.app.use(clientFolder, self.express.static(__dirname + `${clientFolder}`));
+        });
         self.http.listen(self.port, () => {
             console.log("Server started on port: " + self.port);
         });
@@ -95,8 +97,11 @@ var Server = (initObject, clientFolder = '/client', htmlFile = 'index.html') => 
                     player.pressedDown = data.value;
                 }
             });
+
             socket.on(SM_MOUSE_CLICKED, data => {
-                player.shootArrow(data.clickedX, data.clickedY);
+                if (self.mouseEvent) {
+                    self.mouseEvent(data, socket, player);
+                }
             });
 
             socket.emit(SM_PACK_INIT, {
@@ -357,8 +362,10 @@ var ServerHandler = () => {
         // Remove object from handler
         if (type in self.objects) {
             if (self.objects[type][id]) {
-                if (self.objects[type][id].chunk) {
-                    self.objects[type][id].chunk.removeObj(self.objects[type][id])
+                if (self.objects[type][id].chunks) {
+                    self.objects[type][id].chunks.forEach(chunk => {
+                        chunk.removeObj(self.objects[type][id]);
+                    })
                 }
             }
             delete self.objects[type][id];
@@ -494,8 +501,26 @@ var ServerChunk = (initObject, handler) => {
 var CollisionManager = (handler, colPairs) => {
     var self = {
         handler,
-        colPairs, // array of objects that contain a and b object types
     }
+
+    self.colPairs = [];
+
+    colPairs.forEach(cp => {
+        cp.a.forEach(cpa => {
+
+            cp.b.forEach(cpb => {
+                console.log(cpa, cpb)
+                self.colPairs.push({
+                    a: cpa,
+                    b: cpb,
+                    func: cp.func,
+                    exception: cp.exception
+                });
+            })
+        })
+    })
+
+    console.log(self.colPairs);
 
     self.getNeededChunks = (object) => {
 
@@ -543,7 +568,7 @@ var CollisionManager = (handler, colPairs) => {
                                 var b = chunk.objects[bType][bKey];
 
                                 if (a.objectType != b.objectType || a.id != b.id) {
-                                    if (!colPairs[i].exception ? true : !colPairs[i].exception(a, b)) {
+                                    if (!self.colPairs[i].exception ? true : !self.colPairs[i].exception(a, b)) {
 
                                         if (a.bodyType == 'oval' && b.bodyType == 'oval') {
                                             var collision = self.objectOvalCollision;
@@ -556,9 +581,9 @@ var CollisionManager = (handler, colPairs) => {
                                         if (collisionPoint) {
                                             a.x = parseInt(collisionPoint.x);
                                             a.y = parseInt(collisionPoint.y);
-                                            if (colPairs[i].func) {
+                                            if (self.colPairs[i].func) {
 
-                                                colPairs[i].func(a, b);
+                                                self.colPairs[i].func(a, b);
                                             }
                                         }
                                     }
@@ -1084,6 +1109,10 @@ var Entity = (initPack = {}) => {
 
         velX: 0, // velocity in x direction
         velY: 0, // velocity in y direction
+
+        calculatedVelX: 0,
+        calculatedVelY: 0,
+
         movementAngle: 0,
 
         rotation: 0, // double in radians
@@ -1186,6 +1215,9 @@ var Entity = (initPack = {}) => {
         self.x += self.velX;
         self.y += self.velY;
 
+        self.calculatedVelX = 0;
+        self.calculatedVelY = 0;
+
         for (velKey in self.velocities) {
             var vel = self.velocities[velKey];
 
@@ -1193,6 +1225,9 @@ var Entity = (initPack = {}) => {
 
             self.x += vels.x;
             self.y += vels.y;
+
+            self.calculatedVelX += vels.x;
+            self.calculatedVelY += vels.y;
         }
         if (self.px != self.x || self.py != self.y) {
             self.movementAngle = SpoolMath.globalAngle(self.px, self.py, self.x, self.y);
@@ -1212,6 +1247,11 @@ var Entity = (initPack = {}) => {
         self.velX += vels.x;
         self.velY += vels.y;
     };
+
+    self.vectorImpulse = (velX, velY) => {
+        self.velX += velX;
+        self.velY += velY;
+    }
 
     /**
      * calculate velocities from the acceleration list
