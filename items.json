@@ -1,0 +1,33 @@
+{
+    "ash": {
+        "value": "ash",
+        "tags": ["item"]
+    },
+    "berry": {
+        "tags": ["item", "food"]
+    },
+    "iron_helmet": {
+        "tags": ["item", "armor", "helmet"],
+        "maxAmount": 1
+    },
+    "iron_chestplate": {
+        "tags": ["item", "armor", "chestplate"],
+        "maxAmount": 1
+    },
+    "iron_footwear": {
+        "tags": ["item", "armor", "footwear"],
+        "maxAmount": 1
+    },
+    "iron_sword": {
+        "tags": ["item", "weapon", "mainhand", "offhand", "sword", "onehand"],
+        "maxAmount": 1
+    },
+    "iron_shield": {
+        "tags": ["item", "weapon", "offhand", "shield", "onehand"],
+        "maxAmount": 1
+    },
+    "staff": {
+        "tags": ["item", "weapon", "mainhand", "staff", "twohand"],
+        "maxAmount": 1
+    }
+}

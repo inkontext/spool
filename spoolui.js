@@ -18,7 +18,6 @@ var SpoolUIElement = (initObject) => {
         fgColor: null,
         strokeColor: null,
 
-
         textMargin: 10,
 
         id: Math.random(),

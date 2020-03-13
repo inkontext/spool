@@ -1791,7 +1791,8 @@ var MouseListener = (client) => {
             var point = self.client.camera.inverseTransformPoint(event.clientX, event.clientY);
             self.client.socket.emit(MessageCodes.SM_MOUSE_CLICKED, {
                 clickedX: point.x,
-                clickedY: point.y
+                clickedY: point.y,
+                type: event.type
             })
         }
     }

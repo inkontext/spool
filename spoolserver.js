@@ -1238,6 +1238,7 @@ var InputManager = () => {
 }
 
 ////// OBJECTSPAWNER //////
+
 var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
     var self = {
         keyToConstAndDefs: keyToConstAndDefs, // keyToConstAndDefs[key] = {const: object's constructor - funcpointer, defs: initPack - {object}}
