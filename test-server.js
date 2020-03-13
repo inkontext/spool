@@ -3,307 +3,101 @@ var {
     Entity,
     SpoolMath,
     CollisionManager,
+    GravityManager,
     ObjectSpawner,
-    RectangleBodyParameters
+    RectangleBodyParameters,
+    ServerObject,
+    Line
 } = require('./spoolserver.js');
-
-const names = [
-    "Tam",
-    "Witty",
-    "Friendly",
-    "Pointy",
-    "Cutthroat",
-    "Jakoba",
-    "Jakoba",
-    "First",
-    "Dread",
-    "Captain",
-    "Sir",
-    "The",
-    "Cristina",
-    "Cap'n",
-    "Jakoba",
-    "Cristina",
-    "Admiral",
-    "Cristinaplan",
-    "Friendly",
-    "Brown"
-];
 
 ////// SETTING UP SERVER //////
 
+var GRID_SIZE = 40;
+
 var server = Server({
     port: 3000,
-    updateCallback: (self) => {
-
-    }
+    TPS: 55,
+    chunkSize: 400,
 }, ['/', '/textures'])
 
-server.handler.staticKeys = [
-    'WALL'
-]
-
-server.mouseEvent = (data, socket, player) => {
-    var fireBall = Fireball({
-        x: player.x,
-        y: player.y,
-        velX: player.calculatedVelX,
-        velY: player.calculatedVelY
-    })
-
-    fireBall.impulse(20, SpoolMath.globalAngle(player.x, player.y, data.clickedX, data.clickedY))
+var SmashEntity = (initPack = {}) => {
+    var self = Entity({
+        ...RectangleBodyParameters,
+        ...initPack
+    });
+    return self;
 }
 
-var GRID_SIZE = 96;
-
-////// OBJECTS //////
-
-/**
- * Player represents the basic player, it extends entity to inherit its functionality but extends upon it via client connection and controls
- * @param {any} id - id of the socket player is connected from
- */
 var Player = (initPack = {}) => {
-    var self = Entity({
-        ...initPack,
-        ...RectangleBodyParameters
+    var self = SmashEntity({
+
+        maxAcc: 10,
+        jumpAcc: 20,
+        jumpCounter: 0,
+        width: 40,
+        height: 40,
+
+        objectType: 'PLAYER',
+        rotation: Math.PI / 2,
+        color: SpoolMath.randomHsvColor(0.5, 0.8),
+        ...initPack
     });
 
-    // Constants 
-    self.maxAcc = 10;
-    self.jumpAcc = 10;
-    self.groundSpeed = 0.2;
-    self.width = 44;
-    self.height = 18;
-
-    self.objectType = "PLAYER";
-    self.name = 'NAME';
-
-    self.rotation = Math.PI / 2;
-
-    self.color = self.color = SpoolMath.randomHsvColor(0.5, 0.8);
-
-    var superInitPackage = self.initPack;
-    self.initPack = () => {
-        return {
-            ...superInitPackage(),
-            name: self.name,
-            maxHealth: self.maxHealth
-        }
+    var superSelf = {
+        update: self.update
     }
-
-    var superUpdatePack = self.updatePack;
-    self.updatePack = () => {
-        return {
-            ...superUpdatePack(),
-            radius: self.radius
-        };
-    };
 
     /**
      * Updates velocities from keyboard input
      */
     self.updateInputVel = () => {
         // setting the basic values
+        if (!self.standStill) {
+            xVelocity = 0;
+            yVelocity = 0;
 
-        xVelocity = 0;
-        yVelocity = 0;
+            if (self.pressedLeft || self.pressedRight) {
+                if (self.pressedLeft) {
+                    xVelocity -= self.maxAcc;
+                }
+                if (self.pressedRight) {
+                    xVelocity += self.maxAcc;
+                }
+            }
 
-        if (self.pressedLeft || self.pressedRight) {
-            if (self.pressedLeft) {
-                xVelocity -= self.maxAcc;
+            if (self.jumpCounter < 2 && self.pressedUp && !self.jumpPressed) {
+                self.impulse(self.jumpAcc, Math.PI / 2);
+                self.jumpCounter += 1;
+                self.jumping = true;
+                self.gravityIgnore = false;
+
+                self.jumpPressed = true;
+            } else if (!self.pressedUp) {
+                self.jumpPressed = false;
             }
-            if (self.pressedRight) {
-                xVelocity += self.maxAcc;
+
+            if (self.velY > 40) {
+                self.velY = 40;
             }
+
+            self.setVelVector('x-movement', [xVelocity, 0]);
+        } else {
+            self.setVelVector('x-movement', [0, 0]);
         }
-
-        if (self.pressedUp || self.pressedDown) {
-            if (self.pressedUp) {
-                yVelocity += self.maxAcc;
-            }
-            if (self.pressedDown) {
-                yVelocity -= self.maxAcc;
-            }
-        }
-
-
-        self.setVelVector('x-movement', [xVelocity, yVelocity]);
-
     }
 
-    /**
-     * Update override
-     */
-    var superUpdate = self.update;
     self.update = () => {
         self.updateInputVel();
-        return superUpdate();
-    };
-
-    self.addToHandler(server.handler);
-
-    return self;
-};
-
-/**
- * Player represents the basic player, it extends entity to inherit its functionality but extends upon it via client connection and controls
- * @param {any} id - id of the socket player is connected from
- */
-var Animal = (initPack = {}) => {
-    var self = Entity(initPack);
-
-
-    self.objectType = "ANIMAL";
-    self.name = names[SpoolMath.randomInt(0, names.length)];
-
-    self.rotation = Math.PI / 2;
-
-    self.color = self.color = SpoolMath.randomHsvColor(0.5, 0.8);
-
-    self.tickCounter = 0;
-
-    self.speed = 3;
-    self.targetX = 0;
-    self.targetY = 0;
-
-    self.maxDistance = 200;
-    self.waitTime = SpoolMath.randomInt(0, 100);
-
-    self.width = 30;
-    self.height = 15;
-
-    var superInitPackage = self.initPack;
-    self.initPack = () => {
-        return {
-            ...superInitPackage(),
-            name: self.name,
-        }
-    }
-    /**
-     * Update override
-     */
-    var superUpdate = self.update;
-    self.update = () => {
-
-        if (SpoolMath.distance(self.x, self.y, self.targetX, self.targetY) > 10) {
-            self.setVel('movement', self.speed, SpoolMath.globalAngle(self.x, self.y, self.targetX, self.targetY))
-        } else {
-            self.setVel('movement', 0, 0)
-        }
-
-        if (self.tickCounter == self.waitTime) {
-            self.targetX = self.x + SpoolMath.randomInt(-self.maxDistance, self.maxDistance);
-            self.targetY = self.y + SpoolMath.randomInt(-self.maxDistance, self.maxDistance);
-            self.waitTime = SpoolMath.randomInt(5, 1000)
-            self.tickCounter = 0
-        }
-        self.tickCounter += 1;
-        return superUpdate();
-    };
-
-    self.addToHandler(server.handler);
-
-    return self;
-};
-/**
- * Player represents the basic player, it extends entity to inherit its functionality but extends upon it via client connection and controls
- * @param {any} id - id of the socket player is connected from
- */
-var Wall = (initPack = {}) => {
-    var self = Entity({
-        ...initPack,
-        ...RectangleBodyParameters
-    });
-
-    self.width = GRID_SIZE;
-    self.height = GRID_SIZE;
-    self.objectType = "WALL";
-    self.rotation = Math.PI / 2;
-    self.color = self.color = SpoolMath.randomHsvColor(0.5, 0.8);
-    self.static = true;
-
-    self.gridColRemoval = true;
-
-    self.addToHandler(server.handler);
-
-    return self;
-};
-
-var Fireball = (initPack = {}) => {
-    var self = Entity(initPack);
-
-    self.objectType = 'FIREBALL';
-
-    self.rotation = Math.PI / 2;
-
-    self.width = 20;
-    self.height = 20;
-
-    self.z = 50;
-    self.velZ = 0;
-    self.dmg = 10;
-
-
-    var superInitPack = self.initPack;
-    self.initPack = () => {
-        return {
-            ...superInitPack(),
-            z: self.z
-        }
+        superSelf.update();
     }
 
-    var superUpdatePack = self.updatePack;
-    self.updatePack = () => {
-        return {
-            ...superUpdatePack(),
-            z: self.z
-        }
-    }
-
-    var superUpdate = self.update;
-
-    self.update = () => {
-        self.z -= self.velZ;
-        self.velZ += 0.2;
-        if (self.z < 0) {
-            server.handler.removeObj(self);
-        }
-        superUpdate()
-    }
-
-    self.addToHandler(server.handler);
     return self;
 }
 
-/**
- * Player represents the basic player, it extends entity to inherit its functionality but extends upon it via client connection and controls
- * @param {any} id - id of the socket player is connected from
- */
-var Fence = (initPack = {}) => {
+var Block = (initPack = {}) => {
     var self = Entity({
-        ...initPack,
-        ...RectangleBodyParameters
-    });
-
-    self.width = GRID_SIZE;
-    self.height = GRID_SIZE;
-    self.objectType = "FENCE";
-    self.rotation = Math.PI / 2;
-    self.color = self.color = SpoolMath.randomHsvColor(0.5, 0.8);
-    self.static = true;
-
-    self.gridColRemoval = true;
-
-    self.addToHandler(server.handler);
-
-    return self;
-};
-
-var Ground = (initPack = {}) => {
-    var self = Entity({
-        objectType: "GROUND",
-        ...initPack,
-        ...RectangleBodyParameters
+        objectType: 'BLOCK',
+        ...initPack
     });
 
     self.width = GRID_SIZE;
@@ -313,127 +107,48 @@ var Ground = (initPack = {}) => {
     self.color = self.color = SpoolMath.randomHsvColor(0.5, 0.8);
     self.static = true;
 
-    self.addToHandler(server.handler);
-
-    return self;
-};
-
-
-/**
- * Player represents the basic player, it extends entity to inherit its functionality but extends upon it via client connection and controls
- * @param {any} id - id of the socket player is connected from
- */
-var Tree = (initPack = {}) => {
-    var self = Entity({
-        ...initPack,
-        ...RectangleBodyParameters
-    });
-
-    self.width = 48;
-    self.height = 20;
-    self.objectType = "TREE";
-    self.rotation = Math.PI / 2;
-    self.color = self.color = SpoolMath.randomHsvColor(0.5, 0.8);
-    self.static = true;
-
     self.gridColRemoval = true;
 
-    self.addToHandler(server.handler);
-
     return self;
-};
-////// MANAGERS //////
+}
 
-var collisionManager = CollisionManager(server.handler, [{
-        a: ['PLAYER', 'ANIMAL'],
-        b: ['WALL', 'TREE', 'FENCE'],
-    }, {
-        a: ['FIREBALL'],
-        b: ['ANIMAL'],
-        func: function (a, b) {
-            server.handler.removeObj(b);
-            server.handler.removeObj(a);
+////// GRAVITY MANAGER //////
+
+var gravityManager = GravityManager({
+    G: 1.6
+}, server.handler);
+server.handler.addManager(gravityManager);
+
+var collisionManager = CollisionManager({
+    colPairs: [{
+        a: ['PLAYER'],
+        b: ['BLOCK'],
+        func: (a, b, col) => {
+
+            if (col.direction == 'top' || col.direction == 'bottom') {
+                a.velY = 0;
+            }
+
+            if (col.direction == 'bottom') {
+                a.jumpCounter = 0;
+                a.gravityIgnore = true;
+            }
         }
-    }, {
-        a: ['FIREBALL'],
-        b: ['WALL', 'TREE', 'FENCE'],
-        func: function (a, b) {
-            server.handler.removeObj(a)
-        }
-    }
-
-]);
-
+    }]
+}, server.handler);
 server.handler.addManager(collisionManager);
 
-////// SPAWN WORLD //////
-
-spawnAnimal = () => {
-
-    var x = SpoolMath.randomInt(-1000, 1000)
-    var y = SpoolMath.randomInt(-1000, 1000)
-    Animal({
-        x,
-        y
-    })
-}
-
-// for (var i = 0; i < 100; i++) {
-//     spawnAnimal()
-// }
-
 var objSpawner = ObjectSpawner(server.handler, {
-    'ANIMAL': {
-        const: Animal,
-        defs: {
-            x: 0,
-            y: 0
-        }
-    },
-    'WALL': {
-        const: Wall,
-        defs: {
-            x: 0,
-            y: 0
-        }
-    },
-    'FENCE': {
-        const: Fence,
-        defs: {
-            x: 0,
-            y: 0
-        }
-    },
-    'TREE': {
-        const: Tree,
-        defs: {}
-    },
-    'GROUND': {
-        const: Ground,
-        defs: {}
-    },
-    'GROUND_SAND': {
-        const: Ground,
-        defs: {
-            objectType: 'GROUND_SAND'
-        }
+    'BLOCK': {
+        const: Block
     }
 })
 
-objSpawner.spawnRPGWorld({
-    objects: './maps/map-objects.png',
-    ground: './maps/map-ground.png'
-}, {
-    '00ff00': 'GROUND',
-    'fffe92': 'GROUND_SAND',
-    'ffffff': 'WALL',
-    '009000': 'TREE',
-    '7e541e': 'FENCE'
-}, GRID_SIZE, GRID_SIZE);
+objSpawner.gx = GRID_SIZE;
+objSpawner.gy = GRID_SIZE;
 
-objSpawner.spawnInRadius('ANIMAL', 100, 20)
+objSpawner.spawnFromImageMap('./maps/smash-map.png', {
+    'ffffff': 'BLOCK'
+})
 
-
-////// STARTING SERVER //////
-
-server.fullStart(Player)
+server.fullStart(Player);

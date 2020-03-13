@@ -98,7 +98,7 @@ const SpoolMath = {
     //// RANDOM ////
 
     randomInt: (min, max) => {
-        return min + parseInt(Math.random() * (max - min));
+        return min + Math.round(Math.random() * (max - min));
     },
 
     //// INTERVAL ////

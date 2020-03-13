@@ -9,14 +9,17 @@ const {
     KI_MOV_LEFT,
     KI_MOV_UP,
     KI_MOV_RIGHT,
-    KI_MOV_DOWN
+    KI_MOV_DOWN,
+
+    OS_GET_OBJ,
+    OS_SEND_OBJ
 } = require('./spoolmessagecodes.js')
 
 const {
     FileReader
 } = require('./spoolfilereader.js')
 
-const CHUNK_SIZE = 600;
+var CHUNK_SIZE = 300;
 
 const {
     SpoolMath
@@ -25,7 +28,7 @@ const {
 ////// SERVER //////
 
 /**
- * Server object wrapper essential for the basic Spool functionality 
+ * Server object wrapper essential for the basic Spool functionality, contains ObjectServer and ServerHandler
  * @param {object} initObject - parameters wrapped in object wrapper 
  * @param {string} clientFolder - static folder 
  * @param {string} htmlFile - name of the index.html file 
@@ -38,9 +41,14 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
 
         handler: ServerHandler(),
         updateCounter: 0,
+        chunkSize: 600,
+        TPS: 65,
         ...initObject
     }
 
+    CHUNK_SIZE = self.chunkSize;
+
+    self.objectServer = ServerObjectServer(self);
     self.express = require("express");
     self.app = self.express();
     self.http = require("http").createServer(self.app);
@@ -58,7 +66,6 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
         });
 
         clientFolders.forEach(clientFolder => {
-            console.log(clientFolder)
             self.app.use(clientFolder, self.express.static(__dirname + `${clientFolder}`));
         });
         self.http.listen(self.port, () => {
@@ -82,9 +89,13 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
                 id
             })
 
+            self.handler.add(player);
+
             self.playerList[id] = player;
 
             //// MOVEMENT ////
+
+            self.objectServer.init(socket);
 
             socket.on(SM_KEY_PRESS, data => {
                 if (data.inputId === KI_MOV_LEFT) {
@@ -116,6 +127,8 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
                 }
             }); // give client his id -> so he knows which player he is in control of
 
+
+
             //// END ////
 
             socket.on("disconnect", () => {
@@ -125,6 +138,10 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
                 // Remove player from the handler as a object
                 self.handler.remove(player.objectType, id);
             });
+
+            if (self.onSocketCreated) {
+                self.onSocketCreated(self, socket, player);
+            }
         });
     }
 
@@ -174,49 +191,229 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
             } else {
                 self.updateCounter += 1;
             }
-        }, 1000 / 65);
+        }, 1000 / self.TPS);
     }
 
     return self
 }
 
 ////// HANDLER //////
+/**
+ * ServerObjectServer (SOS) is object that communicates with client side object server and is used as a portal sending and receiving object requests
+ * - its point is to hold javascript objects and serve them 
+ * @param {object} server - server object  
+ * @param {array} caching - automatic object caching 
+ */
+var ServerObjectServer = (server, caching = []) => {
+    var self = {
+        server: server,
+        objects: {},
+        cache: {},
+        caching: caching,
+    };
+
+    self.init = (socket) => {
+        socket.on(OS_GET_OBJ, data => {
+            var object = self.getObject(data);
+            if (object) {
+                object.object.addSubscriber(socket.id);
+                socket.emit(OS_SEND_OBJ, object.message)
+            }
+        })
+    }
+
+    //// UPDATE ////
+
+    /**
+     * This callback is used in ServerObject and is called on ServerObject.update() function if it is added to the SOS
+     * @param {array} subscribers - array of all the sockets we want to send to message to
+     * @param {object} returnObject - object we want to send with the socket to client 
+     */
+    self.updateCallback = (subscribers, returnObject) => {
+        subscribers.forEach(sub => {
+            self.server.socketList[sub].emit(OS_SEND_OBJ, returnObject);
+        });
+    }
+
+    //// ADDING ////
+
+    /**
+     * Adds object to the server and to the cache
+     * @param {object} obj - object we want to add to the server 
+     */
+    self.add = obj => {
+        // Add to handler
+        if (!(obj.objectType in self.objects)) {
+            self.objects[obj.objectType] = {};
+        }
+        self.objects[obj.objectType][obj.id] = obj;
+
+        if (self.cache) {
+            self.cache(obj);
+        }
+
+        obj.updateCallback = self.updateCallback;
+    };
+
+    /**
+     * Used for caching - storing objects by different parameters for example the x-coord
+     * @param {object} obj - object we want to cache 
+     */
+    self.cache = obj => {
+        caching.forEach(cache => {
+            if (cache in obj) {
+                if (!self.cache[cache]) {
+                    self.cache[cache] = {};
+                }
+                self.cache[cache][obj[cache]] = obj;
+            }
+        })
+    }
+
+    //// REMOVING ////
+
+    /**
+     * Removes object from the server
+     * @param {string} type - objectType of the object
+     * @param {string} id - id of the object 
+     */
+    self.remove = (type, id) => {
+        // Remove object from handler
+        if (type in self.objects) {
+            delete self.objects[type][id];
+        }
+
+        if (self.decache) {
+            self.decache(type, id);
+        }
+    };
+
+    //// GETTING ////
+
+    /**
+     * returns object stored in the object server 
+     * @param {object} message - object fingerprint
+     */
+    self.getObject = (message) => {
+        var objectType = message.objectType;
+        var id = message.id;
+
+        var objects = self.objects[objectType]
+
+
+
+        if (objects) {
+            var object = objects[id]
+            if (object) {
+                if (object.returnObject) {
+                    return {
+                        object: object,
+                        message: object.returnObject()
+                    };
+                } else {
+                    return {
+                        object: object,
+                        message: null
+                    };
+                }
+            }
+        }
+        return null;
+    }
+
+    return self;
+}
 
 /**
- * Handler is object that handles all objects in the game
+ * Basic server object holding all the necessary variables and functions 
+ * @param {object} initObject - initObject 
+ */
+var ServerObject = (initObject) => {
+    var self = {
+        objectType: 'SERVER_OBJECT',
+        id: Math.random(),
+        subscribers: [],
+        updateCallback: null,
+        ...initObject
+    }
+
+    /**
+     * Moves all the parameters from data to self and if updateCallback present calls updateCallback
+     * @param {object} data - data that is assigned to self 
+     */
+    self.update = data => {
+        Object.assign(self, data);
+        if (self.updateCallback) {
+            self.updateCallback(self.subscribers, self.returnObject());
+        }
+    }
+
+    /**
+     * Adds socketId to the subscribers list, this list is used to determine who will recieve the message after update 
+     * @param {float} socketId - id of the socket.io socket
+     */
+    self.addSubscriber = (socketId) => {
+        if (!self.subscribers.includes(socketId)) {
+            self.subscribers.push(socketId);
+        }
+    }
+
+    /**
+     * Returns object in format suited for server-client sending 
+     */
+    self.returnObject = () => {
+        return self;
+    }
+
+    return self;
+}
+
+/**
+ * Handler is object that handles all objects in the game (updates them, renders them, sets chunks)
  * Handles chunks, each update objects are assigned to their chunk - used in collision, gravity and more
  */
 var ServerHandler = () => {
     var self = {
         objects: {}, // All objects in the game
-        chunks: {},
+        chunks: {}, // All the chunks in the game 
 
         somethingToAdd: false, // If there was an object added -> true ->
         initPack: {}, // Package containing all the information about added objects -> in update sent to clients
         somethingToRemove: false, // If there was an object removed -> true s
         removePack: {}, // Package containing all the information about removed objects -> in update sent to clients
 
-        staticKeys: [],
+        staticKeys: [], // List of objectTypes that are not updated -> for walls, floors, roofs, trees etc.
 
-        preManagers: [],
-        managers: []
+        preManagers: [], // Managers that are used before the object.update call
+        managers: [] // Managers used after the object.update call
     }
 
     //// UPDATING ////
 
+    /**
+     * Updates the chunks in the object - if object travelled from one chunk to another, if changed size, etc.
+     * @param {object} object - object we want to move into the correct chunks
+     */
     self.updateObjectsChunk = (object) => {
         var relocating = false;
+
+        // Getting the chunk indexes in the lists 
         var cx = Math.floor((object.x - object.width / 2) / CHUNK_SIZE);
         var cy = Math.floor((object.y - object.height / 2) / CHUNK_SIZE);
         var cxx = Math.floor((object.x + object.width / 2) / CHUNK_SIZE);
         var cyy = Math.floor((object.y + object.height / 2) / CHUNK_SIZE);
 
+
         if (!object.chunks) {
+            // If object isn't in any chunk relocate 
             relocating = true;
+
         } else if (object.chunks.length == 0) {
+            // If object has chunks but the array is empty relocate
             relocating = true;
         } else {
             if (cx != object.chunksX || cy != object.chunksY || cxx != object.chunksXX || cyy != object.chunksYY) {
+                // If the object has chunks but are incorrect relocate
                 relocating = true;
                 object.chunks.forEach(chunk => {
                     chunk.removeObj(object);
@@ -229,6 +426,9 @@ var ServerHandler = () => {
         if (!relocating) {
             return;
         }
+
+
+        // Relocating 
 
         object.chunksX = cx;
         object.chunksY = cy;
@@ -268,14 +468,11 @@ var ServerHandler = () => {
     }
 
     /**
-     * updates all of the objects
-     * returns update package
+     * Updates all of the objects
+     * Returns update package
      */
     self.update = () => {
         var pack = {};
-
-        self.emptyObjectType('SPL_LINE');
-        self.emptyObjectType('SPL_POINT');
 
         for (key in self.objects) {
 
@@ -296,7 +493,7 @@ var ServerHandler = () => {
                         self.preManagers[i].update(object);
                     }
 
-                    var preUpdate = object.updatePack();
+                    var preUpdate = object.lastUpdatePack;
 
                     object.update();
 
@@ -308,17 +505,23 @@ var ServerHandler = () => {
 
                     var postUpdate = object.updatePack();
 
-                    var change = false;
-                    for (valueKey in preUpdate) {
-                        if (preUpdate[valueKey] !== postUpdate[valueKey]) {
-                            change = true;
-                            break;
+                    var change = !preUpdate ? true : false;
+
+                    if (!change) {
+                        for (valueKey in postUpdate) {
+                            if (preUpdate[valueKey] !== postUpdate[valueKey]) {
+                                change = true;
+                                break;
+                            }
+                        }
+
+                        if (change) {
+                            currPackage.push(postUpdate)
+                            object.asyncUpdatePackage = {};
                         }
                     }
 
-                    if (change) {
-                        currPackage.push(postUpdate)
-                    }
+                    object.lastUpdatePack = postUpdate;
                 }
 
             }
@@ -327,10 +530,15 @@ var ServerHandler = () => {
             }
         }
 
+        for (var i = 0; i < self.managers.length; i++) {
+            if (self.managers[i].handlerUpdate)
+                self.managers[i].handlerUpdate();
+        }
+
         return pack;
     };
 
-    //// ADDING REMOVOING ////
+    //// ADDING REMOVING ////
 
     /**
      * Adds object to the handler
@@ -380,6 +588,10 @@ var ServerHandler = () => {
         self.somethingToRemove = true;
     };
 
+    /**
+     * Removes object from the handler
+     * @param {object} obj - object fingerprint
+     */
     self.removeObj = (obj) => {
         self.remove(obj.objectType, obj.id)
     }
@@ -387,7 +599,6 @@ var ServerHandler = () => {
     /**
      * Resets the init and remove packs -> used in update
      */
-
     self.resetPacks = () => {
         self.initPack = {};
         self.somethingToAdd = false;
@@ -421,14 +632,29 @@ var ServerHandler = () => {
         return pack;
     };
 
+    /**
+     * Add update manager that is called on object after update 
+     * @param {object} manager - manager (CollisionManager, GravityManager, etc.)
+     */
     self.addManager = (manager) => {
         self.managers.push(manager);
     }
 
+    /**
+     * Add update manager that is called on object before update 
+     * @param {object} manager - manager (CollisionManager, GravityManager, etc.)
+     */
     self.addPreManager = (preManager) => {
         self.preManagers.push(preManager);
     }
 
+    /**
+     * Returns chunks in these intervals 
+     * @param {int} min_x - lower bound of the x coord interval for the chunks, value included
+     * @param {int} min_y - lower bound of the y coord interval for the chunks, value included
+     * @param {int} max_x - upper bound of the x coord interval for the chunks, value included
+     * @param {int} max_y - upper bound of the y coord interval for the chunks, value included
+     */
     self.getChunks = (min_x, min_y, max_x, max_y) => {
         result = []
         for (var x = min_x; x <= max_x; x++) {
@@ -442,6 +668,10 @@ var ServerHandler = () => {
         return result;
     }
 
+    /**
+     * Removes all the object with object type 
+     * @param {string} key - object type that we want to remove from the handler 
+     */
     self.emptyObjectType = (key) => {
 
         if (key in self.objects) {
@@ -453,24 +683,59 @@ var ServerHandler = () => {
         }
     }
 
+    /**
+     * Returns the closest object to the coordinates and with attributes
+     * @param {int} x - x-coord of the point 
+     * @param {int} y - y-coord of the point 
+     * @param {object} attributes - attributes we want our object to have 
+     */
+    self.getClosestObject = (x, y, attributes) => {
+        var cx = Math.floor(x / CHUNK_SIZE);
+        var cy = Math.floor(y / CHUNK_SIZE);
+
+        var chunks = self.getChunks(cx, cy, cx, cy);
+
+        var res = null;
+
+        chunks.forEach(chunk => {
+            var temp = chunk.getClosestObject(x, y, attributes);
+            if (temp) {
+                if (res ? temp.distance < res.distance : true) {
+                    res = temp
+                }
+            }
+        })
+
+        return res;
+    }
+
     // Return 
     return self;
 };
 
+/**
+ * Chunk holds objects only in certain bounds - used in collision, gravity and more.
+ * @param {object} initObject - initObject 
+ * @param {object} handler - ServerHandler
+ */
 var ServerChunk = (initObject, handler) => {
 
     var self = {
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0,
-        handler: handler,
+        x: 0, // x-index in the 2d chunks array (position in grid)
+        y: 0, // y-index in the 2d chunks array (position in grid)
+        width: 0, // width of the chunk
+        height: 0, // height of the chunk
+        handler: handler, // ServerHandler instance 
 
-        objects: {},
+        objects: {}, // all the objects in the chunk
 
         ...initObject
     }
 
+    /**
+     * Adds object to the chunk
+     * @param {object} obj - object
+     */
     self.add = (obj) => {
         // Add to handler
         if (!(obj.objectType in self.objects)) {
@@ -479,6 +744,11 @@ var ServerChunk = (initObject, handler) => {
         self.objects[obj.objectType][obj.id] = obj;
     }
 
+    /**
+     * Removes object from the chunk
+     * @param {string} type - objectType of the object
+     * @param {string} id - id of the object
+     */
     self.remove = (type, id) => {
         // Remove object from handler
         if (type in self.objects) {
@@ -486,8 +756,46 @@ var ServerChunk = (initObject, handler) => {
         }
     }
 
+    /**
+     * Removes object from the chunk
+     * @param {object} obj - object fingerprint
+     */
     self.removeObj = (obj) => {
         self.remove(obj.objectType, obj.id)
+    }
+
+    /**
+     * Returns the closest object to the coordinates and with attributes
+     * @param {int} x - x-coord of the point 
+     * @param {int} y - y-coord of the point 
+     * @param {object} attributes - attributes we want our object to have 
+     */
+    self.getClosestObject = (x, y, attributes) => {
+
+        var res = null;
+
+
+        for (key in self.objects) {
+            if (attributes) {
+                if (attributes.whitelist) {
+                    if (!attributes.whitelist.includes(key)) {
+                        continue;
+                    }
+                }
+            }
+            for (id in self.objects[key]) {
+                var obj = self.objects[key][id];
+                var tempDistance = SpoolMath.distance(x, y, obj.x, obj.y);
+                if (res ? tempDistance < res.distance : true) {
+                    res = {
+                        object: obj,
+                        distance: tempDistance
+                    }
+                }
+            }
+        }
+
+        return res;
     }
 
     return self;
@@ -498,29 +806,29 @@ var ServerChunk = (initObject, handler) => {
  * @param {object} handler - ServerHandler instance 
  * @param {array} colPairs - array of object pairs that are casting gravity from first object to second 
  */
-var CollisionManager = (handler, colPairs) => {
+var CollisionManager = (initPack, handler) => {
+
     var self = {
         handler,
+        ...initPack
     }
 
-    self.colPairs = [];
 
-    colPairs.forEach(cp => {
+
+    self.colPairs.forEach(cp => {
+
         cp.a.forEach(cpa => {
-
             cp.b.forEach(cpb => {
-                console.log(cpa, cpb)
                 self.colPairs.push({
                     a: cpa,
                     b: cpb,
                     func: cp.func,
-                    exception: cp.exception
+                    exception: cp.exception,
+                    notSolid: cp.notSolid
                 });
             })
         })
     })
-
-    console.log(self.colPairs);
 
     self.getNeededChunks = (object) => {
 
@@ -551,13 +859,18 @@ var CollisionManager = (handler, colPairs) => {
         var objectType = object.objectType;
 
         if (objectType in handler.objects) {
+
             for (var i = 0; i < self.colPairs.length; i++) {
+
                 var aType = self.colPairs[i].a;
 
                 if (objectType == aType) {
+
                     var bType = self.colPairs[i].b;
 
                     var chunks = self.getNeededChunks(object);
+
+
 
                     for (var j = 0; j < chunks.length; j++) {
                         var chunk = chunks[j];
@@ -576,14 +889,17 @@ var CollisionManager = (handler, colPairs) => {
                                             var collision = self.objectRectCollision;
                                         }
 
-                                        collisionPoint = collision(a, b);
+                                        var col = collision(a, b);
 
-                                        if (collisionPoint) {
-                                            a.x = parseInt(collisionPoint.x);
-                                            a.y = parseInt(collisionPoint.y);
-                                            if (self.colPairs[i].func) {
-
-                                                self.colPairs[i].func(a, b);
+                                        if (col) {
+                                            if (col.result) {
+                                                if (!self.colPairs[i].notSolid && col.point) {
+                                                    a.x = Math.round(col.point.x);
+                                                    a.y = Math.round(col.point.y);
+                                                }
+                                                if (self.colPairs[i].func) {
+                                                    self.colPairs[i].func(a, b, col);
+                                                }
                                             }
                                         }
                                     }
@@ -659,6 +975,7 @@ var CollisionManager = (handler, colPairs) => {
             }
 
             return {
+                result: true,
                 x: newX,
                 y: newY
             };
@@ -686,8 +1003,12 @@ var CollisionManager = (handler, colPairs) => {
 
         var objMovementLine = self.objMovementLine(a);
 
+        var result = {
+            result: rx < a.x && a.x < rxx && ry < a.y && a.y < ryy
+        };
+
         if (Math.abs(a.x - b.x) >= Math.abs(a.px - b.x) && Math.abs(a.y - b.y) >= Math.abs(a.py - b.y)) {
-            return null;
+            return result;
         }
 
         var intersections = [];
@@ -713,6 +1034,7 @@ var CollisionManager = (handler, colPairs) => {
             yy: ry
         }]
 
+        var directions = ['right', 'left', 'bottom', 'top'];
         var active = [b.leftColIgnore, b.rightColIgnore, b.topColIgnore, b.bottomColIgnore]
         var counter = 0;
 
@@ -723,6 +1045,9 @@ var CollisionManager = (handler, colPairs) => {
                 // handler.add(Line({
                 //     ...line
                 // }));
+                if (intersection) {
+                    intersection.direction = directions[counter]
+                }
                 intersections.push(intersection);
             } else {
                 intersections.push(null);
@@ -748,16 +1073,20 @@ var CollisionManager = (handler, colPairs) => {
         })
 
         if (closestIntersection) {
-
             if (smallestIndex <= 1) {
                 closestIntersection.y = a.y;
             } else {
                 closestIntersection.x = a.x;
             }
-            return closestIntersection
-        } else {
-            return null;
+            result.point = {
+                x: closestIntersection.x,
+                y: closestIntersection.y
+            };
+            result.direction = closestIntersection.direction;
+            return result;
         }
+        return result;
+
     }
 
     /**
@@ -835,16 +1164,27 @@ var OuterWorldManager = (handler, validObjects) => {
  * @param {object} handler - instance of ServerHandler
  * @param {array} colPairs - array of object pairs that are casting gravity from first object to second 
  */
-var GravityManager = (handler, colPairs) => {
+var GravityManager = (initPack, handler) => {
     var self = {
         handler,
-        colPairs // array of objects that contain a and b object types
+        gravityType: 'homogenous',
+        G: 2,
+        colPairs: [], // array of objects that contain a and b object types
+        ...initPack
     }
 
     self.update = (object) => {
+        if (self.gravityType == 'homogenous') {
+            self.homGravity(object);
+        } else {
+            self.vecGravity(object);
+        }
+    }
+
+    //// VECTOR GRAVITY ////
+
+    self.vecGravity = (object) => {
         var objectType = object.objectType;
-
-
 
         var firstAngle = object.accelerations['gravity'] ? object.accelerations['gravity'].angle : 0;
         object.setAcc("gravity", 0, firstAngle);
@@ -878,9 +1218,16 @@ var GravityManager = (handler, colPairs) => {
     }
 
     self.objectGravity = (a, b) => {
-        var F = G * a.mass * b.mass / Math.pow(SpoolMath.objDistance(a, b), GRAVITY_RADIUS_POW);
+        var F = self.G * a.mass * b.mass / Math.pow(SpoolMath.objDistance(a, b), GRAVITY_RADIUS_POW);
         return gravity = F / a.mass;
+    }
 
+    //// HOMOGENOUS ////
+
+    self.homGravity = (object) => {
+        if (!object.gravityIgnore) {
+            object.setAcc('gravity', self.G, Math.PI / 2 * 3);
+        }
     }
 
     return self;
@@ -896,6 +1243,17 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
         keyToConstAndDefs: keyToConstAndDefs, // keyToConstAndDefs[key] = {const: object's constructor - funcpointer, defs: initPack - {object}}
         handler: handler,
         ...inputObject,
+
+        zones: {},
+        zoneCounters: {},
+
+        currentZoneMap: null,
+
+        gx: 10,
+        gy: 10,
+
+        mapPxWidth: 0,
+        mapPxHeight: 0,
 
         colTexturingMap: [
             [true, true, true, true],
@@ -959,7 +1317,124 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
         }
     }
 
-    self.spawnFromKeyArray = (array, gx, gy) => {
+    self.zoneStep = (x, y, value, id) => {
+        if (self.currentZoneMap[y][x]) {
+            var tile = self.currentZoneMap[y][x];
+            if (tile.key == value.key && tile.color == value.color) {
+                self.zoneMap[y][x][value.key] = id;
+
+                if (!self.zones[value.key]) {
+                    self.zones[value.key] = {};
+                }
+
+                if (!self.zones[value.key][id]) {
+                    self.zones[value.key][id] = [];
+                }
+
+                self.zones[value.key][id].push([x, y]);
+
+                self.currentZoneMap[y][x] = null;
+
+                self.zoneStep(x - 1, y, value, id);
+                self.zoneStep(x + 1, y, value, id);
+                self.zoneStep(x, y - 1, value, id);
+                self.zoneStep(x, y + 1, value, id);
+            }
+        }
+    }
+
+    self.addZonesArray = (zoneMaps, colorToZoneType, callback) => {
+        self.addZones(zoneMaps[0], colorToZoneType, () => {
+            var slice = zoneMaps.slice(1);
+            if (slice.length == 0) {
+                callback();
+            } else {
+                self.addZonesArray(slice, colorToZoneType, callback)
+            }
+        });
+    }
+
+    self.addZones = (zoneMap, colorToZoneType, callback) => {
+        FileReader.readImage(zoneMap, (data) => {
+            var array = [];
+
+            var pixels = data.data;
+            var shape = data.shape;
+            // Spawning empty zone map if first zone 
+
+            if (!self.zoneMap) {
+                var resArray = [];
+                for (var y = 0; y < shape[1]; y++) {
+                    var resLineArray = [];
+                    for (var x = 0; x < shape[0]; x++) {
+                        resLineArray.push({});
+                    }
+                    resArray.push(resLineArray);
+                }
+
+                self.zoneMap = resArray;
+            }
+
+
+
+
+            // Adding all the zones present in the map 
+
+            for (var y = 0; y < shape[1]; y++) {
+                var lineArray = [];
+                for (var x = 0; x < shape[0]; x++) {
+                    var index = (y * shape[0] + x) * shape[2];
+                    var r = pixels[index];
+                    var g = pixels[index + 1];
+                    var b = pixels[index + 2];
+
+                    var key = colorToZoneType[SpoolMath.rgbToHex(r, g, b)];
+                    if (key) {
+                        lineArray.push({
+                            key: key,
+                            color: SpoolMath.rgbToHex(r, g, b)
+                        });
+                    } else {
+                        lineArray.push(null);
+                    }
+                }
+
+                array.push(lineArray);
+            }
+
+            self.mapPxWidth = shape[0];
+            self.mapPxHeight = shape[1];
+
+            // Dividing the tiles into the zones 
+
+
+            var counters = self.zoneCounters;
+            self.currentZoneMap = array;
+
+            for (var y = 0; y < self.currentZoneMap.length; y++) {
+                for (var x = 0; x < self.currentZoneMap[y].length; x++) {
+
+                    var val = self.currentZoneMap[y][x]
+
+                    if (val) {
+                        if (!(val.key in counters)) {
+                            counters[val.key] = 0;
+                        }
+
+                        self.zoneStep(x, y, val, counters[val.key]);
+                        counters[val.key] += 1;
+                    }
+                }
+            }
+            self.zoneCounters = counters;
+
+            if (callback) {
+                callback();
+            }
+        });
+    }
+
+    self.spawnFromKeyArray = (array, gx = self.gx, gy = self.gy) => {
         for (var y = 0; y < array.length; y++) {
             for (var x = 0; x < array[y].length; x++) {
                 if (array[y][x]) {
@@ -997,6 +1472,14 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                             object.textureId = textureId;
                         }
 
+                        if (self.zoneMap) {
+                            Object.keys(self.zoneMap[y][x]).forEach(key => {
+                                object.zones[key] = self.zoneMap[y][x][key];
+                            })
+                        }
+
+
+
                         self.handler.add(object);
                     }
                 }
@@ -1025,7 +1508,7 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
         return 0;
     }
 
-    self.spawnFromIndexMap = (fileName, gx, gy, separator = ' ', lineSeparator = '\r\n') => {
+    self.spawnFromIndexMap = (fileName, gx = self.gx, gy, separator = ' ', lineSeparator = '\r\n') => {
         FileReader.readFile(fileName, (data) => {
 
             var array = [];
@@ -1056,7 +1539,7 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
 
     }
 
-    self.spawnFromImageMap = (fileName, colorToKey, gx, gy) => {
+    self.spawnFromImageMap = (fileName, colorToKey, gx = self.gx, gy = self.gy) => {
         FileReader.readImage(fileName, (data) => {
 
             var array = [];
@@ -1088,9 +1571,46 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
         });
     }
 
-    self.spawnRPGWorld = (fileObject, colorToKey, gx, gy) => {
+    self.spawnRPGWorld = (fileObject, colorToKey, gx = self.gx, gy = self.gy) => {
         self.spawnFromImageMap(fileObject.ground, colorToKey, gx, gy);
         self.spawnFromImageMap(fileObject.objects, colorToKey, gx, gy);
+    }
+
+    self.spawnInZone = (key, amount, zoneType, zoneId = null) => {
+        if (key in self.keyToConstAndDefs) {
+            var pair = keyToConstAndDefs[key];
+
+            var zones = self.zones[zoneType]
+
+            if (zones) {
+                for (var i = 0; i < amount; i++) {
+
+                    var id = zoneId;
+                    if (!id) {
+                        var keys = Object.keys(self.zones[zoneType]);
+                        id = keys[Math.round(Math.random() * (keys.length - 1))];
+                    }
+
+                    var zone = self.zones[zoneType][id];
+
+                    if (zone) {
+                        var tile = zone[Math.round(Math.random() * (zone.length - 1))];
+
+                        var px = (tile[0] - self.mapPxWidth / 2) * self.gx + Math.round(Math.random() * self.gx);
+                        var py = (-tile[1] + self.mapPxWidth / 2) * self.gy + Math.round(Math.random() * self.gy);
+
+                        var object = pair.const({
+                            ...pair.defs,
+                            x: px,
+                            y: py
+                        })
+
+                        self.handler.add(object);
+                    }
+                }
+            }
+
+        }
     }
 
     return self;
@@ -1103,6 +1623,9 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
  */
 var Entity = (initPack = {}) => {
     var self = {
+        //// STATE ////
+        asyncUpdatePackage: {},
+
         //// VELOCITIES ////
         x: 0, // x pos of the objects center
         y: 0, // y pos of the objects center
@@ -1127,6 +1650,7 @@ var Entity = (initPack = {}) => {
         chunksYY: 0,
 
         color: 'red',
+        zones: {},
 
         //// GRAVITY PARAMETERS ////
         ...GravityParameters,
@@ -1361,6 +1885,9 @@ var Line = (initObject = {}) => {
         ...initObject
     }
 
+    self.width = self.xx - self.x;
+    self.height = self.yy - self.y;
+
     self.update = () => {
         if (self.followObjectA) {
             self.x = self.followObjectA.x
@@ -1378,6 +1905,8 @@ var Line = (initObject = {}) => {
             y: self.y,
             xx: self.xx,
             yy: self.yy,
+            width: self.width,
+            height: self.height,
             color: self.color,
             objectType: self.objectType,
             id: self.id
@@ -1547,14 +2076,13 @@ var RectangleBodyParameters = {
     height: 10
 }
 
-
-
-
 ////// EXPORT //////
 
 module.exports = {
     Server,
 
+    ServerObjectServer,
+    ServerObject,
     ServerHandler,
     CollisionManager,
     GravityManager,

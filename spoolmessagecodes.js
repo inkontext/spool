@@ -3,6 +3,9 @@ var MessageCodes = {
     SM_PACK_UPDATE: 'update-pack',
     SM_PACK_REMOVE: 'remove-pack',
 
+    OS_GET_OBJ: 'get-obj',
+    OS_SEND_OBJ: 'send-obj',
+
     ASIGN_CLIENT_ID: 'asign-id',
 
     SM_KEY_PRESS: 'key-press',

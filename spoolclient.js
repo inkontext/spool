@@ -13,32 +13,56 @@ var Client = (initObject) => {
     var self = {
         keyToConstructor: {},
         spoolKeyToConstructor: {
-            'SPL_POINT': Point,
-            'SPL_LINE': Line,
-            'SPL_RECT': Rectangle
+            'SPL_POINT': {
+                const: Point
+            },
+            'SPL_LINE': {
+                const: Line
+            },
+            'SPL_RECT': {
+                const: Rectangle
+            }
         },
+
+        onMouseEvent: (event) => {},
+        onKeyEvent: (event) => {},
 
         lastTime: 0,
         frameCounter: 0,
         chunkSize: 1000,
+        FPS: 60,
         ...initObject
     }
+
+    //// CLIENT INFORMATION ////
 
     self.clientId = undefined;
     self.clientObject = undefined;
 
+    //// DIMENSIONS, GAME AREA AND CAMERA ////
+
     self.width = window.innerWidth;
     self.height = window.innerHeight;
 
+    self.gameArea = GameArea(self.width, self.height);
     self.camera = Camera({
         width: self.width,
         height: self.height,
         canvasWidth: self.width,
         canvasHeight: self.height
     });
-    self.gameArea = GameArea(self.width, self.height);
+
+    //// HANDLERS AND OBJECT SERVER ////
+
     self.handler = ClientHandler(self.chunkSize, self);
     self.uiHandler = SpoolUIHandler();
+    self.objectServer = ClientObjectServer(self);
+
+    //// EVENTS ////
+
+
+    //// SOCKETS ////
+
     self.socketInit = () => {
         self.socket = io();
         self.socket.on(MessageCodes.SM_PACK_INIT, (data) => {
@@ -56,14 +80,27 @@ var Client = (initObject) => {
                 // If there is constructor for that object type, run every data from that array through that constructor
                 if (constFunction) {
                     for (var i = 0; i < data[key].length; i++) {
+
+                        if (!constFunction.const) {
+                            console.warn(`Spool: ${key} has invalid constructor function`)
+                        }
+
                         var obj = constFunction.const({
                             ...constFunction.defs,
                             ...data[key][i]
                         });
+
                         obj.clientInstance = self;
                         self.handler.add(obj)
                     }
                 }
+            }
+
+
+            if (!self.firstInit) {
+                if (self.onFirstLoad)
+                    self.onFirstLoad(self)
+                self.firstInit = true;
             }
         })
 
@@ -89,7 +126,53 @@ var Client = (initObject) => {
         self.socket.on(MessageCodes.SM_PACK_REMOVE, (data) => {
             self.handler.removeBulk(data);
         })
+
+        self.objectServer.init(self.socket);
     }
+
+    //// GAME LOOP ////
+
+    self.startGameLoop = () => {
+
+        setInterval(() => {
+            // Clear the canvas
+            self.gameArea.clear();
+
+            if (self.background) {
+                self.background(self.gameArea.ctx, self.camera);
+            }
+
+            if (self.preHandler) {
+                self.preHandler(self.gameArea.ctx, self.camera);
+            }
+
+            // Render objects
+            self.handler.render(self.gameArea.ctx, self.camera);
+
+            if (self.postHandler) {
+                self.postHandler(self.gameArea.ctx, self.camera);
+            }
+
+            if (self.uiHandler) {
+                self.uiHandler.render(self.gameArea.ctx);
+            }
+
+
+            if (self.postUi) {
+                self.postUi(self.gameArea.ctx, self.camera);
+            }
+
+            self.frameCounter += 1;
+
+            if (Date.now() - self.lastTime > 1000) {
+                console.log('FPS:' + self.frameCounter);
+                self.frameCounter = 0;
+                self.lastTime = Date.now();
+            }
+        }, 1000 / client.FPS)
+    }
+
+    //// GAME AREA ////
 
     self.initResizeListener = () => {
         window.onresize = e => {
@@ -100,41 +183,8 @@ var Client = (initObject) => {
             self.camera.height = self.height;
         }
     }
-
-    self.startGameLoop = () => {
-
-        setInterval(() => {
-            // Clear the canvas
-            self.gameArea.clear();
-
-            if (self.preHandler) {
-                self.preHandler();
-            }
-
-            // Render objects
-            self.handler.render(self.gameArea.ctx, self.camera);
-
-            if (self.postHandler) {
-                self.postHandler();
-            }
-
-            if (self.uiHandler) {
-                self.uiHandler.render(self.gameArea.ctx);
-            }
-
-            self.frameCounter += 1;
-
-            if (Date.now() - self.lastTime > 1000) {
-                console.log(self.frameCounter);
-                self.frameCounter = 0;
-                self.lastTime = Date.now();
-            }
-        }, 1000 / 60)
-    }
-
     return self;
 }
-
 
 /**
  * Creates the canvas, appends it to the object and holds its context
@@ -156,6 +206,9 @@ var GameArea = (width = 500, height = 500) => {
 
     document.body.appendChild(self.canvas);
 
+    self.canvas.oncontextmenu = function (e) {
+        e.preventDefault();
+    };
     // Get context
     self.ctx = self.canvas.getContext('2d');
 
@@ -186,7 +239,10 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
         objectSheets: {},
         onLoad: null,
         loadCounter: 0,
-        targetLoad: 0
+        targetLoad: 0,
+
+        chunkBlankSize: 500,
+        chunkBlankImage: null
     }
 
     self.load = () => {
@@ -196,7 +252,11 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
 
         self.targetLoad = keys.length;
 
+
+
         keys.forEach(key => {
+
+
             var image = new Image();
             image.onload = () => {
                 var canvas = document.createElement('canvas');
@@ -264,8 +324,11 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
                 self.loadCounter += 1;
 
                 if (self.loadCounter >= self.targetLoad && self.onLoad) {
-                    self.prepareObjectSheets();
+                    self.prepareChunkImage();
+
                 }
+                var canvas = document.createElement('canvas');
+                var context = canvas.getContext('2d');
             }
 
             image.src = self.spriteSheetInitObject[key].src;
@@ -274,6 +337,8 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
 
     self.getSubSpriteSheet = (key, x, y, xx, yy) => {
 
+
+
         var c = xx - x + 1;
         var r = yy - y + 1;
 
@@ -281,6 +346,11 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
         var shadowSprites = [];
 
         var spriteSheet = self.spriteSheets[key];
+
+        if (!spriteSheet) {
+            console.error(`${key} is not in the texture manager`)
+            return null;
+        }
 
         for (var yyy = y; yyy <= yy; yyy++) {
             for (var xxx = x; xxx <= xx; xxx++) {
@@ -300,44 +370,85 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
         }
     }
 
-    self.getSprite = (key, x, y) => {
+    self.getSprite = (key, x = 0, y = 0) => {
         return self.spriteSheets[key].sprites[y * self.spriteSheets[key].columns + x];
     }
 
+    self.prepareChunkImage = () => {
+        var canvas = document.createElement('canvas');
+        var context = canvas.getContext('2d');
+
+        canvas.width = self.chunkBlankSize;
+        canvas.height = self.chunkBlankSize;
+
+        var chunkSprite = new Image();
+        chunkSprite.src = canvas.toDataURL('image/png');
+
+        self.chunkBlankImage = chunkSprite
+
+        self.prepareObjectSheets();
+    }
+
     self.prepareObjectSheets = () => {
+        if (!self.objectSheetInitObject) {
+            console.error('Spool: Invalid objectSheetInitObject')
+        }
+
         var keys = Object.keys(self.objectSheetInitObject);
 
         self.targetLoad = keys.length;
 
 
         keys.forEach(key => {
-            var objSheetInfo = objectSheetInitObject[key];
-            var spriteSheet = self.spriteSheets[objSheetInfo.src];
-            var x = objSheetInfo.x ? objSheetInfo.x : 0;
-            var y = objSheetInfo.y ? objSheetInfo.y : 0;
-            var xx = objSheetInfo.xx ? objSheetInfo.xx : spriteSheet.columns - 1;
-            var yy = objSheetInfo.yy ? objSheetInfo.yy : spriteSheet.rows - 1;
 
-            var temp = self.getSubSpriteSheet(objSheetInfo.src, x, y, xx, yy);
+            // Object sheet information object 
+            var info = objectSheetInitObject[key];
+            var spriteSheet = self.spriteSheets[info.src];
+            var x = info.x ? info.x : 0;
+            var y = info.y ? info.y : 0;
+            var xx = info.xx ? info.xx : spriteSheet.columns - 1;
+            var yy = info.yy ? info.yy : spriteSheet.rows - 1;
 
 
-            console.log(key, temp);
+            var variantWidth = xx - x + 1;
+            var variantHeight = yy - y + 1;
 
-            temp.title = key;
-            self.objectSheets[key] = temp;
+            if (info.variantBox) {
+                variantWidth = info.variantBox.c;
+                variantHeight = info.variantBox.r;
+            }
+
+            var variants = [];
+
+            for (var yyy = y; yyy <= yy; yyy += variantHeight) {
+                for (var xxx = x; xxx <= xx; xxx += variantWidth) {
+                    var temp = self.getSubSpriteSheet(info.src, xxx, yyy, xxx + variantWidth - 1, yyy + variantHeight - 1);
+                    temp.title = key;
+                    variants.push(temp);
+                }
+            }
+
+
+            self.objectSheets[key] = variants;
         })
+
 
         self.onLoad();
     }
 
     self.textureObj = (obj) => {
-        var texture = self.objectSheets[obj.objectType];
-        if (texture) {
-            tid = obj.textureId ? obj.textureId : 0;
+        var objectVariants = self.objectSheets[obj.objectType];
 
-            obj.sprite = texture.sprites[tid];
-            obj.shadowSprite = texture.shadowSprites[tid];
-            obj.texture = texture;
+        if (objectVariants) {
+            tid = obj.textureId ? obj.textureId : 0;
+            var variantId = SpoolMath.randomInt(0, objectVariants.length - 1);
+
+            var sheet = objectVariants[variantId];
+            obj.sprite = sheet.sprites[tid % sheet.sprites.length];
+            obj.shadowSprite = sheet.shadowSprites[tid % sheet.sprites.length];
+            obj.texture = sheet;
+        } else if (obj.objectType == 'SPL_CHUNK') {
+            obj.sprite = self.chunkBlankImage;
         }
     }
 
@@ -544,6 +655,59 @@ var ObjectRadar = (handler, camera, objectType, radius) => {
 
 //// Handler ////
 
+var ClientObjectServer = (client, caching = []) => {
+    var self = {
+        client: client,
+        objects: {}
+    };
+
+    self.init = () => {
+        self.client.socket.on(MessageCodes.OS_SEND_OBJ, data => {
+            self.add(data);
+        })
+    }
+
+    self.load = data => {
+        self.client.socket.emit(MessageCodes.OS_GET_OBJ, data);
+    }
+
+    self.getObject = (message) => {
+        var objectType = message.objectType;
+        var id = message.id;
+
+        var objects = self.objects[objectType]
+        if (objects) {
+            var object = objects[id]
+            if (object) {
+                return object;
+            }
+        }
+        return null;
+    }
+
+    self.add = obj => {
+        // Add to handler
+        if (!(obj.objectType in self.objects)) {
+            self.objects[obj.objectType] = {};
+        }
+
+        if (self.objects[obj.objectType][obj.id]) {
+            Object.assign(self.objects[obj.objectType][obj.id], obj);
+        } else {
+            self.objects[obj.objectType][obj.id] = obj;
+        }
+    };
+
+    self.remove = (type, id) => {
+        // Remove object from handler
+        if (type in self.objects) {
+            delete self.objects[type][id];
+        }
+    };
+
+    return self;
+}
+
 /**
  *  Handler is object that takes cares of drawn elements  
  */
@@ -558,6 +722,8 @@ var ClientHandler = (chunkSize, client) => {
     //// UPDATING ////
 
     self.updateObjectsChunk = (object) => {
+
+
         var relocating = false;
         var cx = Math.floor((object.x - object.width / 2) / self.chunkSize);
         var cy = Math.floor((object.y - object.height / 2) / self.chunkSize);
@@ -580,8 +746,6 @@ var ClientHandler = (chunkSize, client) => {
             }
         }
 
-
-
         if (!relocating) {
             return;
         }
@@ -592,6 +756,7 @@ var ClientHandler = (chunkSize, client) => {
         object.chunksYY = cyy;
 
         object.chunks = [];
+
 
 
         if (relocating) {
@@ -657,20 +822,11 @@ var ClientHandler = (chunkSize, client) => {
      * @param {canvas context} ctx - context of the game canvas
      */
     self.render = (ctx, camera) => {
-        // for (key in self.objects) {
-        //     for (id in self.objects[key]) {
-        //         if (!self.objects[key][id].invisible) {
-        //             self.objects[key][id].render(ctx, camera);
-        //         }
-        //     }
-        // }
-
         if (client.camera.followObject) {
-
-            var min_x = Math.floor((camera.x - camera.width / 2) / self.chunkSize);
-            var min_y = Math.floor((camera.y - camera.height / 2) / self.chunkSize);
-            var max_x = Math.floor((camera.x + camera.width / 2) / self.chunkSize);
-            var max_y = Math.floor((camera.y + camera.height / 2) / self.chunkSize);
+            var min_x = Math.floor((camera.x - camera.width / 2 - 100) / self.chunkSize);
+            var min_y = Math.floor((camera.y - camera.height / 2 - 100) / self.chunkSize);
+            var max_x = Math.floor((camera.x + camera.width / 2 + 100) / self.chunkSize);
+            var max_y = Math.floor((camera.y + camera.height / 2 + 100) / self.chunkSize);
             var chunks = self.getChunks(min_x, min_y, max_x, max_y)
             // var chunks = client.camera.followObject.chunks;
 
@@ -692,10 +848,7 @@ var ClientHandler = (chunkSize, client) => {
 
                         if (obj.bakeIn) {
                             if (obj.bakedIn ? !obj.bakedIn.includes(chunk.key) : true) {
-
-
                                 var renderBounds = obj.getRenderBounds();
-
 
                                 var coefX = chunk.sprite.width / self.chunkSize;
                                 var coefY = chunk.sprite.height / self.chunkSize;
@@ -708,23 +861,26 @@ var ClientHandler = (chunkSize, client) => {
                                         width: renderBounds.width * coefX,
                                         height: renderBounds.height * coefY
                                     },
-                                    callback: (newSprite, attributes) => {
-                                        attributes.chunk.sprite = newSprite
-                                        attributes.obj.bakedIn = true;
-                                    },
                                     attributes: {
                                         obj: obj,
                                         chunk: chunk
+                                    },
+                                    callback: (self, newSprite, attributes) => {
+                                        self.attributes.chunk.sprite = newSprite
+                                        self.attributes.obj.bakedIn = true;
                                     }
                                 };
 
                                 var cKey = chunk.key;
 
-                                if (cKey in bakingObjects) {
-                                    bakingObjects[cKey].push(bakingObject);
-                                } else {
-                                    bakingObjects[cKey] = [bakingObject];
+                                if (!(cKey in bakingObjects)) {
+                                    bakingObjects[cKey] = {};
                                 }
+                                if (!(obj.layer in bakingObjects[cKey])) {
+                                    bakingObjects[cKey][obj.layer] = [];
+                                }
+
+                                bakingObjects[cKey][obj.layer].push(bakingObject);
                             }
                         } else {
                             if (obj.layer in allObjects) {
@@ -745,14 +901,22 @@ var ClientHandler = (chunkSize, client) => {
                 if (key in self.chunks) {
                     var bakingArray = [];
                     var waitingList = [];
-                    bakingObjects[key].forEach(bo => {
-                        bakingArray.push({
-                            bakedTexture: bo.bakedTexture,
-                            dBounds: bo.dBounds
-                        })
 
-                        waitingList.push(bo.attributes.obj)
+                    var sortedChunkLayers = Object.keys(bakingObjects[key]).sort((a, b) => {
+                        return parseInt(a) - parseInt(b);
                     })
+
+                    sortedChunkLayers.forEach(layerKey => {
+
+                        var layer = bakingObjects[key][layerKey];
+                        layer.forEach(bo => {
+                            bakingArray.push({
+                                bakedTexture: bo.bakedTexture,
+                                dBounds: bo.dBounds
+                            })
+                            waitingList.push(bo.attributes.obj)
+                        })
+                    });
 
                     callback = (sprite, attributes) => {
                         self.chunks[attributes.key].sprite = sprite;
@@ -784,8 +948,6 @@ var ClientHandler = (chunkSize, client) => {
                 return parseInt(a) - parseInt(b);
             })
 
-
-
             sortedLayerKeys.forEach(layerKey => {
                 var sortedKeys = Object.keys(allObjects[layerKey]).sort((a, b) => {
                     return allObjects[layerKey][b].y - allObjects[layerKey][a].y;
@@ -795,6 +957,113 @@ var ClientHandler = (chunkSize, client) => {
                     allObjects[layerKey][key].render(ctx, camera);
                 })
             })
+        }
+    }
+
+    /**
+     * Goes through the objects and renders them
+     * @param {canvas context} ctx - context of the game canvas
+     */
+    self.preBake = () => {
+
+        var chunks = self.chunks;
+
+        var bakingObjects = {}
+
+
+
+        for (chunkKey in chunks) {
+            var chunk = chunks[chunkKey];
+            var objects = chunk.objects;
+            for (key in objects) {
+                for (id in objects[key]) {
+                    var obj = chunk.objects[key][id];
+                    self.updateObjectsChunk(obj);
+
+                    if (obj.bakeIn) {
+                        if (obj.bakedIn ? !obj.bakedIn.includes(chunk.key) : true) {
+                            var renderBounds = obj.getRenderBounds();
+
+                            var coefX = chunk.sprite.width / self.chunkSize;
+                            var coefY = chunk.sprite.height / self.chunkSize;
+
+                            var bakingObject = {
+                                bakedTexture: obj.sprite,
+                                dBounds: {
+                                    x: (renderBounds.x - chunk.x * self.chunkSize) * coefX,
+                                    y: (self.chunkSize - (renderBounds.y - chunk.y * self.chunkSize) - renderBounds.height) * coefY,
+                                    width: renderBounds.width * coefX,
+                                    height: renderBounds.height * coefY
+                                },
+                                callback: (newSprite, attributes) => {
+                                    attributes.chunk.sprite = newSprite
+                                    attributes.obj.bakedIn = true;
+                                },
+                                attributes: {
+                                    obj: obj,
+                                    chunk: chunk
+                                }
+                            };
+
+                            var cKey = chunk.key;
+
+                            if (!(cKey in bakingObjects)) {
+                                bakingObjects[cKey] = {};
+                            }
+                            if (!(obj.layer in bakingObjects[cKey])) {
+                                bakingObjects[cKey][obj.layer] = [];
+                            }
+                            bakingObjects[cKey][obj.layer].push(bakingObject);
+                        }
+                    }
+                }
+            }
+        }
+
+        //// BAKING OBJECTS //// 
+
+        for (key in bakingObjects) {
+            if (key in self.chunks) {
+                var bakingArray = [];
+                var waitingList = [];
+
+                var sortedChunkLayers = Object.keys(bakingObjects[key]).sort((a, b) => {
+                    return parseInt(a) - parseInt(b);
+                })
+
+                sortedChunkLayers.forEach(layerKey => {
+                    var layer = bakingObjects[key][layerKey];
+                    layer.forEach(bo => {
+                        bakingArray.push({
+                            bakedTexture: bo.bakedTexture,
+                            dBounds: bo.dBounds
+                        })
+                        waitingList.push(bo.attributes.obj)
+                    })
+                });
+
+                callback = (sprite, attributes) => {
+                    self.chunks[attributes.key].sprite = sprite;
+                    attributes.waitingList.forEach(o => {
+                        if (!o.bakedIn) {
+                            o.bakedIn = [attributes.key]
+                        } else {
+                            o.bakedIn.push(attributes.key)
+                        }
+                    })
+                }
+
+                self.textureManager.bakeBatch(
+                    self.chunks[key].sprite,
+                    bakingArray,
+                    callback, {
+                        key: key,
+                        waitingList: waitingList
+                    }
+                );
+            } else {
+                console.warn('invalid chunk added to baking');
+            }
         }
     }
 
@@ -928,6 +1197,9 @@ var Camera = (initPack = {}) => {
         rotationSpeed: CAMERA_ROTATION_SPEED,
         followObject: null,
 
+        offsetX: 0,
+        offsetY: 0,
+
         ...initPack
     };
 
@@ -948,12 +1220,16 @@ var Camera = (initPack = {}) => {
 
 
             if (self.followObject) {
-                self.x = SpoolMath.lerp(self.x, self.followObject.x, self.followSpeed);
-                self.y = SpoolMath.lerp(self.y, self.followObject.y, self.followSpeed);
+                self.x = SpoolMath.lerp(self.x, self.followObject.x + self.offsetX, self.followSpeed);
+                self.y = SpoolMath.lerp(self.y, self.followObject.y + self.offsetY, self.followSpeed);
             }
         } else if (self.followObject) {
-            self.x = self.followObject.x;
-            self.y = self.followObject.y;
+            self.x = self.followObject.x + self.offsetX;
+            self.y = self.followObject.y + self.offsetY;
+        }
+
+        if (self.onUpdate) {
+            self.onUpdate(self)
         }
     }
 
@@ -1024,8 +1300,6 @@ var Camera = (initPack = {}) => {
             y: b,
         }
     }
-
-
     self.setFollowObject = (followObject) => {
         if (followObject) {
             self.followObject = followObject;
@@ -1165,20 +1439,18 @@ var Entity = (initPack) => {
         }
     }
 
-    self.renderMovementAnimation = (ctx, camera) => {
-        if (self.animationCounter == self.animationTime) {
-            if (self.texture) {
-                self.animationFrame += 1;
-                if (self.animationFrame == self.texture.columns) {
-                    self.animationFrame = 0;
-                }
-            }
+    self.renderRotatedSprite = (ctx, camera, cx, cy, angle, sprite, bounds) => {
+        ctx.save()
 
-            self.animationCounter = 0;
-        } else {
-            self.animationCounter += 1;
-        }
+        var point = camera.transformPoint(cx, cy);
+        ctx.translate(point.x, point.y);
 
+        ctx.rotate(angle)
+        ctx.drawImage(sprite, bounds.x, bounds.y, bounds.width, bounds.height)
+        ctx.restore()
+    }
+
+    self.getMovementAnimationSpriteIndex = () => {
         var animationRowsNumber = (self.texture.rows - 1);
 
         if (self.moving) {
@@ -1200,7 +1472,31 @@ var Entity = (initPack) => {
         }
 
         //console.log('sprite');
-        var index = row * self.texture.columns + self.animationFrame;
+        return row * self.texture.columns + self.animationFrame;
+    }
+
+    self.renderMovementAnimation = (ctx, camera, hardIndex = null) => {
+        // Getting the sprite index 
+
+        if (hardIndex) {
+            var index = hardIndex;
+        } else {
+            var index = self.getMovementAnimationSpriteIndex();
+        }
+        // Counter 
+
+        if (self.animationCounter == self.animationTime) {
+            if (self.texture) {
+                self.animationFrame += 1;
+                if (self.animationFrame == self.texture.columns) {
+                    self.animationFrame = 0;
+                }
+            }
+
+            self.animationCounter = 0;
+        } else {
+            self.animationCounter += 1;
+        }
 
         return [self.renderSprite(ctx, camera, self.texture.sprites[index]), index]
 
@@ -1208,8 +1504,6 @@ var Entity = (initPack) => {
     }
 
     self.getRenderBounds = (camera = null) => {
-
-
         if (!camera) {
             var offsetX = self.width / 2;
             var offsetY = self.height / 2;
@@ -1221,14 +1515,55 @@ var Entity = (initPack) => {
                 offsetY = self.clientOffsetY;
             }
 
+            var width = self.width;
+            var height = self.height;
+
+            if (self.clientWidth) {
+                width = self.clientWidth;
+            }
+            if (self.clientHeight) {
+                height = self.clientHeight;
+            }
+
             var bounds = {
                 x: self.x - offsetX,
                 y: self.y - offsetY,
-                width: self.width,
-                height: self.height
+                width: width,
+                height: height
             }
         } else {
-            console.warn('not yet implemented');
+            var width = self.width;
+            var height = self.height;
+            var x = self.x;
+            var y = self.y;
+
+            if (self.clientWidth) {
+                width = self.clientWidth;
+            }
+            if (self.clientHeight) {
+                height = self.clientHeight;
+            }
+
+            var bounds = camera.transformBounds(x, y, width, height);
+
+            var offsetX = self.width / 2;
+            var offsetY = self.height / 2;
+
+            if (self.clientOffsetX) {
+                offsetX = self.clientOffsetX;
+            }
+            if (self.clientOffsetY) {
+                offsetY = self.clientOffsetY;
+            }
+
+            var offsetBounds = camera.transformBounds(x, y, offsetX, offsetY);
+
+            return {
+                x: bounds.x - offsetBounds.width,
+                y: bounds.y - offsetBounds.height,
+                width: bounds.width,
+                height: bounds.height
+            }
         }
 
         return bounds;
@@ -1292,6 +1627,8 @@ var Point = (initObject) => {
             width
         } = camera.transformBounds(self.x, self.y, 3, 3);
 
+
+
         ctx.arc(x, y, width, 0, 360);
         ctx.stroke();
     }
@@ -1302,21 +1639,14 @@ var Point = (initObject) => {
 }
 
 var Line = (initObject) => {
-    var self = {
+    var self = Entity({
         x: 0,
         y: 0,
         xx: 0,
         yy: 0,
         color: 'green',
         ...initObject
-    }
-
-    /**
-     * function that overrides the self state with data from update package
-     */
-    self.update = (data) => {
-        Object.assign(self, data);
-    }
+    })
 
     self.render = (ctx, camera) => {
         let np = camera.transformPoint(self.x, self.y)
@@ -1327,11 +1657,12 @@ var Line = (initObject) => {
         ctx.moveTo(np.x, np.y)
         ctx.lineTo(npp.x, npp.y)
         ctx.stroke()
+
+
     }
 
     return self;
 }
-
 
 var Rectangle = (initObject) => {
     var self = {
@@ -1371,7 +1702,6 @@ var Rectangle = (initObject) => {
 
     return self;
 }
-
 
 ////// LISTENERS //////
 
@@ -1446,16 +1776,17 @@ var MouseListener = (client) => {
         client
     };
 
-    self.mouseEvent = (event) => {
+    self.mouseEvent = (event, self = self) => {
         if (event.button === 0) {
             self.client.socket.emit(MessageCodes.SM_MOUSE_CLICKED, {
                 clickedX: event.clientX,
-                clickedY: event.clientY
+                clickedY: event.clientY,
+                type: event.type
             })
         }
     }
 
-    self.cameraMouseEvent = (event) => {
+    self.cameraMouseEvent = (event, self = self) => {
         if (event.button === 0) {
             var point = self.client.camera.inverseTransformPoint(event.clientX, event.clientY);
             self.client.socket.emit(MessageCodes.SM_MOUSE_CLICKED, {
@@ -1468,9 +1799,25 @@ var MouseListener = (client) => {
     self.initListener = () => {
         document.onmousedown = event => {
             if (!self.client.uiHandler.mouseEvent(event)) {
-                self.mouseEvent(event);
+                self.mouseEvent(event, self);
+                self.client.onMouseEvent(event, client);
             }
         }
+
+        document.onmouseup = event => {
+            if (!self.client.uiHandler.mouseEvent(event)) {
+                self.mouseEvent(event, self);
+                self.client.onMouseEvent(event, client);
+            }
+        }
+
+        document.onmousemove = event => {
+
+            self.client.uiHandler.mouseMove(event);
+        }
+
+
+
     }
 
     return self;
