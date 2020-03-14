@@ -124,6 +124,15 @@ const SpoolMath = {
             var max = a;
         }
         return min - offset <= val && val <= max + offset;
+    },
+
+    numberDefined: (x) => {
+        console.log(x)
+        if (x !== undefined && x !== null) {
+            return true
+        } else {
+            return false
+        }
     }
 }
 

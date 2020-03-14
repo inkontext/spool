@@ -89,6 +89,10 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
                 id
             })
 
+            if (self.onPlayerSpawn) {
+                self.onPlayerSpawn(player);
+            }
+
             self.handler.add(player);
 
             self.playerList[id] = player;
@@ -824,7 +828,8 @@ var CollisionManager = (initPack, handler) => {
                     b: cpb,
                     func: cp.func,
                     exception: cp.exception,
-                    notSolid: cp.notSolid
+                    notSolid: cp.notSolid,
+                    solidException: cp.solidException
                 });
             })
         })
@@ -894,8 +899,10 @@ var CollisionManager = (initPack, handler) => {
                                         if (col) {
                                             if (col.result) {
                                                 if (!self.colPairs[i].notSolid && col.point) {
-                                                    a.x = Math.round(col.point.x);
-                                                    a.y = Math.round(col.point.y);
+                                                    if (self.colPairs[i].solidException ? !self.colPairs[i].solidException(a, b) : true) {
+                                                        a.x = Math.round(col.point.x);
+                                                        a.y = Math.round(col.point.y);
+                                                    }
                                                 }
                                                 if (self.colPairs[i].func) {
                                                     self.colPairs[i].func(a, b, col);
@@ -1376,9 +1383,6 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                 self.zoneMap = resArray;
             }
 
-
-
-
             // Adding all the zones present in the map 
 
             for (var y = 0; y < shape[1]; y++) {
@@ -1444,7 +1448,9 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                         var object = pair.const({
                             ...pair.defs,
                             x: parseInt((x - array[y].length / 2) * gx),
-                            y: parseInt((-y + array.length / 2) * gy)
+                            y: parseInt((-y + array.length / 2) * gy),
+                            gridX: x,
+                            gridY: y
                         })
 
                         if (object.gridColRemoval) {
@@ -1471,6 +1477,9 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                             }
                             var textureId = self.getColTextureId([!object.leftColIgnore, !object.topColIgnore, !object.rightColIgnore, !object.bottomColIgnore]);
                             object.textureId = textureId;
+                            if (object.onGridColRemoval) {
+                                object.onGridColRemoval()
+                            }
                         }
 
                         if (self.zoneMap) {
@@ -1611,6 +1620,31 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                 }
             }
 
+        }
+    }
+
+    self.getRandomPositionInZone = (zoneType, zoneId = null) => {
+        var id = zoneId;
+        if (!id) {
+            var keys = Object.keys(self.zones[zoneType]);
+            id = keys[Math.round(Math.random() * (keys.length - 1))];
+        }
+
+        var zone = self.zones[zoneType][id];
+
+        if (zone) {
+            var tile = zone[Math.round(Math.random() * (zone.length - 1))];
+
+            var px = (tile[0] - self.mapPxWidth / 2) * self.gx + Math.round(Math.random() * self.gx);
+            var py = (-tile[1] + self.mapPxWidth / 2) * self.gy + Math.round(Math.random() * self.gy);
+
+            return ({
+                x: px,
+                y: py
+            })
+
+        } else {
+            return null;
         }
     }
 
