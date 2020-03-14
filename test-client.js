@@ -1,6 +1,6 @@
 //// OBJECTS ////
 
-var Cable = (initObject = {}) => {
+var NetworkTileEntity = (initObject = {}) => {
     var self = SpriteEntity(initObject);
 
     self.render = (ctx, camera) => {
@@ -8,6 +8,22 @@ var Cable = (initObject = {}) => {
 
         if (self.active) {
             tid += 16
+        }
+        self.renderSprite(ctx, camera, sprite = self.texture.sprites[tid]);
+
+    }
+
+    return self;
+}
+
+var NetworkSpriteEntity = (initObject = {}) => {
+    var self = SpriteEntity(initObject);
+
+    self.render = (ctx, camera) => {
+        var tid = 0;
+
+        if (self.active) {
+            tid = 1
         }
         self.renderSprite(ctx, camera, sprite = self.texture.sprites[tid]);
 
@@ -27,22 +43,40 @@ var OBJECTS = {
             clientOffsetY: 78,
         }
     },
-    'BLOCK': {
+    'GROUND': {
         const: SpriteEntity,
         defs: {
             bakeIn: true
         }
     },
+    'WALL': {
+        const: SpriteEntity,
+        defs: {
+            clientWidth: 64,
+            clientHeight: 128,
+            clientOffsetX: 32,
+            clientOffsetY: 96
+        }
+    },
     'CABLE': {
-        const: Cable,
+        const: NetworkTileEntity,
         defs: {
             layer: 8
         }
     },
     'BUTTON': {
-        const: SpriteEntity,
+        const: NetworkSpriteEntity,
         defs: {
             layer: 9
+        }
+    },
+    'DOORS': {
+        const: NetworkTileEntity,
+        defs: {
+            clientWidth: 64,
+            clientHeight: 128,
+            clientOffsetX: 32,
+            clientOffsetY: 96
         }
     }
 }
@@ -64,12 +98,12 @@ var client = Client({
 ////// TEXTURE MANAGER //////
 
 textureManager = TextureManager({
-    'block': {
-        src: './textures/block.png',
+    'ground': {
+        src: './textures/ground.png',
         r: 4,
         c: 4
     },
-    'player_spritesheet': {
+    'player': {
         src: './textures/player.png',
         c: 8,
         r: 9
@@ -83,17 +117,27 @@ textureManager = TextureManager({
         src: './textures/ioelements.png',
         c: 4,
         r: 4
+    },
+    'wall': {
+        src: './textures/walls.png',
+        r: 4,
+        c: 4
+    },
+    'doors': {
+        src: './textures/doors.png',
+        c: 4,
+        r: 8
     }
 }, {
-    'BLOCK': {
-        src: 'block',
+    'GROUND': {
+        src: 'ground',
         x: 0,
         y: 0,
         xx: 3,
         yy: 3
     },
     'PLAYER': {
-        src: 'player_spritesheet',
+        src: 'player',
         x: 0,
         y: 0,
         xx: 7,
@@ -111,8 +155,24 @@ textureManager = TextureManager({
         x: 0,
         y: 0,
         xx: 0,
-        yy: 0
-    }
+        yy: 1
+    },
+    'WALL': {
+        src: 'wall',
+        x: 0,
+        y: 0,
+        xx: 3,
+        yy: 3
+    },
+    'DOORS': {
+        src: 'doors',
+        x: 0,
+        y: 0,
+        xx: 3,
+        yy: 7
+    },
+
+
 })
 
 client.handler.textureManager = (textureManager);

@@ -404,10 +404,13 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
             // Object sheet information object 
             var info = objectSheetInitObject[key];
             var spriteSheet = self.spriteSheets[info.src];
-            var x = info.x ? info.x : 0;
-            var y = info.y ? info.y : 0;
-            var xx = info.xx ? info.xx : spriteSheet.columns - 1;
-            var yy = info.yy ? info.yy : spriteSheet.rows - 1;
+
+            console.log(info.x, info.y, info.xx, info.yy)
+
+            var x = SpoolMath.numberDefined(info.x) ? info.x : 0;
+            var y = SpoolMath.numberDefined(info.y) ? info.y : 0;
+            var xx = SpoolMath.numberDefined(info.xx) ? info.xx : spriteSheet.columns - 1;
+            var yy = SpoolMath.numberDefined(info.yy) ? info.yy : spriteSheet.rows - 1;
 
 
             var variantWidth = xx - x + 1;
@@ -423,7 +426,10 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
             for (var yyy = y; yyy <= yy; yyy += variantHeight) {
                 for (var xxx = x; xxx <= xx; xxx += variantWidth) {
                     var temp = self.getSubSpriteSheet(info.src, xxx, yyy, xxx + variantWidth - 1, yyy + variantHeight - 1);
+
+
                     temp.title = key;
+                    console.log(temp.title, temp);
                     variants.push(temp);
                 }
             }
