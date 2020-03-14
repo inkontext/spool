@@ -2,7 +2,15 @@
 
 var OBJECTS = {
     'PLAYER': {
-        const: RectangleEntity
+        const: MovementAnimationEntity,
+        defs: {
+            showBounds: true,
+            clientWidth: 45,
+            clientHeight: 78,
+
+            clientOffsetX: 22.5,
+            clientOffsetY: 78
+        }
     },
     'BLOCK': {
         const: SpriteEntity,
@@ -29,12 +37,12 @@ var client = Client({
 
 textureManager = TextureManager({
     'block': {
-        src: './block.png',
+        src: './textures/block.png',
         r: 4,
         c: 4
     },
-    'player': {
-        src: './player.png',
+    'player_spritesheet': {
+        src: './textures/player.png',
         c: 8,
         r: 9
     }
@@ -47,7 +55,7 @@ textureManager = TextureManager({
         yy: 3
     },
     'PLAYER': {
-        src: 'player',
+        src: 'player_spritesheet',
         x: 0,
         y: 0,
         xx: 7,
@@ -74,16 +82,6 @@ var init = () => {
 
     keyListener = KeyboardListener(client.socket)
     keyListener.initListener()
-
-    var background = textureManager.getSprite('sky')
-
-    client.background = (ctx, camera) => {
-        ctx.imageSmoothingEnabled = false;
-
-        var coef = client.gameArea.height / background.height
-
-        ctx.drawImage(background, -camera.x / 2, 0, coef * background.width, coef * background.height)
-    }
 }
 
 textureManager.onLoad = init;

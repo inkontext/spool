@@ -12,7 +12,7 @@ var {
 
 ////// SETTING UP SERVER //////
 
-var GRID_SIZE = 40;
+var GRID_SIZE = 60;
 
 var server = Server({
     port: 3000,
@@ -34,8 +34,8 @@ var Player = (initPack = {}) => {
         maxAcc: 10,
         jumpAcc: 20,
         jumpCounter: 0,
-        width: 40,
-        height: 40,
+        width: 45,
+        height: 20,
 
         objectType: 'PLAYER',
         rotation: Math.PI / 2,
@@ -135,5 +135,9 @@ objSpawner.gy = GRID_SIZE;
 objSpawner.spawnFromImageMap('./smash-map.png', {
     'ffffff': 'BLOCK'
 })
+
+objSpawner.spawnCables = (image) => {
+
+}
 
 server.fullStart(Player);
