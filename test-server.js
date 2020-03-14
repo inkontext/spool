@@ -84,9 +84,27 @@ var Player = (initPack = {}) => {
     return self;
 }
 
-var Block = (initPack = {}) => {
+var Ground = (initPack = {}) => {
     var self = Entity({
-        objectType: 'BLOCK',
+        objectType: 'GROUND',
+        ...initPack
+    });
+
+    self.width = GRID_SIZE;
+    self.height = GRID_SIZE;
+
+    self.rotation = Math.PI / 2;
+    self.color = self.color = SpoolMath.randomHsvColor(0.5, 0.8);
+    self.static = true;
+
+    self.gridColRemoval = true;
+
+    return self;
+}
+
+var Wall = (initPack = {}) => {
+    var self = Entity({
+        objectType: 'WALL',
         ...initPack
     });
 
@@ -124,16 +142,20 @@ var collisionManager = CollisionManager({
 server.handler.addManager(collisionManager);
 
 var objSpawner = ObjectSpawner(server.handler, {
-    'BLOCK': {
-        const: Block
+    'GROUND': {
+        const: Ground
+    },
+    'WALL': {
+        const: Wall
     }
 })
 
 objSpawner.gx = GRID_SIZE;
 objSpawner.gy = GRID_SIZE;
 
-objSpawner.spawnFromImageMap('./smash-map.png', {
-    'ffffff': 'BLOCK'
+objSpawner.spawnFromImageMap('./maps/smash-map.png', {
+    '000000': 'GROUND',
+    'ffffff': 'WALL'
 })
 
 objSpawner.spawnCables = (image) => {

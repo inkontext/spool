@@ -12,7 +12,13 @@ var OBJECTS = {
             clientOffsetY: 78
         }
     },
-    'BLOCK': {
+    'GROUND': {
+        const: SpriteEntity,
+        defs: {
+            bakeIn: true
+        }
+    },
+    'WALL': {
         const: SpriteEntity,
         defs: {
             bakeIn: true
@@ -36,31 +42,45 @@ var client = Client({
 ////// TEXTURE MANAGER //////
 
 textureManager = TextureManager({
-    'block': {
-        src: './textures/block.png',
+    'ground': {
+        src: './textures/ground.png',
         r: 4,
         c: 4
     },
-    'player_spritesheet': {
+    'player': {
         src: './textures/player.png',
         c: 8,
         r: 9
+    },
+    'wall': {
+        src: './textures/walls.png',
+        r: 4,
+        c: 4
     }
 }, {
-    'BLOCK': {
-        src: 'block',
+    'GROUND': {
+        src: 'ground',
         x: 0,
         y: 0,
         xx: 3,
         yy: 3
     },
     'PLAYER': {
-        src: 'player_spritesheet',
+        src: 'player',
         x: 0,
         y: 0,
         xx: 7,
         yy: 8
+    },
+    'WALL': {
+        src: 'wall',
+        x: 0,
+        y: 0,
+        xx: 3,
+        yy: 3
     }
+
+
 })
 
 client.handler.textureManager = (textureManager);
