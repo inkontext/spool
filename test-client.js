@@ -1,21 +1,48 @@
 //// OBJECTS ////
 
+var Cable = (initObject = {}) => {
+    var self = SpriteEntity(initObject);
+
+    self.render = (ctx, camera) => {
+        var tid = self.textureId;
+
+        if (self.active) {
+            tid += 16
+        }
+        self.renderSprite(ctx, camera, sprite = self.texture.sprites[tid]);
+
+    }
+
+    return self;
+}
+
 var OBJECTS = {
     'PLAYER': {
         const: MovementAnimationEntity,
         defs: {
-            showBounds: true,
             clientWidth: 45,
             clientHeight: 78,
 
             clientOffsetX: 22.5,
-            clientOffsetY: 78
+            clientOffsetY: 78,
         }
     },
     'BLOCK': {
         const: SpriteEntity,
         defs: {
             bakeIn: true
+        }
+    },
+    'CABLE': {
+        const: Cable,
+        defs: {
+            layer: 8
+        }
+    },
+    'BUTTON': {
+        const: SpriteEntity,
+        defs: {
+            layer: 9
         }
     }
 }
@@ -33,6 +60,7 @@ var client = Client({
     }
 })
 
+
 ////// TEXTURE MANAGER //////
 
 textureManager = TextureManager({
@@ -45,6 +73,16 @@ textureManager = TextureManager({
         src: './textures/player.png',
         c: 8,
         r: 9
+    },
+    'cables_spritesheet': {
+        src: './textures/cables.png',
+        c: 4,
+        r: 8,
+    },
+    'ioelements_spritesheet': {
+        src: './textures/ioelements.png',
+        c: 4,
+        r: 4
     }
 }, {
     'BLOCK': {
@@ -60,6 +98,20 @@ textureManager = TextureManager({
         y: 0,
         xx: 7,
         yy: 8
+    },
+    'CABLE': {
+        src: 'cables_spritesheet',
+        x: 0,
+        y: 0,
+        xx: 3,
+        yy: 7
+    },
+    'BUTTON': {
+        src: 'ioelements_spritesheet',
+        x: 0,
+        y: 0,
+        xx: 0,
+        yy: 0
     }
 })
 

@@ -1376,9 +1376,6 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                 self.zoneMap = resArray;
             }
 
-
-
-
             // Adding all the zones present in the map 
 
             for (var y = 0; y < shape[1]; y++) {
@@ -1444,7 +1441,9 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                         var object = pair.const({
                             ...pair.defs,
                             x: parseInt((x - array[y].length / 2) * gx),
-                            y: parseInt((-y + array.length / 2) * gy)
+                            y: parseInt((-y + array.length / 2) * gy),
+                            gridX: x,
+                            gridY: y
                         })
 
                         if (object.gridColRemoval) {
@@ -1471,6 +1470,9 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                             }
                             var textureId = self.getColTextureId([!object.leftColIgnore, !object.topColIgnore, !object.rightColIgnore, !object.bottomColIgnore]);
                             object.textureId = textureId;
+                            if (object.onGridColRemoval) {
+                                object.onGridColRemoval()
+                            }
                         }
 
                         if (self.zoneMap) {
