@@ -1743,6 +1743,9 @@ var KeyboardListener = (socket) => {
                     value: true
                 });
             }
+            if (self.onKeyDown) {
+                self.onKeyDown(event)
+            }
         }
 
         document.onkeyup = event => {
@@ -1766,6 +1769,9 @@ var KeyboardListener = (socket) => {
                     inputId: MessageCodes.KI_MOV_DOWN,
                     value: false
                 });
+            }
+            if (self.onKeyUp) {
+                self.onKeyUp(event)
             }
         }
     }

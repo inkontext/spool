@@ -111,6 +111,9 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
                 } else if (data.inputId === KI_MOV_DOWN) {
                     player.pressedDown = data.value;
                 }
+                if (self.keyEvent) {
+                    self.keyEvent(data, socket, player);
+                }
             });
 
             socket.on(SM_MOUSE_CLICKED, data => {

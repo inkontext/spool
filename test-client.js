@@ -41,6 +41,7 @@ var OBJECTS = {
 
             clientOffsetX: 22.5,
             clientOffsetY: 78,
+            showBounds: false
         }
     },
     'GROUND': {
@@ -77,6 +78,16 @@ var OBJECTS = {
             clientHeight: 128,
             clientOffsetX: 32,
             clientOffsetY: 96
+        }
+    },
+    'CUBE': {
+        const: SpriteEntity,
+        defs: {
+            clientWidth: 48,
+            clientHeight: 76,
+            clientOffsetX: 24,
+            clientOffsetY: 60,
+            showBounds: false
         }
     }
 }
@@ -127,6 +138,11 @@ textureManager = TextureManager({
         src: './textures/doors.png',
         c: 4,
         r: 8
+    },
+    'cube': {
+        src: './textures/cube.png',
+        c: 1,
+        r: 1
     }
 }, {
     'GROUND': {
@@ -171,6 +187,13 @@ textureManager = TextureManager({
         xx: 3,
         yy: 7
     },
+    'CUBE': {
+        src: 'cube',
+        x: 0,
+        y: 0,
+        xx: 0,
+        yy: 0
+    },
 
 
 })
@@ -194,6 +217,25 @@ var init = () => {
 
     keyListener = KeyboardListener(client.socket)
     keyListener.initListener()
+
+    keyListener.onKeyDown = (event) => {
+        if (event.keyCode === 69) {
+            keyListener.socket.emit(MessageCodes.SM_KEY_PRESS, {
+                inputId: 'use',
+                value: true
+            });
+        }
+
+    }
+
+    keyListener.onKeyUp = (event) => {
+        if (event.keyCode === 69) {
+            keyListener.socket.emit(MessageCodes.SM_KEY_PRESS, {
+                inputId: 'use',
+                value: false
+            });
+        }
+    }
 }
 
 textureManager.onLoad = init;
