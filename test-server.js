@@ -677,6 +677,10 @@ FileReader.readImage('./maps/lebac_cables.png', (data) => {
 
     NETWORK.init(data.shape[0], data.shape[1])
 
+    objSpawner.spawnFromImageMap('./maps/lebac_ground.png', {
+        '000000': 'GROUND'
+    });
+
     objSpawner.spawnFromImageMap('./maps/lebac_cables.png', {
         'ff0000': 'CABLE'
     }, () => {
@@ -686,7 +690,6 @@ FileReader.readImage('./maps/lebac_cables.png', (data) => {
             '555555': 'GATE_IO'
         }, () => {
             objSpawner.spawnFromImageMap('./maps/lebac_objects.png', {
-                '000000': 'GROUND',
                 'ffffff': 'WALL',
                 'ff0000': 'CABLE',
                 '0000ff': 'BUTTON',

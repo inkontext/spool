@@ -127,7 +127,6 @@ const SpoolMath = {
     },
 
     numberDefined: (x) => {
-        console.log(x)
         if (x !== undefined && x !== null) {
             return true
         } else {

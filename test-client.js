@@ -40,8 +40,8 @@ var NetworkSpriteEntity = (initObject = {}) => {
 var NetworkGateEntity = (initObject = {}) => {
     var self = SpriteEntity(initObject);
 
-    self.inactiveTextureId = 1;
-    self.activeTextureId = 5;
+    self.inactiveTextureId = 8;
+    self.activeTextureId = 12;
 
     if (self.gateType == 'AND') {
         self.inactiveTextureId += 0
@@ -195,9 +195,9 @@ textureManager = TextureManager({
     },
     'BUTTON': {
         src: 'ioelements_spritesheet',
-        x: 0,
+        x: 1,
         y: 0,
-        xx: 0,
+        xx: 1,
         yy: 1
     },
     'WALL': {

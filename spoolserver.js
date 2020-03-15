@@ -1603,8 +1603,9 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
 
 
             self.spawnFromKeyArray(array, gx, gy);
-
-            callback()
+            if (callback) {
+                callback()
+            }
         });
     }
 
