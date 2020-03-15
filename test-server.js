@@ -28,7 +28,7 @@ var server = Server({
 }, ['/', '/textures'])
 
 server.keyEvent = (data, socket, player) => {
-    if (data.inputId == 'use') {
+    if (data.inputId == 'use' || data.inputId == 'throw') {
         var pickup = server.handler.getClosestObject(player.x, player.y, {
             whitelist: ["CUBE"]
         })
@@ -38,9 +38,15 @@ server.keyEvent = (data, socket, player) => {
                 player.hand = pickup.object
                 pickup.object.player = player
             } else if (player.hand && !data.value) {
-                pickup.object.transparent = false
+                player.hand.transparent = false
+                player.hand.player = undefined
+
+                if (data.inputId == 'throw') {
+                    player.hand.impulse(10, player.movementAngle);
+                    player.hand.velZ = 10;
+                }
+
                 player.hand = undefined
-                pickup.object.player = undefined
             }
         }
     }
@@ -269,26 +275,43 @@ var NetworkCell = (initPack = {}) => {
 
 ///// OBJECTS /////
 
-var SmashEntity = (initPack = {}) => {
+var LebacEntity = (initPack = {}) => {
     var self = Entity({
+        z: 0,
+        velZ: 0,
+        accZ: 0,
         ...RectangleBodyParameters,
         ...initPack
     });
+
+    var superSelf = {
+        updatePack: self.updatePack
+    }
+
+    self.updatePack = () => {
+        return {
+            z: self.z,
+            ...superSelf.updatePack()
+        }
+    }
+
     return self;
 }
 
 var Player = (initPack = {}) => {
-    var self = SmashEntity({
+    var self = LebacEntity({
 
         maxAcc: 10,
         jumpAcc: 20,
         jumpCounter: 0,
-        width: 45,
+        width: 35,
         height: 20,
 
         objectType: 'PLAYER',
         rotation: Math.PI / 2,
         color: SpoolMath.randomHsvColor(0.5, 0.8),
+
+        z: 0,
         ...initPack
     });
 
@@ -326,6 +349,7 @@ var Player = (initPack = {}) => {
             }
         },
         self.update = () => {
+            self.z = 0;
             self.updateInputVel();
             superSelf.update();
             if (self.hand) {
@@ -362,7 +386,7 @@ var Ground = (initPack = {}) => {
 }
 
 var Wall = (initPack = {}) => {
-    var self = Entity({
+    var self = LebacEntity({
         objectType: 'WALL',
         ...initPack
     });
@@ -380,7 +404,7 @@ var Wall = (initPack = {}) => {
 }
 
 var NetworkEntity = (initPack = {}) => {
-    var self = Entity({
+    var self = LebacEntity({
         active: false,
         networkActivatable: true,
         width: GRID_SIZE,
@@ -642,10 +666,14 @@ var Doors = (initPack = {}) => {
 }
 
 var Cube = (initPack = {}) => {
-    var self = Entity({
+    var self = LebacEntity({
         objectType: 'CUBE',
         ...initPack
     });
+
+    var superSelf = {
+        update: self.update
+    }
 
     self.width = 48;
     self.height = 32;
@@ -653,6 +681,29 @@ var Cube = (initPack = {}) => {
     self.rotation = Math.PI / 2;
     self.color = self.color = SpoolMath.randomHsvColor(0.5, 0.8);
     self.static = false;
+
+    self.update = () => {
+        if (self.player) {
+            self.z = 10
+        } else if (self.z > 0) {
+            self.accZ = -1
+
+
+        }
+
+        if (self.z <= 0) {
+            self.accZ = 0;
+            self.velX = 0;
+            self.velY = 0;
+            self.velZ = 0;
+            self.z = 0;
+        }
+
+        self.velZ += self.accZ;
+        self.z += self.velZ;
+
+        superSelf.update()
+    }
 
     self.gridColRemoval = true;
 
@@ -673,6 +724,7 @@ var collisionManager = CollisionManager({
             b: ['BUTTON'],
             notSolid: true,
             func: (a, b, col) => {
+                a.z = 4
                 b.activate()
             }
         },
@@ -688,8 +740,10 @@ var collisionManager = CollisionManager({
             a: ['CUBE'],
             b: ['WALL', 'DOORS'],
             func: (a, b, col) => {
-                a.x = a.player.x
-                a.y = a.player.y
+                if (a.player) {
+                    a.x = a.player.x
+                    a.y = a.player.y
+                }
             }
         },
         {

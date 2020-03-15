@@ -67,9 +67,102 @@ var NetworkGateEntity = (initObject = {}) => {
     return self;
 }
 
+var Wall = (initObject = {}) => {
+    var self = SpriteEntity(initObject);
+
+    self.isInBounds = (ctx, camera, tx, ty) => {
+        var x = self.x
+        var y = self.y
+        var width = self.width;
+        var height = self.height;
+
+        if (self.clientOffsetX) {
+            x -= self.clientOffsetX
+        } else {
+            x -= self.width / 2
+        }
+        if (self.clientOffsetY) {
+            y += self.clientOffsetY
+        } else {
+            y += self.height / 2
+        }
+        if (self.clientWidth) {
+            width = self.clientWidth;
+        }
+        if (self.clientHeight) {
+            height = self.clientHeight
+        }
+
+        var offsetX = 500
+        var offsetY = offsetX
+
+        if (x - offsetX < tx && tx < x + width + offsetX) {
+            if (y - height - offsetY < ty && ty < y + offsetY) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    self.render = (ctx, camera) => {
+
+
+
+        if (false && !self.isInBounds(ctx, camera, client.clientObject.x, client.clientObject.y)) {
+            self.renderSprite(ctx, camera);
+        } else {
+            self.renderSprite(ctx, camera, self.texture.sprites[self.textureId + 16])
+            // ctx.globalAlpha = 0.5
+            // self.renderSprite(ctx, camera);
+            // ctx.globalAlpha = 1
+        }
+    }
+
+
+
+    return self;
+}
+
+var LebacSpriteEntity = (initObject = {}) => {
+    var self = SpriteEntity(initObject);
+
+    var superSelf = {
+        update: self.update
+    }
+
+    self.baseOffsetY = self.clientOffsetY
+
+    self.update = (data) => {
+        superSelf.update(data);
+
+        self.clientOffsetY = self.baseOffsetY + self.z
+    }
+
+    return self;
+}
+
+var LebacAnimationEntity = (initObject = {}) => {
+    var self = MovementAnimationEntity(initObject);
+
+    var superSelf = {
+        update: self.update
+    }
+
+    self.baseOffsetY = self.clientOffsetY
+
+    self.update = (data) => {
+        superSelf.update(data);
+
+        self.clientOffsetY = self.baseOffsetY + self.z
+    }
+
+    return self;
+}
+
 var OBJECTS = {
     'PLAYER': {
-        const: MovementAnimationEntity,
+        const: LebacAnimationEntity,
         defs: {
             clientWidth: 45,
             clientHeight: 78,
@@ -86,7 +179,7 @@ var OBJECTS = {
         }
     },
     'WALL': {
-        const: SpriteEntity,
+        const: Wall,
         defs: {
             clientWidth: 64,
             clientHeight: 128,
@@ -119,7 +212,7 @@ var OBJECTS = {
         const: NetworkGateEntity
     },
     'CUBE': {
-        const: SpriteEntity,
+        const: LebacSpriteEntity,
         defs: {
             clientWidth: 48,
             clientHeight: 76,
@@ -169,7 +262,7 @@ textureManager = TextureManager({
     },
     'wall': {
         src: './textures/walls.png',
-        r: 4,
+        r: 8,
         c: 4
     },
     'doors': {
@@ -221,7 +314,7 @@ textureManager = TextureManager({
         x: 0,
         y: 0,
         xx: 3,
-        yy: 3
+        yy: 7
     },
     'DOORS': {
         src: 'doors',
@@ -275,13 +368,24 @@ var init = () => {
                 inputId: 'use',
                 value: true
             });
+        } else if (event.keyCode === 81) {
+            keyListener.socket.emit(MessageCodes.SM_KEY_PRESS, {
+                inputId: 'throw',
+                value: true
+            });
         }
+
     }
 
     keyListener.onKeyUp = (event) => {
         if (event.keyCode === 69) {
             keyListener.socket.emit(MessageCodes.SM_KEY_PRESS, {
                 inputId: 'use',
+                value: false
+            });
+        } else if (event.keyCode === 81) {
+            keyListener.socket.emit(MessageCodes.SM_KEY_PRESS, {
+                inputId: 'throw',
                 value: false
             });
         }
