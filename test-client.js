@@ -1,5 +1,10 @@
 //// OBJECTS ////
 
+var GLOBAL = {
+    textureManager: null,
+    client: null
+}
+
 var NetworkTileEntity = (initObject = {}) => {
     var self = SpriteEntity(initObject);
 
@@ -27,6 +32,36 @@ var NetworkSpriteEntity = (initObject = {}) => {
         }
         self.renderSprite(ctx, camera, sprite = self.texture.sprites[tid]);
 
+    }
+
+    return self;
+}
+
+var NetworkGateEntity = (initObject = {}) => {
+    var self = SpriteEntity(initObject);
+
+    self.inactiveTextureId = 1;
+    self.activeTextureId = 5;
+
+    if (self.gateType == 'AND') {
+        self.inactiveTextureId += 0
+        self.activeTextureId += 0
+    } else if (self.gateType == 'XOR') {
+        self.inactiveTextureId += 1
+        self.activeTextureId += 1
+    } else if (self.gateType == 'OR') {
+        self.inactiveTextureId += 2
+        self.activeTextureId += 2
+    }
+
+
+    self.render = (ctx, camera) => {
+        self.renderSprite(ctx, camera)
+        if (self.active) {
+            self.renderSprite(ctx, camera, GLOBAL.textureManager.getSprite('ioelements_spritesheet', self.activeTextureId))
+        } else {
+            self.renderSprite(ctx, camera, GLOBAL.textureManager.getSprite('ioelements_spritesheet', self.inactiveTextureId))
+        }
     }
 
     return self;
@@ -78,6 +113,9 @@ var OBJECTS = {
             clientOffsetX: 32,
             clientOffsetY: 96
         }
+    },
+    'LOGIC_GATE': {
+        const: NetworkGateEntity
     }
 }
 
@@ -127,6 +165,11 @@ textureManager = TextureManager({
         src: './textures/doors.png',
         c: 4,
         r: 8
+    },
+    'connectors': {
+        src: './textures/connectors.png',
+        c: 4,
+        r: 4
     }
 }, {
     'GROUND': {
@@ -171,10 +214,18 @@ textureManager = TextureManager({
         xx: 3,
         yy: 7
     },
+    'LOGIC_GATE': {
+        src: 'connectors',
+        x: 0,
+        y: 0,
+        xx: 3,
+        yy: 3
+    }
 
 
 })
 
+GLOBAL.textureManager = (textureManager);
 client.handler.textureManager = (textureManager);
 
 ////// CAMERA //////
@@ -194,6 +245,24 @@ var init = () => {
 
     keyListener = KeyboardListener(client.socket)
     keyListener.initListener()
+
+    keyListener.onKeyDown = (event) => {
+        if (event.keyCode === 69) {
+            keyListener.socket.emit(MessageCodes.SM_KEY_PRESS, {
+                inputId: 'use',
+                value: true
+            });
+        }
+    }
+
+    keyListener.onKeyUp = (event) => {
+        if (event.keyCode === 69) {
+            keyListener.socket.emit(MessageCodes.SM_KEY_PRESS, {
+                inputId: 'use',
+                value: false
+            });
+        }
+    }
 }
 
 textureManager.onLoad = init;

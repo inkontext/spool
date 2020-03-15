@@ -24,8 +24,11 @@ var GRID_SIZE = 64;
 var server = Server({
     port: 4000,
     TPS: 55,
-    chunkSize: 400,
+    chunkSize: 400
 }, ['/', '/textures'])
+
+
+
 
 ////// NETWORK //////
 
@@ -57,10 +60,10 @@ var Network = () => {
         return null;
     }
 
-    self.setValue = (x, y, object, value) => {
+    self.setValue = (x, y, object, value, direction = null) => {
         var cell = self.getCell(x, y);
         if (cell) {
-            cell.setValue(object, value);
+            cell.setValue(object, value, direction);
         }
     }
 
@@ -76,26 +79,20 @@ var Network = () => {
     return self;
 }
 
-var NetworkCell = (initPack = {}) => {
-    var self = {
-        x: 0,
-        y: 0,
-        network: 0,
-        connectionLeft: false,
-        connectionRight: false,
-        connectionUp: false,
-        connectionDown: false,
-        activeObjects: {},
-        active: false,
-        connectedObjects: [],
+var NetworkConnection = () => {
 
-        ...initPack
+    var self = {
+        connected: false,
+        input: false,
+        active: false,
+        output: false,
+
+        activeObjects: {},
+
     }
 
     self.setValue = (object, value) => {
-
         var new_value = false;
-
         if (value) {
             if (!(object.id in self.activeObjects)) {
                 self.activeObjects[object.id] = {
@@ -116,27 +113,123 @@ var NetworkCell = (initPack = {}) => {
             }
         }
 
-        if (new_value) {
-            for (var i = 0; i < self.connectedObjects.length; i++) {
-                if (self.connectedObjects[i].networkActivatable) {
-                    self.connectedObjects[i].setActive(self.active);
+        return new_value;
+    }
+
+    self.setIO = (value) => {
+        self.input = value
+        self.output = value
+    }
+
+    self.setIONeg = (value) => {
+        self.input = value
+        self.output = !value
+    }
+
+    self.toStr = () => {
+        return `[I: ${self.input}, O:${self.output}, A:${self.active}]`
+    }
+
+    return self;
+}
+
+var NetworkCell = (initPack = {}) => {
+    var self = {
+        x: 0,
+        y: 0,
+        network: 0,
+        connectionLeft: NetworkConnection(),
+        connectionRight: NetworkConnection(),
+        connectionUp: NetworkConnection(),
+        connectionDown: NetworkConnection(),
+
+        activeObjects: {},
+        objectActive: false,
+
+        active: false,
+        connectedObjects: [],
+
+        ...initPack
+    }
+
+    self.activationFunction = (self, l, u, r, b, o) => {
+        return l || u || r || b || o;
+    }
+
+
+    self.output = (self, object, value) => {
+        if (self.connectionLeft.output) {
+            self.network.setValue(self.x - 1, self.y, object, value, 2)
+        }
+        if (self.connectionRight.output) {
+            self.network.setValue(self.x + 1, self.y, object, value, 0)
+        }
+        if (self.connectionUp.output) {
+            self.network.setValue(self.x, self.y - 1, object, value, 3)
+        }
+        if (self.connectionDown.output) {
+            self.network.setValue(self.x, self.y + 1, object, value, 1)
+        }
+    }
+
+    self.currentForward = (self, object, value) => {
+        for (var i = 0; i < self.connectedObjects.length; i++) {
+            if (self.connectedObjects[i].networkActivatable) {
+                self.connectedObjects[i].setActive(self.active);
+            }
+        }
+        self.output(self, object, value);
+    }
+
+    self.setValue = (object, value, direction) => {
+        var new_value = false;
+
+        if ((direction == 0 && self.connectionLeft.input) ||
+            (direction == 1 && self.connectionUp.input) ||
+            (direction == 2 && self.connectionRight.input) ||
+            (direction == 3 && self.connectionDown.input) || !direction) {
+
+
+            if (direction == 0) {
+                new_value = self.connectionLeft.setValue(object, value)
+            } else if (direction == 1) {
+                new_value = self.connectionUp.setValue(object, value)
+            } else if (direction == 2) {
+                new_value = self.connectionRight.setValue(object, value)
+            } else if (direction == 3) {
+                new_value = self.connectionDown.setValue(object, value)
+            } else {
+                if (value) {
+                    if (!(object.id in self.activeObjects)) {
+                        self.activeObjects[object.id] = {
+                            id: object.id,
+                            valueUpdated: Date.now(),
+                            value: true
+                        }
+                        new_value = true;
+                    }
+                    self.objectActive = true;
+                } else {
+                    if (object.id in self.activeObjects) {
+                        delete self.activeObjects[object.id]
+                        new_value = true;
+                    }
+                    if (Object.keys(self.activeObjects).length == 0) {
+                        self.objectActive = false;
+                    }
                 }
             }
 
-            if (self.connectionLeft) {
-                self.network.setValue(self.x - 1, self.y, object, value)
-            }
-            if (self.connectionRight) {
-                self.network.setValue(self.x + 1, self.y, object, value)
-            }
-            if (self.connectionUp) {
-                self.network.setValue(self.x, self.y - 1, object, value)
-            }
-            if (self.connectionDown) {
-                self.network.setValue(self.x, self.y + 1, object, value)
-            }
+            self.active = self.activationFunction(self, self.connectionLeft.active, self.connectionUp.active, self.connectionRight.active, self.connectionDown.active, self.objectActive)
 
+            if (new_value) {
+                self.currentForward(self, object, value)
+            }
         }
+    }
+
+    self.toStr = () => {
+        return `l ${self.connectionLeft.toStr()} + u ${self.connectionUp.toStr()} + r ${self.connectionRight.toStr()} + d ${self.connectionDown.toStr()}`
     }
 
     self.update = () => {
@@ -328,11 +421,131 @@ var Cable = (initPack = {}) => {
 
     self.onGridColRemoval = () => {
         var cell = NETWORK.connect(self)
-        cell.connectionLeft = !self.connections[self.textureId][0]
-        cell.connectionUp = !self.connections[self.textureId][1]
-        cell.connectionRight = !self.connections[self.textureId][2]
-        cell.connectionDown = !self.connections[self.textureId][3]
+
+        cell.connectionLeft.setIO(!self.connections[self.textureId][0])
+        cell.connectionLeft.connected = !self.connections[self.textureId][0];
+        cell.connectionUp.setIO(!self.connections[self.textureId][1])
+        cell.connectionUp.connected = !self.connections[self.textureId][1]
+        cell.connectionRight.setIO(!self.connections[self.textureId][2])
+        cell.connectionRight.connected = !self.connections[self.textureId][2]
+        cell.connectionDown.setIO(!self.connections[self.textureId][3])
+        cell.connectionDown.connected = !self.connections[self.textureId][3]
+
     }
+
+    return self;
+}
+
+var LogicalGate = (initPack = {}) => {
+    var self = NetworkEntity({
+        objectType: "LOGIC_GATE",
+        networkActivatable: true,
+        connections: [
+            [true, true, true, true],
+            [true, false, true, false],
+            [false, true, false, true],
+            [false, true, true, true],
+
+            [true, true, false, false],
+            [false, true, false, false],
+            [false, true, true, false],
+            [true, false, true, true],
+
+            [true, false, false, false],
+            [false, false, false, false],
+            [false, false, true, false],
+            [true, true, false, true],
+
+            [true, false, false, true],
+            [false, false, false, true],
+            [false, false, true, true],
+            [true, true, true, false]
+        ],
+        ...initPack
+    });
+
+    var superSelf = {
+        initPack: self.initPack
+    }
+
+    self.static = false;
+
+
+    self.activationFunctionAnd = (cell_self, l, u, r, b, o) => {
+        var resl = (!cell_self.connectionLeft.input || l || !cell_self.connectionLeft.connected)
+        var resu = (!cell_self.connectionUp.input || u || !cell_self.connectionUp.connected)
+        var resr = (!cell_self.connectionRight.input || r || !cell_self.connectionRight.connected)
+        var resb = (!cell_self.connectionDown.input || b || !cell_self.connectionDown.connected)
+
+        var res = (resl && resu && resb && resr) || o
+        self.active = res;
+        return res;
+    }
+
+    self.activationFunctionOr = (cell_self, l, u, r, b, o) => {
+        var resl = (cell_self.connectionLeft.input && l && cell_self.connectionLeft.connected)
+        var resu = (cell_self.connectionUp.input && u && cell_self.connectionUp.connected)
+        var resr = (cell_self.connectionRight.input && r && cell_self.connectionRight.connected)
+        var resb = (cell_self.connectionDown.input && b && cell_self.connectionDown.connected)
+
+        var res = (resl || resu || resb || resr) || o
+        self.active = res;
+        return res;
+    }
+
+    self.onGridColRemoval = () => {
+        var cell = NETWORK.connect(self)
+
+        cell.connectionLeft.setIONeg(self.connections[self.textureId][0])
+        cell.connectionUp.setIONeg(self.connections[self.textureId][1])
+        cell.connectionRight.setIONeg(self.connections[self.textureId][2])
+        cell.connectionDown.setIONeg(self.connections[self.textureId][3])
+
+        if (self.gateType == 'AND') {
+            cell.activationFunction = self.activationFunctionAnd
+        } else if (self.gateType == 'OR') {
+            cell.activationFunction = self.activationFunctionOr
+        }
+
+        cell.currentForward = (cell_self, object, value) => {
+            for (var i = 0; i < cell_self.connectedObjects.length; i++) {
+                if (cell_self.connectedObjects[i].networkActivatable) {
+                    cell_self.connectedObjects[i].setActive(cell_self.active);
+                }
+            }
+            cell_self.output(cell_self, self, self.active);
+        }
+    }
+
+    self.getColTextureId = (array) => {
+        for (var j = 0; j < self.colTexturingMap.length; j++) {
+            var map = self.colTexturingMap[j];
+
+            var mismatch = false;
+
+            for (var i = 0; i < array.length; i++) {
+                if (map[i] !== array[i]) {
+                    mismatch = true;
+                    break;
+                }
+            }
+
+            if (!mismatch) {
+                return j;
+            }
+        }
+
+        return 0;
+    }
+
+    self.initPack = () => {
+        return {
+            gateType: self.gateType,
+            ...superSelf.initPack()
+        }
+    }
+
+    self.gridColRemoval = true;
 
     return self;
 }
@@ -393,7 +606,6 @@ var Doors = (initPack = {}) => {
 
     self.onActiveChanged = (active) => {
         self.transparent = active;
-        console.log(self.transparent)
     }
 
     self.gridColRemoval = true;
@@ -438,6 +650,20 @@ var objSpawner = ObjectSpawner(server.handler, {
     },
     'DOORS': {
         const: Doors
+    },
+    'GATE_AND': {
+        const: LogicalGate,
+        gridColRemovalSiblings: ['GATE_IO'],
+        defs: {
+            gateType: "AND"
+        }
+    },
+    'GATE_OR': {
+        const: LogicalGate,
+        gridColRemovalSiblings: ['GATE_IO'],
+        defs: {
+            gateType: "OR"
+        }
     }
 })
 
@@ -447,30 +673,35 @@ objSpawner.gy = GRID_SIZE;
 NETWORK = Network()
 
 
-FileReader.readImage('./maps/smash-cables.png', (data) => {
+FileReader.readImage('./maps/lebac_cables.png', (data) => {
 
     NETWORK.init(data.shape[0], data.shape[1])
 
-    objSpawner.spawnFromImageMap('./maps/smash-cables.png', {
+    objSpawner.spawnFromImageMap('./maps/lebac_cables.png', {
         'ff0000': 'CABLE'
+    }, () => {
+        objSpawner.spawnFromImageMap('./maps/lebac_gates.png', {
+            'ff00ff': 'GATE_AND',
+            '7bac3a': 'GATE_OR',
+            '555555': 'GATE_IO'
+        }, () => {
+            objSpawner.spawnFromImageMap('./maps/lebac_objects.png', {
+                '000000': 'GROUND',
+                'ffffff': 'WALL',
+                'ff0000': 'CABLE',
+                '0000ff': 'BUTTON',
+                '00ff00': 'DOORS',
+            }, () => {
+                objSpawner.addZones('./maps/lebac_zones.png', {
+                    'ff8484': "SPAWN"
+                }, () => {
+                    server.onPlayerSpawn = (player) => {
+                        Object.assign(player, objSpawner.getRandomPositionInZone('SPAWN'))
+                    }
+                })
+            })
+        })
     })
-
-    objSpawner.spawnFromImageMap('./maps/smash-objects.png', {
-        '000000': 'GROUND',
-        'ffffff': 'WALL',
-        'ff0000': 'CABLE',
-        '0000ff': 'BUTTON',
-        '00ff00': 'DOORS',
-    })
-
-    objSpawner.addZones('./maps/smash-zones.png', {
-        'ff8484': "SPAWN"
-    })
-
-
-    server.onPlayerSpawn = (player) => {
-        Object.assign(player, objSpawner.getRandomPositionInZone('SPAWN'))
-    }
 });
 
 

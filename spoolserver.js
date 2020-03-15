@@ -111,6 +111,9 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
                 } else if (data.inputId === KI_MOV_DOWN) {
                     player.pressedDown = data.value;
                 }
+                if (self.keyEvent) {
+                    self.keyEvent(data, socket, player);
+                }
             });
 
             socket.on(SM_MOUSE_CLICKED, data => {
@@ -709,6 +712,18 @@ var ServerHandler = () => {
                 }
             }
         })
+
+        if (!res) {
+            for (key in self.chunks) {
+                var chunk = self.chunks[key];
+                var temp = chunk.getClosestObject(x, y, attributes);
+                if (temp) {
+                    if (res ? temp.distance < res.distance : true) {
+                        res = temp
+                    }
+                }
+            }
+        }
 
         return res;
     }
@@ -1453,25 +1468,33 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                             gridY: y
                         })
 
+                        var valueArray = [array[y][x]]
+
+                        if (pair.gridColRemovalSiblings) {
+                            valueArray = [array[y][x], ...pair.gridColRemovalSiblings]
+                        }
+
+
+
                         if (object.gridColRemoval) {
                             if (x > 0) {
-                                if (array[y][x - 1] == array[y][x]) {
+                                if (valueArray.includes(array[y][x - 1])) {
                                     object.leftColIgnore = true;
                                 }
                             }
                             if (x < array[y].length - 1) {
-                                if (array[y][x + 1] == array[y][x]) {
+                                if (valueArray.includes(array[y][x + 1])) {
                                     object.rightColIgnore = true;
                                 }
                             }
 
                             if (y > 0) {
-                                if (array[y - 1][x] == array[y][x]) {
+                                if (valueArray.includes(array[y - 1][x])) {
                                     object.topColIgnore = true;
                                 }
                             }
                             if (y < array.length - 1) {
-                                if (array[y + 1][x] == array[y][x]) {
+                                if (valueArray.includes(array[y + 1][x])) {
                                     object.bottomColIgnore = true;
                                 }
                             }
@@ -1549,7 +1572,7 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
 
     }
 
-    self.spawnFromImageMap = (fileName, colorToKey, gx = self.gx, gy = self.gy) => {
+    self.spawnFromImageMap = (fileName, colorToKey, callback, gx = self.gx, gy = self.gy) => {
         FileReader.readImage(fileName, (data) => {
 
             var array = [];
@@ -1577,7 +1600,11 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                 array.push(lineArray);
             }
 
+
+
             self.spawnFromKeyArray(array, gx, gy);
+
+            callback()
         });
     }
 
