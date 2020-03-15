@@ -22,7 +22,7 @@ var GRID_SIZE = 64;
 
 
 var server = Server({
-    port: 3000,
+    port: 4000,
     TPS: 55,
     chunkSize: 400,
 }, ['/', '/textures'])
