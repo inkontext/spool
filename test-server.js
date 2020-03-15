@@ -27,8 +27,24 @@ var server = Server({
     chunkSize: 400
 }, ['/', '/textures'])
 
-
-
+server.keyEvent = (data, socket, player) => {
+    if (data.inputId == 'use') {
+        var pickup = server.handler.getClosestObject(player.x, player.y, {
+            whitelist: ["CUBE"]
+        })
+        if (pickup != null) {
+            if (!player.hand && pickup.distance <= 60 && !data.value) {
+                pickup.object.transparent = true
+                player.hand = pickup.object
+                pickup.object.player = player
+            } else if (player.hand && !data.value) {
+                pickup.object.transparent = false
+                player.hand = undefined
+                pickup.object.player = undefined
+            }
+        }
+    }
+}
 
 ////// NETWORK //////
 
@@ -312,6 +328,16 @@ var Player = (initPack = {}) => {
         self.update = () => {
             self.updateInputVel();
             superSelf.update();
+            if (self.hand) {
+                self.hand.x = self.x
+                self.hand.y = self.y
+                if (self.calculatedVelX > 1) {
+                    self.hand.x += 40
+                }
+                if (self.calculatedVelX < -1) {
+                    self.hand.x -= 40
+                }
+            }
         }
 
     return self;
@@ -615,23 +641,68 @@ var Doors = (initPack = {}) => {
     return self;
 }
 
+var Cube = (initPack = {}) => {
+    var self = Entity({
+        objectType: 'CUBE',
+        ...initPack
+    });
+
+    self.width = 48;
+    self.height = 32;
+
+    self.rotation = Math.PI / 2;
+    self.color = self.color = SpoolMath.randomHsvColor(0.5, 0.8);
+    self.static = false;
+
+    self.gridColRemoval = true;
+
+    return self;
+}
+
 ////// COLLISION MANAGER ///////
 
 var collisionManager = CollisionManager({
     colPairs: [{
-        a: ['PLAYER'],
-        b: ['WALL', 'DOORS'],
-        solidException: (a, b) => {
-            return b.transparent
+            a: ['PLAYER'],
+            b: ['WALL', 'DOORS', 'CUBE'],
+            solidException: (a, b) => {
+                return b.transparent
+            }
+        }, {
+            a: ['PLAYER'],
+            b: ['BUTTON'],
+            notSolid: true,
+            func: (a, b, col) => {
+                b.activate()
+            }
+        },
+        {
+            a: ['CUBE'],
+            b: ['BUTTON'],
+            notSolid: true,
+            func: (a, b, col) => {
+                b.activate()
+            }
+        },
+        {
+            a: ['CUBE'],
+            b: ['WALL', 'DOORS'],
+            func: (a, b, col) => {
+                a.x = a.player.x
+                a.y = a.player.y
+            }
+        },
+        {
+            a: ['CUBE'],
+            b: ['CUBE'],
+            func: (a, b, col) => {
+                if (a.player) {
+                    a.x = a.player.x
+                    a.y = a.player.y
+                }
+            }
         }
-    }, {
-        a: ['PLAYER'],
-        b: ['BUTTON'],
-        notSolid: true,
-        func: (a, b, col) => {
-            b.activate()
-        }
-    }]
+    ]
 }, server.handler);
 server.handler.addManager(collisionManager);
 
@@ -664,6 +735,9 @@ var objSpawner = ObjectSpawner(server.handler, {
         defs: {
             gateType: "OR"
         }
+    },
+    'CUBE': {
+        const: Cube
     }
 })
 
@@ -694,6 +768,7 @@ FileReader.readImage('./maps/lebac_cables.png', (data) => {
                 'ff0000': 'CABLE',
                 '0000ff': 'BUTTON',
                 '00ff00': 'DOORS',
+                'ab4000': 'CUBE'
             }, () => {
                 objSpawner.addZones('./maps/lebac_zones.png', {
                     'ff8484': "SPAWN"

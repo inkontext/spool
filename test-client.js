@@ -76,6 +76,7 @@ var OBJECTS = {
 
             clientOffsetX: 22.5,
             clientOffsetY: 78,
+            showBounds: false
         }
     },
     'GROUND': {
@@ -116,6 +117,16 @@ var OBJECTS = {
     },
     'LOGIC_GATE': {
         const: NetworkGateEntity
+    },
+    'CUBE': {
+        const: SpriteEntity,
+        defs: {
+            clientWidth: 48,
+            clientHeight: 76,
+            clientOffsetX: 24,
+            clientOffsetY: 60,
+            showBounds: false
+        }
     }
 }
 
@@ -170,6 +181,11 @@ textureManager = TextureManager({
         src: './textures/connectors.png',
         c: 4,
         r: 4
+    },
+    'cube': {
+        src: './textures/cube.png',
+        c: 1,
+        r: 1
     }
 }, {
     'GROUND': {
@@ -220,7 +236,14 @@ textureManager = TextureManager({
         y: 0,
         xx: 3,
         yy: 3
-    }
+    },
+    'CUBE': {
+        src: 'cube',
+        x: 0,
+        y: 0,
+        xx: 0,
+        yy: 0
+    },
 
 
 })
