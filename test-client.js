@@ -1,5 +1,10 @@
 //// OBJECTS ////
 
+var GLOBAL = {
+    textureManager: null,
+    client: null
+}
+
 var NetworkTileEntity = (initObject = {}) => {
     var self = SpriteEntity(initObject);
 
@@ -27,6 +32,36 @@ var NetworkSpriteEntity = (initObject = {}) => {
         }
         self.renderSprite(ctx, camera, sprite = self.texture.sprites[tid]);
 
+    }
+
+    return self;
+}
+
+var NetworkGateEntity = (initObject = {}) => {
+    var self = SpriteEntity(initObject);
+
+    self.inactiveTextureId = 8;
+    self.activeTextureId = 12;
+
+    if (self.gateType == 'AND') {
+        self.inactiveTextureId += 0
+        self.activeTextureId += 0
+    } else if (self.gateType == 'XOR') {
+        self.inactiveTextureId += 1
+        self.activeTextureId += 1
+    } else if (self.gateType == 'OR') {
+        self.inactiveTextureId += 2
+        self.activeTextureId += 2
+    }
+
+
+    self.render = (ctx, camera) => {
+        self.renderSprite(ctx, camera)
+        if (self.active) {
+            self.renderSprite(ctx, camera, GLOBAL.textureManager.getSprite('ioelements_spritesheet', self.activeTextureId))
+        } else {
+            self.renderSprite(ctx, camera, GLOBAL.textureManager.getSprite('ioelements_spritesheet', self.inactiveTextureId))
+        }
     }
 
     return self;
@@ -79,6 +114,9 @@ var OBJECTS = {
             clientOffsetX: 32,
             clientOffsetY: 96
         }
+    },
+    'LOGIC_GATE': {
+        const: NetworkGateEntity
     },
     'CUBE': {
         const: SpriteEntity,
@@ -139,6 +177,11 @@ textureManager = TextureManager({
         c: 4,
         r: 8
     },
+    'connectors': {
+        src: './textures/connectors.png',
+        c: 4,
+        r: 4
+    },
     'cube': {
         src: './textures/cube.png',
         c: 1,
@@ -168,9 +211,9 @@ textureManager = TextureManager({
     },
     'BUTTON': {
         src: 'ioelements_spritesheet',
-        x: 0,
+        x: 1,
         y: 0,
-        xx: 0,
+        xx: 1,
         yy: 1
     },
     'WALL': {
@@ -187,6 +230,13 @@ textureManager = TextureManager({
         xx: 3,
         yy: 7
     },
+    'LOGIC_GATE': {
+        src: 'connectors',
+        x: 0,
+        y: 0,
+        xx: 3,
+        yy: 3
+    },
     'CUBE': {
         src: 'cube',
         x: 0,
@@ -198,6 +248,7 @@ textureManager = TextureManager({
 
 })
 
+GLOBAL.textureManager = (textureManager);
 client.handler.textureManager = (textureManager);
 
 ////// CAMERA //////
@@ -225,7 +276,6 @@ var init = () => {
                 value: true
             });
         }
-
     }
 
     keyListener.onKeyUp = (event) => {

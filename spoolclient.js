@@ -90,6 +90,10 @@ var Client = (initObject) => {
                             ...data[key][i]
                         });
 
+                        if (!obj) {
+                            console.error(`Object ${key} doesn't return anything, check if constructor returns self.`)
+                        }
+
                         obj.clientInstance = self;
                         self.handler.add(obj)
                     }
@@ -405,8 +409,6 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
             var info = objectSheetInitObject[key];
             var spriteSheet = self.spriteSheets[info.src];
 
-            console.log(info.x, info.y, info.xx, info.yy)
-
             var x = SpoolMath.numberDefined(info.x) ? info.x : 0;
             var y = SpoolMath.numberDefined(info.y) ? info.y : 0;
             var xx = SpoolMath.numberDefined(info.xx) ? info.xx : spriteSheet.columns - 1;
@@ -429,7 +431,6 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
 
 
                     temp.title = key;
-                    console.log(temp.title, temp);
                     variants.push(temp);
                 }
             }
