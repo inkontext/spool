@@ -804,6 +804,25 @@ var Doors = (initPack = {}) => {
     return self;
 }
 
+var Semiwall = (initPack = {}) => {
+    var self = NetworkEntity({
+        objectType: 'SEMIWALL',
+        ...initPack
+    });
+
+    self.static = false;
+
+    self.onActiveChanged = (active) => {
+        self.transparent = active;
+    }
+
+    self.gridColRemoval = true;
+
+    self.cell = NETWORK.connect(self)
+
+    return self;
+}
+
 var Cube = (initPack = {}) => {
     var self = LebacEntity({
         objectType: 'CUBE',
@@ -884,7 +903,20 @@ var collisionManager = CollisionManager({
             }
             b.activate()
         }
-    }]
+     }, {
+        a: ['CUBE'],
+        b: ['SEMIWALL'],
+        func: (a, b, col) => {
+            if (a.player) {
+                if (a.player.hand) {
+                    a.player.hand.transparent = false
+                    a.player.hand = undefined
+                }
+                a.x = a.player.x
+                a.y = a.player.y
+            }
+        }
+     }]
 }, server.handler);
 server.handler.addManager(collisionManager);
 
@@ -945,6 +977,9 @@ var objSpawner = ObjectSpawner(server.handler, {
     },
     'CUBE': {
         const: Cube
+    },
+    'SEMIWALL': {
+        const: Semiwall
     }
 })
 
@@ -973,7 +1008,7 @@ FileReader.readImage('./maps/lebac_cables.png', (data) => {
     objSpawner.spawnFromImageMap('./maps/lebac_cables.png', {
         'ff0000': 'CABLE'
     }, () => {
-        objSpawner.spawnFromImageMap('./maps/lebac_gates.png', GATES_OBJECT_SPAWNER, () => {
+    objSpawner.spawnFromImageMap('./maps/lebac_gates.png', GATES_OBJECT_SPAWNER, () => {
             objSpawner.spawnFromImageMap('./maps/lebac_gates2.png', GATES_OBJECT_SPAWNER, () => {
                 objSpawner.spawnFromImageMap('./maps/lebac_gates3.png', GATES_OBJECT_SPAWNER, () => {
                     objSpawner.spawnFromImageMap('./maps/lebac_objects.png', {
