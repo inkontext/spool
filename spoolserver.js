@@ -1106,6 +1106,11 @@ var CollisionManager = (initPack, handler) => {
             };
             result.direction = closestIntersection.direction;
             return result;
+        } else {
+            result.point = {
+                x: a.px,
+                y: a.py
+            }
         }
         return result;
 
