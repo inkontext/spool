@@ -665,6 +665,25 @@ var Doors = (initPack = {}) => {
     return self;
 }
 
+var Semiwall = (initPack = {}) => {
+    var self = NetworkEntity({
+        objectType: 'SEMIWALL',
+        ...initPack
+    });
+
+    self.static = false;
+
+    self.onActiveChanged = (active) => {
+        self.transparent = active;
+    }
+
+    self.gridColRemoval = true;
+
+    self.cell = NETWORK.connect(self)
+
+    return self;
+}
+
 var Cube = (initPack = {}) => {
     var self = LebacEntity({
         objectType: 'CUBE',
@@ -755,6 +774,20 @@ var collisionManager = CollisionManager({
                     a.y = a.player.y
                 }
             }
+        },
+        {
+            a: ['CUBE'],
+            b: ['SEMIWALL'],
+            func: (a, b, col) => {
+                if (a.player) {
+                    if (a.player.hand) {
+                        a.player.hand.transparent = false
+                        a.player.hand = undefined
+                    }
+                    a.x = a.player.x
+                    a.y = a.player.y
+                }
+            }
         }
     ]
 }, server.handler);
@@ -792,6 +825,9 @@ var objSpawner = ObjectSpawner(server.handler, {
     },
     'CUBE': {
         const: Cube
+    },
+    'SEMIWALL': {
+        const: Semiwall
     }
 })
 
@@ -822,7 +858,8 @@ FileReader.readImage('./maps/lebac_cables.png', (data) => {
                 'ff0000': 'CABLE',
                 '0000ff': 'BUTTON',
                 '00ff00': 'DOORS',
-                'ab4000': 'CUBE'
+                'ab4000': 'CUBE',
+                '00ffcc': 'SEMIWALL'
             }, () => {
                 objSpawner.addZones('./maps/lebac_zones.png', {
                     'ff8484': "SPAWN"
