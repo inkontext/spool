@@ -887,8 +887,6 @@ var collisionManager = CollisionManager({
                         a.velZ = 0;
                     }
                 }
-
-
             }
         }, {
             a: ['PLAYER', 'CUBE'],
