@@ -8,6 +8,10 @@ var GLOBAL = {
 var NetworkTileEntity = (initObject = {}) => {
     var self = SpriteEntity(initObject);
 
+    if (self.objectType == 'DOORS') {
+        self.lowering = true;
+    }
+
     self.render = (ctx, camera) => {
         var tid = self.textureId;
 
@@ -16,6 +20,13 @@ var NetworkTileEntity = (initObject = {}) => {
         }
         self.renderSprite(ctx, camera, sprite = self.texture.sprites[tid]);
 
+        if (self.lowering) {
+            if (self.active) {
+                self.layer = 8
+            } else {
+                self.layer = 10
+            }
+        }
     }
 
     return self;
@@ -29,6 +40,7 @@ var NetworkSpriteEntity = (initObject = {}) => {
 
         if (self.active) {
             tid = 1
+
         }
         self.renderSprite(ctx, camera, sprite = self.texture.sprites[tid]);
 
@@ -52,15 +64,29 @@ var NetworkGateEntity = (initObject = {}) => {
     } else if (self.gateType == 'OR') {
         self.inactiveTextureId += 2
         self.activeTextureId += 2
+    } else if (self.gateType == 'NOR') {
+        self.inactiveTextureId += 3
+        self.activeTextureId += 3
+    } else if (self.gateType == 'TIMER') {
+        self.inactiveTextureId += 8
+        self.activeTextureId += 8
     }
 
 
     self.render = (ctx, camera) => {
+        var spriteOffset = 0;
         self.renderSprite(ctx, camera)
+
+        if (self.gateType == 'TIMER') {
+            if (self.timeLeft ? self.timeLeft > 0 : false) {
+                spriteOffset += parseInt(self.timeLeft)
+            }
+        }
+
         if (self.active) {
-            self.renderSprite(ctx, camera, GLOBAL.textureManager.getSprite('ioelements_spritesheet', self.activeTextureId))
+            self.renderSprite(ctx, camera, GLOBAL.textureManager.getSprite('ioelements_spritesheet', self.activeTextureId + spriteOffset))
         } else {
-            self.renderSprite(ctx, camera, GLOBAL.textureManager.getSprite('ioelements_spritesheet', self.inactiveTextureId))
+            self.renderSprite(ctx, camera, GLOBAL.textureManager.getSprite('ioelements_spritesheet', self.inactiveTextureId + spriteOffset))
         }
     }
 
@@ -199,6 +225,12 @@ var OBJECTS = {
             layer: 9
         }
     },
+    'CUBE_BUTTON': {
+        const: NetworkSpriteEntity,
+        defs: {
+            layer: 9
+        }
+    },
     'DOORS': {
         const: NetworkTileEntity,
         defs: {
@@ -258,7 +290,7 @@ textureManager = TextureManager({
     'ioelements_spritesheet': {
         src: './textures/ioelements.png',
         c: 4,
-        r: 4
+        r: 6
     },
     'wall': {
         src: './textures/walls.png',
@@ -304,6 +336,13 @@ textureManager = TextureManager({
     },
     'BUTTON': {
         src: 'ioelements_spritesheet',
+        x: 0,
+        y: 0,
+        xx: 0,
+        yy: 1
+    },
+    'CUBE_BUTTON': {
+        src: 'ioelements_spritesheet',
         x: 1,
         y: 0,
         xx: 1,
@@ -336,7 +375,7 @@ textureManager = TextureManager({
         y: 0,
         xx: 0,
         yy: 0
-    },
+    }
 
 
 })
