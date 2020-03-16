@@ -33,10 +33,12 @@ server.keyEvent = (data, socket, player) => {
             whitelist: ["CUBE"]
         })
         if (pickup != null) {
-            if (!player.hand && pickup.distance <= 60 && !data.value) {
+            if (!player.hand && pickup.distance <= 60 && !data.value && player.canPickUp) {
                 pickup.object.transparent = true
                 player.hand = pickup.object
                 pickup.object.player = player
+                pickup.object.x = player.x
+                pickup.object.y = player.y
             } else if (player.hand && !data.value) {
                 player.hand.transparent = false
                 player.hand.player = undefined
@@ -332,46 +334,48 @@ var Player = (initPack = {}) => {
      * Updates velocities from keyboard input
      */
     self.updateInputVel = () => {
-            // setting the basic values
-            if (!self.standStill) {
-                xVelocity = 0;
-                yVelocity = 0;
+        // setting the basic values
+        if (!self.standStill) {
+            xVelocity = 0;
+            yVelocity = 0;
 
-                if (self.pressedLeft || self.pressedRight || self.pressedUp || self.pressedDown) {
-                    if (self.pressedLeft) {
-                        xVelocity -= self.maxAcc;
-                    }
-                    if (self.pressedRight) {
-                        xVelocity += self.maxAcc;
-                    }
-                    if (self.pressedUp) {
-                        yVelocity += self.maxAcc;
-                    }
-                    if (self.pressedDown) {
-                        yVelocity -= self.maxAcc;
-                    }
+            if (self.pressedLeft || self.pressedRight || self.pressedUp || self.pressedDown) {
+                if (self.pressedLeft) {
+                    xVelocity -= self.maxAcc;
                 }
-
-                self.setVelVector('x-movement', [xVelocity, yVelocity]);
-            } else {
-                self.setVelVector('x-movement', [0, 0]);
+                if (self.pressedRight) {
+                    xVelocity += self.maxAcc;
+                }
+                if (self.pressedUp) {
+                    yVelocity += self.maxAcc;
+                }
+                if (self.pressedDown) {
+                    yVelocity -= self.maxAcc;
+                }
             }
-        },
-        self.update = () => {
-            self.z = 0;
-            self.updateInputVel();
-            superSelf.update();
-            if (self.hand) {
-                self.hand.x = self.x
-                self.hand.y = self.y
-                if (self.calculatedVelX > 1) {
-                    self.hand.x += 40
-                }
-                if (self.calculatedVelX < -1) {
-                    self.hand.x -= 40
-                }
+
+            self.setVelVector('x-movement', [xVelocity, yVelocity]);
+        } else {
+            self.setVelVector('x-movement', [0, 0]);
+        }
+    }
+
+    self.update = () => {
+        self.z = 0;
+        self.canPickUp = true;
+        self.updateInputVel();
+        superSelf.update();
+        if (self.hand) {
+            self.hand.x = self.x
+            self.hand.y = self.y
+            if (self.calculatedVelX > 1) {
+                self.hand.x += 40
+            }
+            if (self.calculatedVelX < -1) {
+                self.hand.x -= 40
             }
         }
+    }
 
     return self;
 }
@@ -849,6 +853,11 @@ var Cube = (initPack = {}) => {
 
         }
 
+
+
+        self.velZ += self.accZ;
+        self.z += self.velZ;
+
         if (self.z <= 0) {
             self.accZ = 0;
             self.velX = 0;
@@ -856,9 +865,6 @@ var Cube = (initPack = {}) => {
             self.velZ = 0;
             self.z = 0;
         }
-
-        self.velZ += self.accZ;
-        self.z += self.velZ;
 
         superSelf.update()
     }
@@ -871,53 +877,60 @@ var Cube = (initPack = {}) => {
 ////// COLLISION MANAGER ///////
 
 var collisionManager = CollisionManager({
-    colPairs: [{
-        a: ['PLAYER', 'CUBE'],
-        b: ['WALL', 'DOORS', 'CUBE'],
-        solidException: (a, b) => {
-            return b.transparent
-        },
-        func: (a, b, col) => {
-            if (a.player && !b.transparent) {
-                a.x = a.player.x
-                a.y = a.player.y
-            }
-        }
-    }, {
-        a: ['PLAYER', 'CUBE'],
-        b: ['BUTTON'],
-        notSolid: true,
-        func: (a, b, col) => {
-            if (a.objectType == 'PLAYER') {
-                a.z = 4;
-            }
-            b.activate()
-        }
-    }, {
-        a: ['CUBE'],
-        b: ['CUBE_BUTTON'],
-        notSolid: true,
-        func: (a, b, col) => {
-            if (a.objectType == 'PLAYER') {
-                a.z = 4;
-            }
-            b.activate()
-        }
-     }, {
-        a: ['CUBE'],
-        b: ['SEMIWALL'],
-        func: (a, b, col) => {
-            if (a.player) {
-                if (a.player.hand) {
-                    a.player.hand.transparent = false
-                    a.player.hand = undefined
+        colPairs: [{
+            a: ['PLAYER', 'CUBE'],
+            b: ['WALL', 'DOORS', 'CUBE'],
+            solidException: (a, b) => {
+                return b.transparent
+            },
+            func: (a, b, col) => {
+                if (a.player && !b.transparent) {
+                    a.x = a.player.x
+                    a.y = a.player.y
                 }
-                a.x = a.player.x
-                a.y = a.player.y
+
+                if (a.velZ > 0) {
+                    a.velZ = 0;
+                }
             }
-        }
-     }]
-}, server.handler);
+        }, {
+            a: ['PLAYER', 'CUBE'],
+            b: ['BUTTON'],
+            notSolid: true,
+            func: (a, b, col) => {
+                if (a.objectType == 'PLAYER') {
+                    a.z = 4;
+                }
+                b.activate()
+            }
+        }, {
+            a: ['CUBE'],
+            b: ['CUBE_BUTTON'],
+            notSolid: true,
+            func: (a, b, col) => {
+                if (a.objectType == 'PLAYER') {
+                    a.z = 4;
+                }
+                b.activate()
+            }
+        }, {
+            a: ['CUBE'],
+            b: ['SEMIWALL'],
+            func: (a, b, col) => {
+                if (a.objectType == 'CUBE') {
+                    if (a.player) {
+                        a.transparent = false
+                        if (a.player.hand) {
+                            delete a.player.hand
+                        }
+
+                        delete a.player
+                    }
+                }
+            }
+        }]
+    },
+    server.handler);
 server.handler.addManager(collisionManager);
 
 var objSpawner = ObjectSpawner(server.handler, {
@@ -1008,7 +1021,7 @@ FileReader.readImage('./maps/lebac_cables.png', (data) => {
     objSpawner.spawnFromImageMap('./maps/lebac_cables.png', {
         'ff0000': 'CABLE'
     }, () => {
-    objSpawner.spawnFromImageMap('./maps/lebac_gates.png', GATES_OBJECT_SPAWNER, () => {
+        objSpawner.spawnFromImageMap('./maps/lebac_gates.png', GATES_OBJECT_SPAWNER, () => {
             objSpawner.spawnFromImageMap('./maps/lebac_gates2.png', GATES_OBJECT_SPAWNER, () => {
                 objSpawner.spawnFromImageMap('./maps/lebac_gates3.png', GATES_OBJECT_SPAWNER, () => {
                     objSpawner.spawnFromImageMap('./maps/lebac_objects.png', {
@@ -1017,7 +1030,8 @@ FileReader.readImage('./maps/lebac_cables.png', (data) => {
                         '0000ff': 'BUTTON',
                         '00ff00': 'DOORS',
                         'ab4000': 'CUBE',
-                        'ff9000': 'CUBE_BUTTON'
+                        'ff9000': 'CUBE_BUTTON',
+                        '00ffcc': 'SEMIWALL',
                     }, () => {
                         objSpawner.addZones('./maps/lebac_zones.png', {
                             'ff8484': "SPAWN"
