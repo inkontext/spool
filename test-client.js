@@ -220,6 +220,16 @@ var OBJECTS = {
             clientOffsetY: 60,
             showBounds: false
         }
+    },
+    'SEMIWALL': {
+        const: NetworkTileEntity,
+        defs: {
+            clientWidth: 64,
+            clientHeight: 128,
+            clientOffsetX: 32,
+            clientOffsetY: 96,
+            showBounds: false
+        }
     }
 }
 
@@ -279,6 +289,11 @@ textureManager = TextureManager({
         src: './textures/cube.png',
         c: 1,
         r: 1
+    },
+    'semiwall': {
+        src: './textures/doors.png',
+        c: 4,
+        r: 8
     }
 }, {
     'GROUND': {
@@ -336,6 +351,13 @@ textureManager = TextureManager({
         y: 0,
         xx: 0,
         yy: 0
+    },
+    'SEMIWALL': {
+        src: 'semiwall',
+        x: 0,
+        y: 0,
+        xx: 3,
+        yy: 7
     },
 
 
