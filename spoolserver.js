@@ -883,6 +883,7 @@ var CollisionManager = (initPack, handler) => {
             for (var i = 0; i < self.colPairs.length; i++) {
 
                 var aType = self.colPairs[i].a;
+                var harsh = self.colPairs[i].harsh;
 
                 if (objectType == aType) {
 
@@ -909,7 +910,7 @@ var CollisionManager = (initPack, handler) => {
                                             var collision = self.objectRectCollision;
                                         }
 
-                                        var col = collision(a, b);
+                                        var col = collision(a, b, harsh);
 
                                         if (col) {
                                             if (col.result) {
@@ -1015,7 +1016,7 @@ var CollisionManager = (initPack, handler) => {
         }
     }
 
-    self.objectRectCollision = (a, b) => {
+    self.objectRectCollision = (a, b, harsh = false) => {
 
         var rx = parseInt(b.x - b.width / 2 - a.width / 2);
         var ry = parseInt(b.y - b.height / 2 - a.height / 2);
@@ -1106,12 +1107,14 @@ var CollisionManager = (initPack, handler) => {
             };
             result.direction = closestIntersection.direction;
             return result;
-        } else {
+        } else if (harsh) {
+
             result.point = {
                 x: a.px,
-                y: a.py
+                y: a.py,
             }
         }
+
         return result;
 
     }

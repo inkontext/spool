@@ -269,7 +269,7 @@ var NetworkCell = (initPack = {}) => {
         self.setValue(object, object.active, null);
 
         if (object.networkActivatable) {
-            object.active = self.active;
+            object.setActive(self.active);
         }
     }
 
@@ -590,8 +590,6 @@ var LogicalGate = (initPack = {}) => {
 
         var res = (resl || resu || resb || resr)
 
-        console.log(res);
-
 
         if (!self.timer && res != self.active) {
             self.timer = {
@@ -662,8 +660,6 @@ var LogicalGate = (initPack = {}) => {
 
         if (self.gateType == 'TIMER') {
             if (self.timer) {
-                console.log(Date.now() - self.timer.startTime);
-
 
                 self.timeLeft = Math.ceil((self.timer.time - Date.now() + self.timer.startTime) / 1000);
                 if (Date.now() - self.timer.startTime > self.timer.time) {
@@ -887,11 +883,12 @@ var collisionManager = CollisionManager({
                 if (a.player && !b.transparent) {
                     a.x = a.player.x
                     a.y = a.player.y
+                    if (a.velZ > 0) {
+                        a.velZ = 0;
+                    }
                 }
 
-                if (a.velZ > 0) {
-                    a.velZ = 0;
-                }
+
             }
         }, {
             a: ['PLAYER', 'CUBE'],
@@ -940,8 +937,17 @@ var objSpawner = ObjectSpawner(server.handler, {
     'WALL': {
         const: Wall
     },
-    'CABLE': {
-        const: Cable
+    'CABLE_R': {
+        const: Cable,
+        gridColRemovalSiblings: ['CABLE_Y']
+    },
+    'CABLE_G': {
+        const: Cable,
+        gridColRemovalSiblings: ['CABLE_Y']
+    },
+    'CABLE_Y': {
+        const: Cable,
+        gridColRemovalSiblings: ['CABLE_R', 'CABLE_G']
     },
     'BUTTON': {
         const: Button
@@ -1019,7 +1025,9 @@ FileReader.readImage('./maps/lebac_cables.png', (data) => {
     });
 
     objSpawner.spawnFromImageMap('./maps/lebac_cables.png', {
-        'ff0000': 'CABLE'
+        'ff0000': 'CABLE_R',
+        '00ff00': 'CABLE_G',
+        'ffff00': 'CABLE_Y',
     }, () => {
         objSpawner.spawnFromImageMap('./maps/lebac_gates.png', GATES_OBJECT_SPAWNER, () => {
             objSpawner.spawnFromImageMap('./maps/lebac_gates2.png', GATES_OBJECT_SPAWNER, () => {
@@ -1028,7 +1036,7 @@ FileReader.readImage('./maps/lebac_cables.png', (data) => {
                         'ffffff': 'WALL',
                         'ff0000': 'CABLE',
                         '0000ff': 'BUTTON',
-                        '00ff00': 'DOORS',
+                        '68dd01': 'DOORS',
                         'ab4000': 'CUBE',
                         'ff9000': 'CUBE_BUTTON',
                         '00ffcc': 'SEMIWALL',
