@@ -59,6 +59,7 @@ server.keyEvent = (data, socket, player) => {
 var Network = () => {
     self = {}
     self.cells = []
+    self.portals = {}
 
     self.init = (width, height) => {
         for (var y = 0; y < height; y++) {
@@ -98,6 +99,25 @@ var Network = () => {
             return cell;
         }
         return null;
+    }
+
+    self.addPortal = (portal) => {
+        var linkId = portal.portalColor[3];
+        if (!self.portals[linkId]) {
+            self.portals[linkId] = []
+        }
+        self.portals[linkId].push(portal);
+    }
+
+    self.getRandomPortalSibling = (portal) => {
+        linkId = portal.portalColor[3];
+        if (!self.portals[linkId]) {
+            return null;
+        }
+
+        return SpoolMath.randomChoice(self.portals[linkId].filter(value => {
+            return value.id != portal.id && value.active
+        }))
     }
 
     return self;
@@ -181,7 +201,7 @@ var NetworkCell = (initPack = {}) => {
     }
 
 
-    self.output = (self, object, value) => {
+    self.output = (self, object, value, direction) => {
         if (self.connectionLeft.output) {
             self.network.setValue(self.x - 1, self.y, object, value, 2)
         }
@@ -196,13 +216,13 @@ var NetworkCell = (initPack = {}) => {
         }
     }
 
-    self.currentForward = (self, object, value) => {
+    self.currentForward = (self, object, value, direction) => {
         for (var i = 0; i < self.connectedObjects.length; i++) {
             if (self.connectedObjects[i].networkActivatable) {
                 self.connectedObjects[i].setActive(self.active);
             }
         }
-        self.output(self, object, value);
+        self.output(self, object, value, direction);
     }
 
     self.setValue = (object, value, direction) => {
@@ -251,7 +271,7 @@ var NetworkCell = (initPack = {}) => {
 
 
             if (new_value || (lastActive != self.active)) {
-                self.currentForward(self, object, value)
+                self.currentForward(self, object, value, direction)
             }
         }
     }
@@ -269,7 +289,7 @@ var NetworkCell = (initPack = {}) => {
         self.setValue(object, object.active, null);
 
         if (object.networkActivatable) {
-            object.active = self.active;
+            object.setActive(self.active);
         }
     }
 
@@ -416,6 +436,8 @@ var Wall = (initPack = {}) => {
     return self;
 }
 
+//// NETWORK ////
+
 var NetworkEntity = (initPack = {}) => {
     var self = LebacEntity({
         active: false,
@@ -494,6 +516,66 @@ var Cable = (initPack = {}) => {
         cell.connectionDown.setIO(!self.connections[self.textureId][3])
         cell.connectionDown.connected = !self.connections[self.textureId][3]
 
+    }
+
+    return self;
+}
+
+var CableCross = (initPack = {}) => {
+    var self = NetworkEntity({
+        objectType: 'CABLE_CROSS',
+        connections: [
+            [true, true, true, true],
+            [true, false, true, false],
+            [false, true, false, true],
+            [false, true, true, true],
+
+            [true, true, false, false],
+            [false, true, false, false],
+            [false, true, true, false],
+            [true, false, true, true],
+
+            [true, false, false, false],
+            [false, false, false, false],
+            [false, false, true, false],
+            [true, true, false, true],
+
+            [true, false, false, true],
+            [false, false, false, true],
+            [false, false, true, true],
+            [true, true, true, false]
+        ],
+        ...initPack
+    });
+
+    self.cell = NETWORK.connect(self)
+
+    self.cell.connectionLeft.setIO(true)
+    self.cell.connectionLeft.connected = true;
+    self.cell.connectionUp.setIO(true)
+    self.cell.connectionUp.connected = true
+    self.cell.connectionRight.setIO(true)
+    self.cell.connectionRight.connected = true
+    self.cell.connectionDown.setIO(true)
+    self.cell.connectionDown.connected = true
+
+    self.cell.output = (self, object, value, direction) => {
+        if (direction == 0 || direction == 2) {
+            if (self.connectionLeft.output) {
+                self.network.setValue(self.x - 1, self.y, object, value, 2)
+            }
+            if (self.connectionRight.output) {
+                self.network.setValue(self.x + 1, self.y, object, value, 0)
+            }
+        }
+        if (direction == 1 || direction == 3) {
+            if (self.connectionUp.output) {
+                self.network.setValue(self.x, self.y - 1, object, value, 3)
+            }
+            if (self.connectionDown.output) {
+                self.network.setValue(self.x, self.y + 1, object, value, 1)
+            }
+        }
     }
 
     return self;
@@ -590,8 +672,6 @@ var LogicalGate = (initPack = {}) => {
 
         var res = (resl || resu || resb || resr)
 
-        console.log(res);
-
 
         if (!self.timer && res != self.active) {
             self.timer = {
@@ -662,8 +742,6 @@ var LogicalGate = (initPack = {}) => {
 
         if (self.gateType == 'TIMER') {
             if (self.timer) {
-                console.log(Date.now() - self.timer.startTime);
-
 
                 self.timeLeft = Math.ceil((self.timer.time - Date.now() + self.timer.startTime) / 1000);
                 if (Date.now() - self.timer.startTime > self.timer.time) {
@@ -744,48 +822,18 @@ var Button = (initPack = {}) => {
 }
 
 var CubeButton = (initPack = {}) => {
-    var self = NetworkEntity({
+    var self = Button({
         objectType: 'CUBE_BUTTON',
-        networkActivatable: false,
         ...initPack
     });
+    return self;
+}
 
-    var superSelf = {
-        update: self.update
-    }
-
-    self.static = false;
-
-    self.lastSent = false;
-
-    self.send = () => {
-        if (self.active != self.lastSent) {
-            self.cell.setValue(self, self.active);
-            self.lastSent = self.active;
-        }
-    }
-
-    self.update = () => {
-        superSelf.update()
-
-        self.active = self.buttonActive;
-        if (self.buttonActive) {
-            self.buttonActive = false;
-        } else {
-            self.send()
-        }
-    }
-
-    self.activate = () => {
-        if (self.cell) {
-            self.buttonActive = true;
-            self.send()
-        }
-    }
-
-    self.cell = NETWORK.connect(self)
-
-
+var PlayerButton = (initPack = {}) => {
+    var self = Button({
+        objectType: 'PLAYER_BUTTON',
+        ...initPack
+    });
     return self;
 }
 
@@ -874,6 +922,54 @@ var Cube = (initPack = {}) => {
     return self;
 }
 
+var Portal = (initPack = {}) => {
+    var self = NetworkEntity({
+        objectType: 'PORTAL',
+        ...initPack
+    });
+
+    var superSelf = {
+        initPack: self.initPack,
+        updatePack: self.updatePack,
+        update: self.update
+    }
+
+    self.static = false;
+
+    self.onActiveChanged = (active) => {
+        self.transparent = active;
+    }
+
+    self.gridColRemoval = true;
+
+    self.cell = NETWORK.connect(self)
+    NETWORK.addPortal(self)
+
+    self.update = () => {
+        superSelf.update()
+        if (self.deletePortedPlayerRecord && self.portedPlayer) {
+            self.portedPlayer = null;
+        }
+        self.deletePortedPlayerRecord = true
+    }
+
+    self.initPack = () => {
+        return {
+            portalColor: self.portalColor,
+            ...superSelf.initPack(),
+        }
+    }
+
+    self.updatePack = () => {
+        return {
+            ...superSelf.updatePack(),
+            active: self.active && !self.portedPlayer
+        }
+    }
+
+    return self;
+}
+
 ////// COLLISION MANAGER ///////
 
 var collisionManager = CollisionManager({
@@ -887,16 +983,15 @@ var collisionManager = CollisionManager({
                     if (a.player && !b.transparent) {
                         a.x = a.player.x
                         a.y = a.player.y
-                    }
-
-                    if (a.velZ > 0) {
-                        a.velZ = 0;
+                        if (a.velZ > 0) {
+                            a.velZ = 0;
+                        }
                     }
                 }
             }, {
                 a: ['PLAYER', 'CUBE'],
                 b: ['BUTTON'],
-                notSolid: true,
+                solid: false,
                 func: (a, b, col) => {
                     if (a.objectType == 'PLAYER') {
                         a.z = 4;
@@ -906,12 +1001,18 @@ var collisionManager = CollisionManager({
             }, {
                 a: ['CUBE'],
                 b: ['CUBE_BUTTON'],
-                notSolid: true,
+                solid: false,
+                func: (a, b, col) => {
+                    b.activate()
+                }
+            }, {
+                a: ['PLAYER'],
+                b: ['PLAYER_BUTTON'],
+                solid: false,
                 func: (a, b, col) => {
                     if (a.objectType == 'PLAYER') {
                         a.z = 4;
                     }
-                    b.activate()
                 }
             }, {
                 a: ['CUBE', 'PLAYER'],
@@ -942,9 +1043,33 @@ var collisionManager = CollisionManager({
             {
                 a: ['PLAYER'],
                 b: ['SEMIWALL'],
-                notSolid: true,
+                solid: false,
                 func: (a, b, col) => {
                     a.canPickUp = false
+                }
+
+            },
+            {
+                a: ['PLAYER'],
+                b: ['PORTAL'],
+                solid: false,
+                func: (a, b, col) => {
+                    if (b.active && !b.portedPlayer) {
+                        sibling = NETWORK.getRandomPortalSibling(b)
+                        if (sibling) {
+                            a.portingCoords = {
+                                from: b.id,
+                                to: sibling.id,
+                                x: sibling.x,
+                                y: sibling.y
+                            }
+                            a.x = sibling.x
+                            a.y = sibling.y
+                            sibling.portedPlayer = a.id
+                        }
+                    } else if (b.portedPlayer) {
+                        b.deletePortedPlayerRecord = false;
+                    }
                 }
             }
         ]
@@ -959,14 +1084,29 @@ var objSpawner = ObjectSpawner(server.handler, {
     'WALL': {
         const: Wall
     },
-    'CABLE': {
-        const: Cable
+    'CABLE_R': {
+        const: Cable,
+        gridColRemovalSiblings: ['CABLE_Y', 'CABLE_CROSS'],
+    },
+    'CABLE_G': {
+        const: Cable,
+        gridColRemovalSiblings: ['CABLE_Y', 'CABLE_CROSS']
+    },
+    'CABLE_Y': {
+        const: Cable,
+        gridColRemovalSiblings: ['CABLE_R', 'CABLE_G', 'CABLE_CROSS']
+    },
+    'CABLE_CROSS': {
+        const: CableCross
     },
     'BUTTON': {
         const: Button
     },
     'CUBE_BUTTON': {
         const: CubeButton
+    },
+    'PLAYER_BUTTON': {
+        const: PlayerButton
     },
     'DOORS': {
         const: Doors,
@@ -1014,14 +1154,25 @@ var objSpawner = ObjectSpawner(server.handler, {
         const: Semiwall,
         defs: {
             block: "player"
-        }
+        },
+        gridColRemovalSiblings: ['WALL']
     },
     'SEMIWALL_CUBE': {
         const: Semiwall,
         defs: {
             block: "cube"
+        },
+        gridColRemovalSiblings: ['WALL']
+    },
+    'PORTAL': {
+        const: Portal,
+        dependantConst: (spawner, colorValue) => {
+            return {
+                portalColor: colorValue
+            }
         }
     }
+
 })
 
 objSpawner.gx = GRID_SIZE;
@@ -1047,7 +1198,10 @@ FileReader.readImage('./maps/lebac_cables.png', (data) => {
     });
 
     objSpawner.spawnFromImageMap('./maps/lebac_cables.png', {
-        'ff0000': 'CABLE'
+        'ff0000': 'CABLE_R',
+        '00ff00': 'CABLE_G',
+        'ffff00': 'CABLE_Y',
+        '7e7e48': 'CABLE_CROSS'
     }, () => {
         objSpawner.spawnFromImageMap('./maps/lebac_gates.png', GATES_OBJECT_SPAWNER, () => {
             objSpawner.spawnFromImageMap('./maps/lebac_gates2.png', GATES_OBJECT_SPAWNER, () => {
@@ -1056,19 +1210,24 @@ FileReader.readImage('./maps/lebac_cables.png', (data) => {
                         'ffffff': 'WALL',
                         'ff0000': 'CABLE',
                         '0000ff': 'BUTTON',
-                        '00ff00': 'DOORS',
+                        '68dd01': 'DOORS',
                         'ab4000': 'CUBE',
                         'ff9000': 'CUBE_BUTTON',
-                        'ff000c': 'SEMIWALL_PLAYER',
+                        'f6c415': 'SEMIWALL_PLAYER',
                         '00ffcc': 'SEMIWALL_CUBE',
+                        '008aff': 'PLAYER_BUTTON'
                     }, () => {
-                        objSpawner.addZones('./maps/lebac_zones.png', {
-                            'ff8484': "SPAWN"
+                        objSpawner.spawnFromImageMap('./maps/lebac_portals.png', {
+                            'non-black': 'PORTAL'
                         }, () => {
-                            server.fullStart(Player);
-                            server.onPlayerSpawn = (player) => {
-                                Object.assign(player, objSpawner.getRandomPositionInZone('SPAWN'))
-                            }
+                            objSpawner.addZones('./maps/lebac_zones.png', {
+                                'ff8484': "SPAWN"
+                            }, () => {
+                                server.fullStart(Player);
+                                server.onPlayerSpawn = (player) => {
+                                    Object.assign(player, objSpawner.getRandomPositionInZone('SPAWN'))
+                                }
+                            })
                         })
                     })
                 })

@@ -97,6 +97,8 @@ var Client = (initObject) => {
                         obj.clientInstance = self;
                         self.handler.add(obj)
                     }
+                } else {
+                    console.error(`Object ${key} doesn't have a constructor`)
                 }
             }
 
@@ -1565,12 +1567,16 @@ var Entity = (initPack) => {
 
             var offsetBounds = camera.transformBounds(x, y, offsetX, offsetY);
 
-            return {
+            ctx.imageSmoothingEnabled = false;
+
+            finalBounds = {
                 x: bounds.x - offsetBounds.width,
                 y: bounds.y - offsetBounds.height,
                 width: bounds.width,
                 height: bounds.height
             }
+
+            return finalBounds
         }
 
         return bounds;

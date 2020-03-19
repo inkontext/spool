@@ -101,6 +101,13 @@ const SpoolMath = {
         return min + Math.round(Math.random() * (max - min));
     },
 
+    randomChoice: (array) => {
+        if (array.length == 0) {
+            return null;
+        }
+        return array[SpoolMath.randomInt(0, array.length - 1)];
+    },
+
     //// INTERVAL ////
 
     toHex: num => {

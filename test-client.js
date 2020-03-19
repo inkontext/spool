@@ -186,6 +186,25 @@ var LebacAnimationEntity = (initObject = {}) => {
     return self;
 }
 
+var Portal = (initObject = {}) => {
+    var self = NetworkSpriteEntity(initObject);
+
+    var superSelf = {
+        render: self.render
+    }
+
+    self.render = (ctx, camera) => {
+
+        ctx.fillStyle = '#' + self.portalColor[3];
+        bounds = camera.transformBounds(self.x - self.width / 2 + 4 * 4, self.y + self.height / 2 - 3 * 4, self.width - 8 * 4, self.height - 8 * 4)
+        ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+
+        superSelf.render(ctx, camera)
+    }
+
+    return self;
+}
+
 var OBJECTS = {
     'PLAYER': {
         const: LebacAnimationEntity,
@@ -219,6 +238,9 @@ var OBJECTS = {
             layer: 8
         }
     },
+    'CABLE_CROSS': {
+        const: SpriteEntity
+    },
     'BUTTON': {
         const: NetworkSpriteEntity,
         defs: {
@@ -226,6 +248,12 @@ var OBJECTS = {
         }
     },
     'CUBE_BUTTON': {
+        const: NetworkSpriteEntity,
+        defs: {
+            layer: 9
+        }
+    },
+    'PLAYER_BUTTON': {
         const: NetworkSpriteEntity,
         defs: {
             layer: 9
@@ -262,6 +290,12 @@ var OBJECTS = {
             clientOffsetY: 96,
             showBounds: false
         }
+    },
+    'PORTAL': {
+        const: Portal,
+        defs: {
+            layer: 9
+        }
     }
 }
 
@@ -295,12 +329,12 @@ textureManager = TextureManager({
     'cables_spritesheet': {
         src: './textures/cables.png',
         c: 4,
-        r: 8,
+        r: 9,
     },
     'ioelements_spritesheet': {
         src: './textures/ioelements.png',
         c: 4,
-        r: 6
+        r: 8
     },
     'wall': {
         src: './textures/walls.png',
@@ -323,7 +357,7 @@ textureManager = TextureManager({
         r: 1
     },
     'semiwall': {
-        src: './textures/doors.png',
+        src: './textures/semiwall.png',
         c: 4,
         r: 8
     }
@@ -349,6 +383,13 @@ textureManager = TextureManager({
         xx: 3,
         yy: 7
     },
+    'CABLE_CROSS': {
+        src: 'cables_spritesheet',
+        x: 0,
+        y: 8,
+        xx: 0,
+        yy: 8
+    },
     'BUTTON': {
         src: 'ioelements_spritesheet',
         x: 0,
@@ -361,6 +402,13 @@ textureManager = TextureManager({
         x: 1,
         y: 0,
         xx: 1,
+        yy: 1
+    },
+    'PLAYER_BUTTON': {
+        src: 'ioelements_spritesheet',
+        x: 2,
+        y: 0,
+        xx: 2,
         yy: 1
     },
     'WALL': {
@@ -398,6 +446,13 @@ textureManager = TextureManager({
         xx: 3,
         yy: 7
     },
+    'PORTAL': {
+        src: 'ioelements_spritesheet',
+        x: 0,
+        y: 6,
+        xx: 0,
+        yy: 7
+    }
 })
 
 GLOBAL.textureManager = (textureManager);
