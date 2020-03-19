@@ -843,7 +843,7 @@ var CollisionManager = (initPack, handler) => {
                     b: cpb,
                     func: cp.func,
                     exception: cp.exception,
-                    notSolid: cp.notSolid,
+                    solid: cp.solid !== undefined ? cp.solid : true,
                     solidException: cp.solidException
                 });
             })
@@ -914,7 +914,7 @@ var CollisionManager = (initPack, handler) => {
 
                                         if (col) {
                                             if (col.result) {
-                                                if (!self.colPairs[i].notSolid && col.point) {
+                                                if (self.colPairs[i].solid && col.point) {
                                                     if (self.colPairs[i].solidException ? !self.colPairs[i].solidException(a, b) : true) {
                                                         a.x = Math.round(col.point.x);
                                                         a.y = Math.round(col.point.y);
@@ -1271,7 +1271,7 @@ var InputManager = () => {
 
 var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
     var self = {
-        keyToConstAndDefs: keyToConstAndDefs, // keyToConstAndDefs[key] = {const: object's constructor - funcpointer, defs: initPack - {object}}
+        keyToConstAndDefs: keyToConstAndDefs, // keyToConstAndDefs[key] = {const: object's constructor - funcpointer, defs: initPack - {object}, }
         handler: handler,
         ...inputObject,
 
@@ -1462,18 +1462,25 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
         });
     }
 
-    self.spawnFromKeyArray = (array, gx = self.gx, gy = self.gy) => {
+    self.spawnFromKeyArray = (array, gx = self.gx, gy = self.gy, colorArray = null) => {
         for (var y = 0; y < array.length; y++) {
             for (var x = 0; x < array[y].length; x++) {
                 if (array[y][x]) {
                     var pair = keyToConstAndDefs[array[y][x]];
                     if (pair) {
+
+                        var dependantConst = {}
+                        if (pair.dependantConst) {
+                            dependantConst = pair.dependantConst(self, colorArray ? colorArray[y][x] : null)
+                        }
+
                         var object = pair.const({
                             ...pair.defs,
                             x: parseInt((x - array[y].length / 2) * gx),
                             y: parseInt((-y + array.length / 2) * gy),
                             gridX: x,
-                            gridY: y
+                            gridY: y,
+                            ...dependantConst
                         })
 
                         var valueArray = [array[y][x]]
@@ -1590,27 +1597,40 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
             var pixels = data.data;
             var shape = data.shape;
 
+            var nonBlack = colorToKey['non-black']
+            var colorArray = []
+
             for (var y = 0; y < shape[1]; y++) {
                 var lineArray = []
+                var colorLine = []
                 for (var x = 0; x < shape[0]; x++) {
                     var index = (y * shape[0] + x) * shape[2];
                     var r = pixels[index];
                     var g = pixels[index + 1];
                     var b = pixels[index + 2];
 
-                    var key = colorToKey[SpoolMath.rgbToHex(r, g, b)];
+                    var colorcode = SpoolMath.rgbToHex(r, g, b);
+                    var key = colorToKey[colorcode];
+
+                    if (nonBlack && !key && (r != 0 || g != 0 || b != 0)) {
+                        key = nonBlack
+                    }
+
                     if (key) {
                         lineArray.push(key);
                     } else {
                         lineArray.push(null);
                     }
+
+                    colorLine.push([r, g, b, colorcode])
                 }
                 array.push(lineArray);
+                colorArray.push(colorLine)
             }
 
 
 
-            self.spawnFromKeyArray(array, gx, gy);
+            self.spawnFromKeyArray(array, gx, gy, colorArray);
             if (callback) {
                 callback()
             }
