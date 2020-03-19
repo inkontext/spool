@@ -382,7 +382,6 @@ var Player = (initPack = {}) => {
 
     self.update = () => {
         self.z = 0;
-        self.canPickUp = true;
         self.updateInputVel();
         superSelf.update();
         if (self.hand) {
@@ -395,6 +394,7 @@ var Player = (initPack = {}) => {
                 self.hand.x -= 40
             }
         }
+        self.canPickUp = true;
     }
 
     return self;
@@ -974,85 +974,105 @@ var Portal = (initPack = {}) => {
 
 var collisionManager = CollisionManager({
         colPairs: [{
-            a: ['PLAYER', 'CUBE'],
-            b: ['WALL', 'DOORS', 'CUBE'],
-            solidException: (a, b) => {
-                return b.transparent
+                a: ['PLAYER', 'CUBE'],
+                b: ['WALL', 'DOORS', 'CUBE'],
+                solidException: (a, b) => {
+                    return b.transparent
+                },
+                func: (a, b, col) => {
+                    if (a.player && !b.transparent) {
+                        a.x = a.player.x
+                        a.y = a.player.y
+                        if (a.velZ > 0) {
+                            a.velZ = 0;
+                        }
+                    }
+                }
+            }, {
+                a: ['PLAYER', 'CUBE'],
+                b: ['BUTTON'],
+                solid: false,
+                func: (a, b, col) => {
+                    if (a.objectType == 'PLAYER') {
+                        a.z = 4;
+                    }
+                    b.activate()
+                }
+            }, {
+                a: ['CUBE'],
+                b: ['CUBE_BUTTON'],
+                solid: false,
+                func: (a, b, col) => {
+                    b.activate()
+                }
+            }, {
+                a: ['PLAYER'],
+                b: ['PLAYER_BUTTON'],
+                solid: false,
+                func: (a, b, col) => {
+                    if (a.objectType == 'PLAYER') {
+                        a.z = 4;
+                    }
+                }
+            }, {
+                a: ['CUBE', 'PLAYER'],
+                b: ['SEMIWALL'],
+                solidException: (a, b) => {
+                    if (a.objectType == 'PLAYER' && b.block == "player") {
+                        return false
+                    } else if (a.objectType == 'CUBE' && b.block == "cube") {
+                        return false
+                    } else {
+                        return true
+                    }
+                },
+                func: (a, b, col) => {
+                    if (a.objectType == 'CUBE' && b.block == "cube") {
+                        if (a.player) {
+                            a.transparent = false
+                            if (a.player.hand) {
+                                delete a.player.hand
+                                a.x = a.player.x
+                                a.y = a.player.y
+                            }
+                            delete a.player
+                        }
+                    }
+                }
             },
-            func: (a, b, col) => {
-                if (a.player && !b.transparent) {
-                    a.x = a.player.x
-                    a.y = a.player.y
-                    if (a.velZ > 0) {
-                        a.velZ = 0;
-                    }
+            {
+                a: ['PLAYER'],
+                b: ['SEMIWALL'],
+                solid: false,
+                func: (a, b, col) => {
+                    a.canPickUp = false
                 }
-            }
-        }, {
-            a: ['PLAYER', 'CUBE'],
-            b: ['BUTTON'],
-            solid: false,
-            func: (a, b, col) => {
-                if (a.objectType == 'PLAYER') {
-                    a.z = 4;
-                }
-                b.activate()
-            }
-        }, {
-            a: ['CUBE'],
-            b: ['CUBE_BUTTON'],
-            solid: false,
-            func: (a, b, col) => {
-                b.activate()
-            }
-        }, {
-            a: ['PLAYER'],
-            b: ['PLAYER_BUTTON'],
-            solid: false,
-            func: (a, b, col) => {
-                if (a.objectType == 'PLAYER') {
-                    a.z = 4;
-                }
-                b.activate()
-            }
-        }, {
-            a: ['CUBE'],
-            b: ['SEMIWALL'],
-            func: (a, b, col) => {
-                if (a.objectType == 'CUBE') {
-                    if (a.player) {
-                        a.transparent = false
-                        if (a.player.hand) {
-                            delete a.player.hand
-                        }
 
-                        delete a.player
-                    }
-                }
-            }
-        }, {
-            a: ['PLAYER'],
-            b: ['PORTAL'],
-            solid: false,
-            func: (a, b, col) => {
-                if (b.active && !b.portedPlayer) {
-                    sibling = NETWORK.getRandomPortalSibling(b)
-                    if (sibling) {
-                        a.portingCoords = {
-                            from: b.id,
-                            to: sibling.id,
-                            x: sibling.x,
-                            y: sibling.y
+            },
+            {
+                a: ['PLAYER'],
+                b: ['PORTAL'],
+                solid: false,
+                func: (a, b, col) => {
+                    if (b.active && !b.portedPlayer) {
+                        sibling = NETWORK.getRandomPortalSibling(b)
+                        if (sibling) {
+                            a.portingCoords = {
+                                from: b.id,
+                                to: sibling.id,
+                                x: sibling.x,
+                                y: sibling.y
+                            }
+                            a.x = sibling.x
+                            a.y = sibling.y
+                            sibling.portedPlayer = a.id
                         }
-                        a.x = sibling.x
-                        a.y = sibling.y
-                        sibling.portedPlayer = a.id
+                    } else if (b.portedPlayer) {
+                        b.deletePortedPlayerRecord = false;
                     }
-                } else if (b.portedPlayer) {
-                    b.deletePortedPlayerRecord = false;
                 }
             }
-        }]
+        ]
     },
     server.handler);
 server.handler.addManager(collisionManager);
@@ -1130,8 +1150,19 @@ var objSpawner = ObjectSpawner(server.handler, {
     'CUBE': {
         const: Cube
     },
-    'SEMIWALL': {
-        const: Semiwall
+    'SEMIWALL_PLAYER': {
+        const: Semiwall,
+        defs: {
+            block: "player"
+        },
+        gridColRemovalSiblings: ['WALL']
+    },
+    'SEMIWALL_CUBE': {
+        const: Semiwall,
+        defs: {
+            block: "cube"
+        },
+        gridColRemovalSiblings: ['WALL']
     },
     'PORTAL': {
         const: Portal,
@@ -1141,6 +1172,7 @@ var objSpawner = ObjectSpawner(server.handler, {
             }
         }
     }
+
 })
 
 objSpawner.gx = GRID_SIZE;
@@ -1181,8 +1213,9 @@ FileReader.readImage('./maps/lebac_cables.png', (data) => {
                         '68dd01': 'DOORS',
                         'ab4000': 'CUBE',
                         'ff9000': 'CUBE_BUTTON',
-                        '008aff': 'PLAYER_BUTTON',
-                        '00ffcc': 'SEMIWALL'
+                        'f6c415': 'SEMIWALL_PLAYER',
+                        '00ffcc': 'SEMIWALL_CUBE',
+                        '008aff': 'PLAYER_BUTTON'
                     }, () => {
                         objSpawner.spawnFromImageMap('./maps/lebac_portals.png', {
                             'non-black': 'PORTAL'
