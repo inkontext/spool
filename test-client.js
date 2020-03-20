@@ -150,6 +150,16 @@ var Wall = (initObject = {}) => {
     return self;
 }
 
+var Semiwall = (initObject = {}) => {
+    var self = NetworkTileEntity(initObject);
+
+    if (self.semiwallType == 'playerBlocker') {
+        self.textureId += 32;
+    }
+
+    return self;
+}
+
 var LebacSpriteEntity = (initObject = {}) => {
     var self = SpriteEntity(initObject);
 
@@ -239,7 +249,10 @@ var OBJECTS = {
         }
     },
     'CABLE_CROSS': {
-        const: SpriteEntity
+        const: SpriteEntity,
+        defs: {
+            layer: 8
+        }
     },
     'BUTTON': {
         const: NetworkSpriteEntity,
@@ -269,7 +282,10 @@ var OBJECTS = {
         }
     },
     'LOGIC_GATE': {
-        const: NetworkGateEntity
+        const: NetworkGateEntity,
+        defs: {
+            layer: 9
+        }
     },
     'CUBE': {
         const: LebacSpriteEntity,
@@ -282,7 +298,7 @@ var OBJECTS = {
         }
     },
     'SEMIWALL': {
-        const: NetworkTileEntity,
+        const: Semiwall,
         defs: {
             clientWidth: 64,
             clientHeight: 128,
@@ -295,6 +311,12 @@ var OBJECTS = {
         const: Portal,
         defs: {
             layer: 9
+        }
+    },
+    'SWITCH': {
+        const: NetworkSpriteEntity,
+        defs: {
+            layer: 10
         }
     }
 }
@@ -359,7 +381,7 @@ textureManager = TextureManager({
     'semiwall': {
         src: './textures/semiwall.png',
         c: 4,
-        r: 8
+        r: 16
     }
 }, {
     'GROUND': {
@@ -411,6 +433,13 @@ textureManager = TextureManager({
         xx: 2,
         yy: 1
     },
+    'SWITCH': {
+        src: 'ioelements_spritesheet',
+        x: 3,
+        y: 0,
+        xx: 3,
+        yy: 1
+    },
     'WALL': {
         src: 'wall',
         x: 0,
@@ -444,7 +473,7 @@ textureManager = TextureManager({
         x: 0,
         y: 0,
         xx: 3,
-        yy: 7
+        yy: 31
     },
     'PORTAL': {
         src: 'ioelements_spritesheet',

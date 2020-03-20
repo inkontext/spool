@@ -25,6 +25,10 @@ const {
     SpoolMath
 } = require('./spoolmath.js')
 
+const {
+    SpoolUtils
+} = require('./spoolutils.js')
+
 ////// SERVER //////
 
 /**
@@ -53,6 +57,8 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
     self.app = self.express();
     self.http = require("http").createServer(self.app);
     self.io = require("socket.io")(self.http);
+
+    self.updateTime = 1000 / self.TPS;
 
     self.fullStart = (playerConstructor) => {
         self.start()
@@ -152,53 +158,83 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
         });
     }
 
-    self.startGameLoop = (callback = null) => {
+    self.update = () => {
+        // Update the game state and get update package
+        var pack = self.handler.update();
+
+        if (self.updateCallback) {
+            self.updateCallback(self)
+        }
+
+        // Go through all the sockets
+        for (var i in self.socketList) {
+            // Get players socket
+            var socket = self.socketList[i];
+
+            // Give client the init package -> objects are added to the client
+            if (self.handler.somethingToAdd) {
+                socket.emit(SM_PACK_INIT, self.handler.initPack);
+            }
+
+            // Give client the update package -> objects are updateg
+            socket.emit(SM_PACK_UPDATE, pack);
+
+            // Give client the remove package -> remove objects from the game
+            if (self.handler.somethingToRemove) {
+                socket.emit(SM_PACK_REMOVE, self.handler.removePack);
+            }
+        }
+        // Reset both the init package and remove package
+        self.handler.resetPacks();
+    }
+
+    self.startGameLoop = () => {
         // Start game loop
 
+        self.lastMillisTimer = Date.now();
         self.lastMillis = Date.now();
-        setInterval(() => {
-            // Update the game state and get update package
-            var pack = self.handler.update();
 
-            if (callback) {
-                callback()
-            }
+        self.lastUpdateTime = Date.now();
+        self.loop();
+    }
 
-            if (self.updateCallback) {
-                self.updateCallback(self)
-            }
+    self.loop = () => {
+        let now = Date.now()
+        if (now - self.lastUpdateTime >= self.updateTime) {
+            var delta = (now - self.lastUpdateTime) / 1000
+            self.lastUpdateTime = now
 
-            // Go through all the sockets
-            for (var i in self.socketList) {
-                // Get players socket
-                var socket = self.socketList[i];
+            self.update(delta);
 
-                // Give client the init package -> objects are added to the client
-                if (self.handler.somethingToAdd) {
-                    socket.emit(SM_PACK_INIT, self.handler.initPack);
-                }
-
-                // Give client the update package -> objects are updateg
-                socket.emit(SM_PACK_UPDATE, pack);
-
-                // Give client the remove package -> remove objects from the game
-                if (self.handler.somethingToRemove) {
-                    socket.emit(SM_PACK_REMOVE, self.handler.removePack);
-                }
-            }
-            // Reset both the init package and remove package
-            self.handler.resetPacks();
-
-
-            var delta = Date.now() - self.lastMillis;
+            var delta = Date.now() - self.lastMillisTimer;
             if (delta >= 1000) {
                 console.log('UPS: ', self.updateCounter);
                 self.updateCounter = 0;
-                self.lastMillis = Date.now()
+                self.lastMillisTimer = Date.now()
             } else {
                 self.updateCounter += 1;
             }
-        }, 1000 / self.TPS);
+        }
+
+        if (Date.now() - self.lastUpdateTime < self.updateTime - 16) {
+            setTimeout(self.loop)
+        } else {
+            setImmediate(self.loop)
+        }
+    }
+
+    self.loop_d = () => {
+        setTimeout(self.loop, self.updateTime)
+        self.update();
+
+        var delta = Date.now() - self.lastMillisTimer;
+        if (delta >= 1000) {
+            console.log('UPS: ', self.updateCounter);
+            self.updateCounter = 0;
+            self.lastMillisTimer = Date.now()
+        } else {
+            self.updateCounter += 1;
+        }
     }
 
     return self
@@ -1691,8 +1727,10 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
         if (zone) {
             var tile = zone[Math.round(Math.random() * (zone.length - 1))];
 
+
+
             var px = (tile[0] - self.mapPxWidth / 2) * self.gx + Math.round(Math.random() * self.gx);
-            var py = (-tile[1] + self.mapPxWidth / 2) * self.gy + Math.round(Math.random() * self.gy);
+            var py = (-tile[1] + self.mapPxHeight / 2) * self.gy + Math.round(Math.random() * self.gy);
 
             return ({
                 x: px,
@@ -2191,5 +2229,6 @@ module.exports = {
     OvalBodyParameters,
     RectangleBodyParameters,
 
-    SpoolMath
+    SpoolMath,
+    SpoolUtils
 }

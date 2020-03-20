@@ -8,6 +8,7 @@ var {
     RectangleBodyParameters,
     ServerObject,
     Line,
+    SpoolUtils
 
 } = require('./spoolserver.js');
 
@@ -19,36 +20,39 @@ var {
 
 var GRID_SIZE = 64;
 
-
-
 var server = Server({
     port: 4000,
     TPS: 55,
-    chunkSize: 400
+    chunkSize: 300
 }, ['/', '/textures'])
 
 server.keyEvent = (data, socket, player) => {
     if (data.inputId == 'use' || data.inputId == 'throw') {
         var pickup = server.handler.getClosestObject(player.x, player.y, {
-            whitelist: ["CUBE"]
+            whitelist: ["CUBE", 'SWITCH']
         })
         if (pickup != null) {
-            if (!player.hand && pickup.distance <= 60 && !data.value && player.canPickUp) {
-                pickup.object.transparent = true
-                player.hand = pickup.object
-                pickup.object.player = player
-                pickup.object.x = player.x
-                pickup.object.y = player.y
-            } else if (player.hand && !data.value) {
-                player.hand.transparent = false
-                player.hand.player = undefined
+            if (pickup.object.objectType == 'CUBE') {
+                if (!player.hand && pickup.distance <= 60 && !data.value && player.canPickUp) {
+                    pickup.object.transparent = true
+                    player.hand = pickup.object
+                    pickup.object.player = player
+                    pickup.object.x = player.x
+                    pickup.object.y = player.y
+                } else if (player.hand && !data.value) {
+                    player.hand.transparent = false
+                    player.hand.player = undefined
 
-                if (data.inputId == 'throw') {
-                    player.hand.impulse(22, player.movementAngle);
-                    player.hand.velZ = 8;
+                    if (data.inputId == 'throw') {
+                        player.hand.impulse(22, player.movementAngle);
+                        player.hand.velZ = 8;
+                    }
+
+                    player.hand = undefined
                 }
-
-                player.hand = undefined
+            } else if (pickup.object.objectType == 'SWITCH' && pickup.distance <= 60 && data.value) {
+                console.log('packa');
+                pickup.object.activate();
             }
         }
     }
@@ -775,6 +779,8 @@ var LogicalGate = (initPack = {}) => {
     return self;
 }
 
+//// INPUT ////
+
 var Button = (initPack = {}) => {
     var self = NetworkEntity({
         objectType: 'BUTTON',
@@ -817,7 +823,6 @@ var Button = (initPack = {}) => {
 
     self.cell = NETWORK.connect(self)
 
-
     return self;
 }
 
@@ -836,6 +841,32 @@ var PlayerButton = (initPack = {}) => {
     });
     return self;
 }
+
+var Switch = (initPack = {}) => {
+    var self = NetworkEntity({
+        objectType: 'SWITCH',
+        networkActivatable: false,
+        ...initPack
+    });
+
+    self.static = false;
+
+    self.send = () => {
+        self.cell.setValue(self, self.active);
+    }
+
+    self.activate = () => {
+        self.active = !self.active;
+        console.log(self.active);
+        self.send();
+    }
+
+    self.cell = NETWORK.connect(self)
+
+    return self;
+}
+
+//// OUTPUT ////
 
 var Doors = (initPack = {}) => {
     var self = NetworkEntity({
@@ -861,6 +892,17 @@ var Semiwall = (initPack = {}) => {
         objectType: 'SEMIWALL',
         ...initPack
     });
+
+    var superSelf = {
+        initPack: self.initPack
+    }
+
+    self.initPack = () => {
+        return {
+            ...superSelf.initPack(),
+            semiwallType: self.semiwallType
+        }
+    }
 
     self.static = false;
 
@@ -1013,21 +1055,20 @@ var collisionManager = CollisionManager({
                     if (a.objectType == 'PLAYER') {
                         a.z = 4;
                     }
+                    b.activate()
                 }
             }, {
                 a: ['CUBE', 'PLAYER'],
                 b: ['SEMIWALL'],
                 solidException: (a, b) => {
-                    if (a.objectType == 'PLAYER' && b.block == "player") {
-                        return false
-                    } else if (a.objectType == 'CUBE' && b.block == "cube") {
+                    if (b.block.includes(a.objectType)) {
                         return false
                     } else {
                         return true
                     }
                 },
                 func: (a, b, col) => {
-                    if (a.objectType == 'CUBE' && b.block == "cube") {
+                    if (a.objectType == 'CUBE' && b.block.includes('CUBE')) {
                         if (a.player) {
                             a.transparent = false
                             if (a.player.hand) {
@@ -1153,14 +1194,16 @@ var objSpawner = ObjectSpawner(server.handler, {
     'SEMIWALL_PLAYER': {
         const: Semiwall,
         defs: {
-            block: "player"
+            semiwallType: 'playerBlocker',
+            block: ['PLAYER']
         },
         gridColRemovalSiblings: ['WALL']
     },
     'SEMIWALL_CUBE': {
         const: Semiwall,
         defs: {
-            block: "cube"
+            semiwallType: 'itemBlocker',
+            block: ['CUBE']
         },
         gridColRemovalSiblings: ['WALL']
     },
@@ -1171,6 +1214,9 @@ var objSpawner = ObjectSpawner(server.handler, {
                 portalColor: colorValue
             }
         }
+    },
+    'SWITCH': {
+        const: Switch
     }
 
 })
@@ -1215,7 +1261,8 @@ FileReader.readImage('./maps/lebac_cables.png', (data) => {
                         'ff9000': 'CUBE_BUTTON',
                         'f6c415': 'SEMIWALL_PLAYER',
                         '00ffcc': 'SEMIWALL_CUBE',
-                        '008aff': 'PLAYER_BUTTON'
+                        '008aff': 'PLAYER_BUTTON',
+                        'c54c4c': 'SWITCH',
                     }, () => {
                         objSpawner.spawnFromImageMap('./maps/lebac_portals.png', {
                             'non-black': 'PORTAL'
@@ -1223,10 +1270,11 @@ FileReader.readImage('./maps/lebac_cables.png', (data) => {
                             objSpawner.addZones('./maps/lebac_zones.png', {
                                 'ff8484': "SPAWN"
                             }, () => {
-                                server.fullStart(Player);
                                 server.onPlayerSpawn = (player) => {
-                                    Object.assign(player, objSpawner.getRandomPositionInZone('SPAWN'))
+                                    var position = objSpawner.getRandomPositionInZone('SPAWN');
+                                    Object.assign(player, position)
                                 }
+                                server.fullStart(Player);
                             })
                         })
                     })
