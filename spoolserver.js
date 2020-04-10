@@ -557,6 +557,7 @@ var ServerHandler = () => {
 
                         if (!change) {
                             for (valueKey in postUpdate) {
+
                                 if (preUpdate[valueKey] !== postUpdate[valueKey]) {
                                     change = true;
                                     break;
