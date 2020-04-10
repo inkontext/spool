@@ -8,7 +8,8 @@ var {
     RectangleBodyParameters,
     ServerObject,
     Line,
-    SpoolUtils
+    SpoolUtils,
+    SpoolTimer
 
 } = require('./spoolserver.js');
 
@@ -28,6 +29,10 @@ var server = Server({
 var Player = (initObject) => {
     var self = Entity(initObject);
 
+    superSelf = {
+        updatePack: self.updatePack
+    }
+
     self.objectType = 'PLAYER';
     self.width = 50;
     self.height = 50;
@@ -35,10 +40,37 @@ var Player = (initObject) => {
     self.tx = 0;
     self.ty = 0;
 
+    self.energy = 0;
+
     MAP.move(self, self.tx, self.ty);
 
     self.moveTo = (tx, ty) => {
-        MAP.move(self, tx, ty);
+
+        var temp = MAP.getTile(tx, ty);
+        var price = Math.abs(temp.z - self.tile.z);
+
+        console.log(price);
+
+        if (self.energy >= price) {
+            MAP.move(self, tx, ty);
+            self.energy -= price
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    self.updatePack = () => {
+        return {
+            ...superSelf.updatePack(),
+            z: self.tile ? self.tile.z : -1,
+            energy: self.energy
+        }
+    }
+
+    self.setName = (name) => {
+        self.name = name;
+        self.setAsyncUpdateValue('name', self.name);
     }
 
     return self;
@@ -73,13 +105,13 @@ var Tile = (initObject) => {
             tx: self.tx,
             ty: self.ty,
             hexRadius: self.hexRadius,
+            objects: [],
             ...superSelf.initPack()
         }
     }
 
     self.updatePack = () => {
         return {
-            objects: self.objects,
             ...superSelf.updatePack()
         }
     }
@@ -92,15 +124,18 @@ var Tile = (initObject) => {
         }
     }
 
+
     self.add = (id) => {
         self.objects.push(id);
+        self.setAsyncUpdateValue('objects', self.objects);
     }
 
     self.remove = (id) => {
         var i = self.objects.indexOf(id);
-        console.log(id, self.objects);
         self.objects.splice(i, 1);
-        console.log(self.objects);
+
+        self.setAsyncUpdateValue('objects', self.objects);
+        console.log
     }
 
     return self;
@@ -119,10 +154,15 @@ var Map = () => {
 
     self.tiles = {}
 
-    var layers = 4;
+    var layers = 2;
 
     var min = -1;
     var max = min + layers * 2 - 1;
+
+
+    self.tileKey = (x, y) => {
+        return `[${x},${y}]`
+    }
 
     for (var y = 1 - layers; y < 0 + layers; y++) {
         for (var x = 1 - layers; x < 0 + layers; x++) {
@@ -131,10 +171,10 @@ var Map = () => {
                 var tile = Tile({
                     tx: x,
                     ty: y,
-                    z: Math.random() * 10
+                    z: SpoolMath.randomInt(1, 10)
                 })
 
-                self.tiles[`[${x},${y}]`] = tile;
+                self.tiles[self.tileKey(x, y)] = tile;
                 server.handler.add(tile)
             }
         }
@@ -142,8 +182,8 @@ var Map = () => {
         max--;
     }
 
-    self.tileKey = (x, y) => {
-        return `[${x},${y}]`
+    self.getTile = (x, y) => {
+        return self.tiles[self.tileKey(x, y)];
     }
 
     self.move = (obj, tx, ty) => {
@@ -162,12 +202,181 @@ var Map = () => {
     return self;
 }
 
+var CHARACTERS = [
+    'Bob',
+    'Joe',
+    'Adel',
+    'Jack',
+    'Andy',
+    'Sanches'
+];
+
 var MAP = Map()
+
+var PlayerQueue = () => {
+    var self = {
+        players: [],
+        queue: []
+    };
+
+    self.moveToBack = () => {
+        var temp = self.queue[0];
+        self.queue.splice(0, 1);
+        self.queue.push(temp);
+    }
+
+    self.refreshFromHandler = () => {
+        if (server.handler.objects['PLAYER']) {
+
+            self.players = []
+            Object.keys(server.handler.objects['PLAYER']).forEach(key => {
+                self.players.push(server.handler.objects['PLAYER'][key])
+            });
+        }
+    }
+
+    self.randomizeQueue = () => {
+        self.queue = [...self.players];
+        self.names = [...CHARACTERS];
+
+        SpoolUtils.shuffle(self.names);
+        SpoolUtils.shuffle(self.queue);
+
+        for (var i = 0; i < self.queue.length; i++) {
+            self.queue[i].setName(self.names[i]);
+        }
+    }
+
+    return self;
+}
+
+var GameStep = (playerQueue) => {
+    var defs = {
+        playerQueue: playerQueue,
+        rolling: false,
+        currentPlayer: null,
+        currentTimer: null,
+        partOfStep: 0,
+    }
+
+    var self = {
+        ...defs,
+        active: false
+    }
+
+    self.nextPlayer = () => {
+        self.playerQueue.moveToBack();
+        self.currentPlayer = playerQueue.queue[0];
+        self.partOfStep = 0;
+
+        server.emit('SET_QUEUE', self.playerQueue.queue.map(value => value.name));
+    }
+
+    self.finishStep = () => {
+        delete self.currentTimer;
+        self.nextPlayer();
+    }
+
+    self.update = () => {
+        if (self.active) {
+            if (self.partOfStep == 0) {
+                if (!self.currentTimer) {
+                    server.emit('DICE', {
+                        rolling: true
+                    });
+                    rolling = true;
+
+                    self.currentTimer = SpoolTimer(1000, (self) => {
+
+                        var diceA = SpoolMath.randomInt(1, 6);
+                        var diceB = SpoolMath.randomInt(1, 6);
+
+                        self.currentPlayer.energy += diceA + diceB;
+
+                        console.log(`${self.currentPlayer.name} rolled ${diceA} and ${diceB}`)
+
+                        server.emit('DICE', {
+                            diceA: diceA,
+                            diceB: diceB
+                        })
+
+
+
+                        self.partOfStep = 1;
+                        delete currentTimer;
+
+                        self.currentTimer = SpoolTimer(10000, () => {
+                            self.finishStep();
+                        })
+                        server.emit('SET_TIMER', {
+                            endTime: self.currentTimer.startTime + self.currentTimer.duration
+                        })
+
+                    }, self)
+                }
+            }
+
+            //console.log(self.currentTimer.timeLeft);
+
+            if (self.currentTimer) {
+                self.currentTimer.update();
+            }
+        }
+    }
+
+    self.start = () => {
+        self.playerQueue.refreshFromHandler();
+        self.playerQueue.randomizeQueue();
+        Object.assign(self, defs);
+        self.nextPlayer();
+        self.active = true;
+
+    }
+
+    self.end = () => {
+        self.active = false;
+    }
+
+    self.pause = () => {
+        self.active = false;
+    }
+
+    self.unpause = () => {
+        self.active = true;
+    }
+
+    return self;
+}
+
+playerQueue = PlayerQueue();
+gameStep = GameStep(playerQueue);
 
 server.fullStart(Player)
 
 server.onSocketCreated = (server, socket, player) => {
     socket.on('MOVE_TO', (data) => {
-        player.moveTo(data.tx, data.ty);
+        if (gameStep.currentPlayer.id == player.id) {
+            var moved = player.moveTo(data.tx, data.ty);
+            if (!moved) {
+                socket.emit('ALERT', {
+                    msg: "You don't have enough energy for that move"
+                })
+            }
+        } else {
+            socket.emit('ALERT', {
+                msg: "You aren't currently playing, wait for your round"
+            })
+        }
     })
+
+
+}
+
+server.updateCallback = () => {
+    gameStep.update();
+}
+
+server.onPlayerAddedToHandler = (player) => {
+    gameStep.end();
+    gameStep.start();
 }
