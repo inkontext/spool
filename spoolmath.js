@@ -122,6 +122,17 @@ const SpoolMath = {
         return SpoolMath.toHex(r) + SpoolMath.toHex(g) + SpoolMath.toHex(b);
     },
 
+    divideColor: (color, d) => {
+        elements = color.substring(4).split(',');
+        console.log(elements);
+        for (var i = 0; i < elements.length; i++) {
+            console.log();
+            elements[i] = parseInt(parseInt(elements[i]) / d);
+        }
+        console.log(elements);
+        return SpoolMath.rgbToHex(elements[0], elements[1], elements[2]);
+    },
+
     inInterval: (val, a, b, offset = 0) => {
         if (a < b) {
             var min = a;

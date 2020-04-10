@@ -417,6 +417,7 @@ var ServerObject = (initObject) => {
  */
 var ServerHandler = () => {
     var self = {
+        objectsById: {},
         objects: {}, // All objects in the game
         chunks: {}, // All the chunks in the game 
 
@@ -548,20 +549,29 @@ var ServerHandler = () => {
 
                     var postUpdate = object.updatePack();
 
-                    var change = !preUpdate ? true : false;
+                    var sendUpdate = object.sendUpdatePackageAlways;
 
-                    if (!change) {
-                        for (valueKey in postUpdate) {
-                            if (preUpdate[valueKey] !== postUpdate[valueKey]) {
-                                change = true;
-                                break;
+                    if (!sendUpdate) {
+
+                        var change = !preUpdate;
+
+                        if (!change) {
+                            for (valueKey in postUpdate) {
+                                if (preUpdate[valueKey] !== postUpdate[valueKey]) {
+                                    change = true;
+                                    break;
+                                }
+                            }
+
+                            if (change) {
+                                sendUpdate = true;
                             }
                         }
+                    }
 
-                        if (change) {
-                            currPackage.push(postUpdate)
-                            object.asyncUpdatePackage = {};
-                        }
+                    if (sendUpdate) {
+                        currPackage.push(postUpdate)
+                        object.asyncUpdatePackage = {};
                     }
 
                     object.lastUpdatePack = postUpdate;
@@ -593,6 +603,7 @@ var ServerHandler = () => {
             self.objects[obj.objectType] = {};
         }
         self.objects[obj.objectType][obj.id] = obj;
+        self.objectsById[obj.id] = obj;
         self.updateObjectsChunk(obj);
 
         // Add to init pack
@@ -621,6 +632,8 @@ var ServerHandler = () => {
             }
             delete self.objects[type][id];
         }
+
+        delete self.objectsById[id];
 
         // Add to remove pack
         if (!(type in self.removePack)) {

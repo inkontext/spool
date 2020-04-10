@@ -136,10 +136,13 @@ var Client = (initObject) => {
         self.objectServer.init(self.socket);
     }
 
+    self.emit = (message, data) => {
+        self.socket.emit(message, data);
+    }
+
     //// GAME LOOP ////
 
     self.startGameLoop = () => {
-
         setInterval(() => {
             // Clear the canvas
             self.gameArea.clear();
@@ -162,7 +165,6 @@ var Client = (initObject) => {
             if (self.uiHandler) {
                 self.uiHandler.render(self.gameArea.ctx);
             }
-
 
             if (self.postUi) {
                 self.postUi(self.gameArea.ctx, self.camera);
@@ -723,6 +725,7 @@ var ClientObjectServer = (client, caching = []) => {
 var ClientHandler = (chunkSize, client) => {
     var self = {
         objects: {},
+        objectsById: {},
         chunks: {},
         client: client,
         chunkSize: chunkSize
@@ -1087,6 +1090,7 @@ var ClientHandler = (chunkSize, client) => {
             self.objects[obj.objectType] = {};
         }
         self.objects[obj.objectType][obj.id] = obj;
+        self.objectsById[obj.id] = obj;
         self.updateObjectsChunk(obj);
         if (self.textureManager) {
             self.textureManager.textureObj(obj);
@@ -1104,6 +1108,7 @@ var ClientHandler = (chunkSize, client) => {
             })
             delete self.objects[obj.objectType][obj.id];
         }
+        delete self.objectsById[obj.id];
     }
 
     /**
@@ -1201,7 +1206,8 @@ var Camera = (initPack = {}) => {
         height: 0,
         canvasWidth: 0,
         canvasHeight: 0,
-        scale: 1,
+        scaleX: 1,
+        scaleY: 1,
         followSpeed: CAMERA_FOLLOW_SPEED,
         rotationSpeed: CAMERA_ROTATION_SPEED,
         followObject: null,
@@ -1213,22 +1219,22 @@ var Camera = (initPack = {}) => {
     };
 
     self.update = () => {
-        if (self.followObject && self.lerp) {
+        if (self.followObject) {
             //self.rotation += 0.0
 
-            self.rotation = SpoolMath.lerpRotation(self.rotation, self.followObject.rotation - Math.PI / 2, self.rotationSpeed);
-            //self.rotation = self.followObject.rotation - Math.PI / 2;
+            if (self.lerpRotation) {
+                self.rotation = SpoolMath.lerpRotation(self.rotation, self.followObject.rotation - Math.PI / 2, self.rotationSpeed);
+                //self.rotation = self.followObject.rotation - Math.PI / 2;
+            }
 
-            var vel = self.followObject.velocity ? self.followObject.velocity : 0;
+            if (self.lerpSpeedToScale) {
+                var vel = self.followObject.velocity ? self.followObject.velocity : 0;
 
-            var wantedScale = SpoolMath.lerp(CAMERA_MAXIMAL_SCALE, CAMERA_MINIMAL_SCALE, vel / CAMERA_MAXIMAL_SCALE_HANDLEVEL);
-            self.scale = SpoolMath.lerp(self.scale, wantedScale, CAMERA_SCALE_SPEED);
+                self.width = self.canvasWidth / self.scaleX;
+                self.height = self.canvasHeight / self.scaleY;
+            }
 
-            self.width = self.canvasWidth / self.scale;
-            self.height = self.canvasHeight / self.scale;
-
-
-            if (self.followObject) {
+            if (self.lerp) {
                 self.x = SpoolMath.lerp(self.x, self.followObject.x + self.offsetX, self.followSpeed);
                 self.y = SpoolMath.lerp(self.y, self.followObject.y + self.offsetY, self.followSpeed);
             }
@@ -1254,8 +1260,8 @@ var Camera = (initPack = {}) => {
         return {
             x: point.x,
             y: point.y,
-            width: width * self.scale,
-            height: height * self.scale
+            width: width * self.scaleX,
+            height: height * self.scaleY
         };
     }
 
@@ -1266,8 +1272,8 @@ var Camera = (initPack = {}) => {
         var cos = Math.cos(self.rotation);
 
 
-        var newX = self.scale * ((x - self.x) * cos - (-y + self.y) * sin + self.width / 2);
-        var newY = self.scale * ((x - self.x) * sin + (-y + self.y) * cos + self.height / 2);
+        var newX = self.scaleX * ((x - self.x) * cos - (-y + self.y) * sin + self.width / 2);
+        var newY = self.scaleY * ((x - self.x) * sin + (-y + self.y) * cos + self.height / 2);
 
         return {
             x: newX,
@@ -1276,7 +1282,7 @@ var Camera = (initPack = {}) => {
     }
 
     self.transformDimension = (d) => {
-        return self.scale * d;
+        return self.scaleX * d;
     }
 
     self.clickTransfer = (x, y) => {
@@ -1301,8 +1307,8 @@ var Camera = (initPack = {}) => {
         var sin = Math.sin(self.rotation);
         var cos = Math.cos(self.rotation);
 
-        var b = self.y - (-sin * (x / self.scale - self.width / 2) + cos * (y / self.scale - self.height / 2));
-        var a = cos * (x / self.scale - self.width / 2) + sin * (y / self.scale - self.height / 2) + self.x;
+        var b = self.y - (-sin * (x / self.scaleX - self.width / 2) + cos * (y / self.scaleY - self.height / 2));
+        var a = cos * (x / self.scaleX - self.width / 2) + sin * (y / self.scaleY - self.height / 2) + self.x;
 
         return {
             x: a,
@@ -1374,6 +1380,26 @@ var Entity = (initPack) => {
         } = camera.transformBounds(self.x, self.y, radius, radius);
 
         ctx.arc(x, y, width, 0, 360);
+        ctx.fill();
+    }
+
+    self.renderNtagon = (ctx, camera, n, radius, startAngle = 0, color = self.color) => {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+
+
+        var point = camera.transformBounds(self.x, self.y, radius, radius);
+
+        var r = point.width;
+
+        ctx.moveTo(point.x - r * Math.cos(startAngle), point.y - r * Math.sin(startAngle))
+
+        for (var i = 1; i < n; i++) {
+            angle = startAngle + Math.PI * 2 / n * i;
+            ctx.lineTo(point.x - r * Math.cos(angle), point.y - r * Math.sin(angle))
+        }
+
+        ctx.closePath();
         ctx.fill();
     }
 
@@ -1508,7 +1534,6 @@ var Entity = (initPack) => {
         }
 
         return [self.renderSprite(ctx, camera, self.texture.sprites[index]), index]
-
 
     }
 
@@ -1832,7 +1857,6 @@ var MouseListener = (client) => {
         }
 
         document.onmousemove = event => {
-
             self.client.uiHandler.mouseMove(event);
         }
 
