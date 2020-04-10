@@ -296,6 +296,22 @@ var OBJECTS = {
         defs: {
             layer: 9
         }
+    },
+    'TURRET': {
+        const: NetworkSpriteEntity,
+        defs: {
+            clientWidth: 48,
+            clientHeight: 76,
+            clientOffsetX: 24,
+            clientOffsetY: 60,
+            showBounds: false
+        }
+    },
+    'BULLET': {
+        const: Entity,
+        defs: {
+            showBounds: true
+        }
     }
 }
 
@@ -360,6 +376,11 @@ textureManager = TextureManager({
         src: './textures/semiwall.png',
         c: 4,
         r: 8
+    },
+    'turret': {
+        src: './textures/cube.png',
+        c: 1,
+        r: 1
     }
 }, {
     'GROUND': {
@@ -452,6 +473,13 @@ textureManager = TextureManager({
         y: 6,
         xx: 0,
         yy: 7
+    },
+    'TURRET': {
+        src: 'turret',
+        x: 0,
+        y: 0,
+        xx: 0,
+        yy: 0
     }
 })
 

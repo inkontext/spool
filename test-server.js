@@ -337,6 +337,7 @@ var Player = (initPack = {}) => {
         jumpCounter: 0,
         width: 35,
         height: 20,
+        health: 5,
 
         objectType: 'PLAYER',
         rotation: Math.PI / 2,
@@ -348,6 +349,12 @@ var Player = (initPack = {}) => {
 
     var superSelf = {
         update: self.update
+    }
+
+    self.respawn = () => {
+        var respawnpos = objSpawner.getRandomPositionInZone('SPAWN')
+        self.x = respawnpos.x
+        self.y = respawnpos.y
     }
 
     /**
@@ -384,6 +391,10 @@ var Player = (initPack = {}) => {
         self.z = 0;
         self.updateInputVel();
         superSelf.update();
+        if (self.health <= 0) {
+            self.respawn();
+            self.health = 5
+        }
         if (self.hand) {
             self.hand.x = self.x
             self.hand.y = self.y
@@ -393,6 +404,7 @@ var Player = (initPack = {}) => {
             if (self.calculatedVelX < -1) {
                 self.hand.x -= 40
             }
+
         }
         self.canPickUp = true;
     }
@@ -432,6 +444,68 @@ var Wall = (initPack = {}) => {
     self.static = true;
 
     self.gridColRemoval = true;
+
+    return self;
+}
+
+var Turret = (initPack = {}) => {
+    var self = LebacEntity({
+
+        width: 48,
+        height: 32,
+        counter: 0,
+
+        objectType: 'TURRET',
+        rotation: Math.PI / 2,
+        color: SpoolMath.randomHsvColor(0.5, 0.8),
+
+        z: 0,
+        ...initPack
+    });
+
+    var superSelf = {
+        update: self.update
+    }
+
+    /**
+     * Updates velocities from keyboard input
+     */
+
+    self.update = () => {
+        var target = server.handler.getClosestObject(self.x, self.y, {
+            whitelist: ['PLAYER']
+        })
+        self.z = 0;
+        superSelf.update();
+        if (self.counter > 30) {
+            if (target) {
+                var bullet = Bullet({
+                    x: self.x,
+                    y: self.y
+                })
+                bullet.impulse(5, SpoolMath.globalAngle(self.x, self.y, target.object.x, target.object.y));
+                server.handler.add(bullet);
+            }
+            self.counter = 0
+        }
+        self.counter += 1
+    }
+
+    return self;
+}
+
+var Bullet = (initPack = {}) => {
+    var self = Entity({
+        objectType: 'BULLET',
+        ...initPack
+    });
+
+    self.width = 10;
+    self.height = 10;
+
+    self.rotation = Math.PI / 2;
+    self.color = self.color = SpoolMath.randomHsvColor(0.5, 0.8);
+    self.static = false;
 
     return self;
 }
@@ -1071,7 +1145,18 @@ var collisionManager = CollisionManager({
                         b.deletePortedPlayerRecord = false;
                     }
                 }
-            }
+            },
+            {
+                a: ['BULLET'],
+                b: ['WALL', 'PLAYER', 'CUBE', 'DOORS'],
+                func: (a, b, col) => {
+                    server.handler.removeObj(a)
+                    if (b.objectType == 'PLAYER') {
+                        b.health -= 1
+                    }
+                }
+
+            },
         ]
     },
     server.handler);
@@ -1171,6 +1256,9 @@ var objSpawner = ObjectSpawner(server.handler, {
                 portalColor: colorValue
             }
         }
+    },
+    'TURRET': {
+        const: Turret
     }
 
 })
@@ -1215,7 +1303,8 @@ FileReader.readImage('./maps/lebac_cables.png', (data) => {
                         'ff9000': 'CUBE_BUTTON',
                         'f6c415': 'SEMIWALL_PLAYER',
                         '00ffcc': 'SEMIWALL_CUBE',
-                        '008aff': 'PLAYER_BUTTON'
+                        '008aff': 'PLAYER_BUTTON',
+                        '007c03': 'TURRET',
                     }, () => {
                         objSpawner.spawnFromImageMap('./maps/lebac_portals.png', {
                             'non-black': 'PORTAL'
