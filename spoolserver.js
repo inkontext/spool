@@ -1144,7 +1144,7 @@ var CollisionManager = (initPack, handler) => {
             result.direction = closestIntersection.direction;
             return result;
         } else if (harsh) {
-
+            console.log('harsh');
             result.point = {
                 x: a.px,
                 y: a.py,
