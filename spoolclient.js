@@ -1224,15 +1224,16 @@ var Camera = (initPack = {}) => {
 
             if (self.lerpRotation) {
                 self.rotation = SpoolMath.lerpRotation(self.rotation, self.followObject.rotation - Math.PI / 2, self.rotationSpeed);
-                //self.rotation = self.followObject.rotation - Math.PI / 2;
             }
 
             if (self.lerpSpeedToScale) {
                 var vel = self.followObject.velocity ? self.followObject.velocity : 0;
 
-                self.width = self.canvasWidth / self.scaleX;
-                self.height = self.canvasHeight / self.scaleY;
+
             }
+
+            self.width = self.canvasWidth / self.scaleX;
+            self.height = self.canvasHeight / self.scaleY;
 
             if (self.lerp) {
                 self.x = SpoolMath.lerp(self.x, self.followObject.x + self.offsetX, self.followSpeed);

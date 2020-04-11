@@ -101,6 +101,10 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
 
             self.handler.add(player);
 
+            if (self.onPlayerAddedToHandler) {
+                self.onPlayerAddedToHandler(player);
+            }
+
             self.playerList[id] = player;
 
             //// MOVEMENT ////
@@ -156,6 +160,12 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
                 self.onSocketCreated(self, socket, player);
             }
         });
+    }
+
+    self.emit = (message, data) => {
+        if (self.io) {
+            self.io.sockets.emit(message, data);
+        }
     }
 
     self.update = () => {
@@ -549,7 +559,7 @@ var ServerHandler = () => {
 
                     var postUpdate = object.updatePack();
 
-                    var sendUpdate = object.sendUpdatePackageAlways;
+                    var sendUpdate = object.sendUpdatePackageAlways || object.asyncUpdateNeeded;
 
                     if (!sendUpdate) {
 
@@ -557,7 +567,6 @@ var ServerHandler = () => {
 
                         if (!change) {
                             for (valueKey in postUpdate) {
-
                                 if (preUpdate[valueKey] !== postUpdate[valueKey]) {
                                     change = true;
                                     break;
@@ -573,6 +582,7 @@ var ServerHandler = () => {
                     if (sendUpdate) {
                         currPackage.push(postUpdate)
                         object.asyncUpdatePackage = {};
+                        object.asyncUpdateNeeded = false;
                     }
 
                     object.lastUpdatePack = postUpdate;
@@ -1158,7 +1168,6 @@ var CollisionManager = (initPack, handler) => {
             result.direction = closestIntersection.direction;
             return result;
         } else if (harsh) {
-            console.log('harsh');
             result.point = {
                 x: a.px,
                 y: a.py,
@@ -1315,6 +1324,33 @@ var GravityManager = (initPack, handler) => {
 
 var InputManager = () => {
 
+}
+
+////// TIMER //////
+
+var SpoolTimer = (duration, event, object = null) => {
+    var self = {
+        startTime: Date.now(),
+        duration: duration,
+        event: event,
+        object: object,
+        active: true,
+        timeLeft: 0,
+    }
+
+    self.update = () => {
+        self.timeLeft = self.startTime + self.duration - Date.now()
+        if (self.timeLeft < 0 && self.active) {
+            self.event(object);
+            self.active = false;
+        }
+    }
+
+    self.stop = () => {
+        self.active = false;
+    }
+
+    return self;
 }
 
 ////// OBJECTSPAWNER //////
@@ -1768,6 +1804,7 @@ var Entity = (initPack = {}) => {
     var self = {
         //// STATE ////
         asyncUpdatePackage: {},
+        asyncUpdateNeeded: false,
 
         //// VELOCITIES ////
         x: 0, // x pos of the objects center
@@ -1866,9 +1903,16 @@ var Entity = (initPack = {}) => {
             rotation: self.rotation,
             id: self.id,
             movementAngle: self.movementAngle,
-            moving: self.moving
+            moving: self.moving,
+            ...self.asyncUpdatePackage,
         };
     };
+
+    self.setAsyncUpdateValue = (name, value) => {
+
+        self.asyncUpdatePackage[name] = value;
+        self.asyncUpdateNeeded = true;
+    }
 
     //// UPDATING ////
 
@@ -2242,6 +2286,8 @@ module.exports = {
     CollisionParameters,
     OvalBodyParameters,
     RectangleBodyParameters,
+
+    SpoolTimer,
 
     SpoolMath,
     SpoolUtils
