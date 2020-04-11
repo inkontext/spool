@@ -158,7 +158,9 @@ var SpoolRect = (x, y, width, height) => {
         x: x,
         y: y,
         width: width,
-        height: height
+        height: height,
+        cx: x + width / 2,
+        cy: y + height / 2
     }
 }
 

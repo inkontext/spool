@@ -17,7 +17,25 @@ var {
     FileReader
 } = require('./spoolfilereader.js');
 
+////// FUNCTIONS //////
+
+function tileDistance(ax, ay, bx, by) {
+    return (Math.abs(bx - ax) + Math.abs(by - ay) + Math.abs(bx + by - ax - ay)) / 2
+}
+
+function tileDistance2T(a, b) {
+    return tileDistance(a.tx, a.ty, b.tx, b.ty);
+}
+
+function alertClient(socket, message) {
+    socket.emit('ALERT', {
+        msg: message
+    })
+}
+
 ////// SETTING UP SERVER //////
+
+var WORLD_LAYERS = 5;
 
 var server = Server({
     port: 4000,
@@ -34,8 +52,8 @@ var Player = (initObject) => {
     }
 
     self.objectType = 'PLAYER';
-    self.width = 50;
-    self.height = 50;
+    self.width = 42;
+    self.height = 64;
 
     self.tx = 0;
     self.ty = 0;
@@ -64,6 +82,8 @@ var Player = (initObject) => {
         return {
             ...superSelf.updatePack(),
             z: self.tile ? self.tile.z : -1,
+            tx: self.tx,
+            ty: self.ty,
             energy: self.energy
         }
     }
@@ -76,10 +96,15 @@ var Player = (initObject) => {
     return self;
 }
 
+
+
 var TILE_WIDTH = 60;
 
 var Tile = (initObject) => {
-    var self = Entity(initObject);
+    var self = Entity({
+        biome: 'grass',
+        ...initObject
+    });
 
     var superSelf = {
         initPack: self.initPack,
@@ -104,7 +129,9 @@ var Tile = (initObject) => {
             z: self.z,
             tx: self.tx,
             ty: self.ty,
+            tw: self.tw,
             hexRadius: self.hexRadius,
+            biome: self.biome,
             objects: [],
             ...superSelf.initPack()
         }
@@ -154,7 +181,7 @@ var Map = () => {
 
     self.tiles = {}
 
-    var layers = 2;
+    var layers = WORLD_LAYERS;
 
     var min = -1;
     var max = min + layers * 2 - 1;
@@ -167,12 +194,26 @@ var Map = () => {
     for (var y = 1 - layers; y < 0 + layers; y++) {
         for (var x = 1 - layers; x < 0 + layers; x++) {
             console.log(min, max);
-            if (x > min && x <= max) {
+            if ((x > min && x <= max)) {
+
+
+
                 var tile = Tile({
                     tx: x,
                     ty: y,
                     z: SpoolMath.randomInt(1, 10)
                 })
+
+                var d = tileDistance2T({
+                    tx: -2,
+                    ty: 2
+                }, tile);
+
+
+
+                if (d <= 2) {
+                    tile.biome = 'stone';
+                }
 
                 self.tiles[self.tileKey(x, y)] = tile;
                 server.handler.add(tile)
@@ -197,7 +238,10 @@ var Map = () => {
         console.log(obj.tile.tx, obj.tile.ty);
         obj.tx = tx;
         obj.ty = ty;
+        obj.tw = tx + ty;
     }
+
+
 
     return self;
 }
@@ -356,16 +400,16 @@ server.fullStart(Player)
 server.onSocketCreated = (server, socket, player) => {
     socket.on('MOVE_TO', (data) => {
         if (gameStep.currentPlayer.id == player.id) {
-            var moved = player.moveTo(data.tx, data.ty);
-            if (!moved) {
-                socket.emit('ALERT', {
-                    msg: "You don't have enough energy for that move"
-                })
+            if (tileDistance2T(player, data) == 1) {
+                var moved = player.moveTo(data.tx, data.ty);
+                if (!moved) {
+                    alertClient(socket, "You don't have enough energy for that move");
+                }
+            } else {
+                alertClient(socket, "That tile is out of your reach");
             }
         } else {
-            socket.emit('ALERT', {
-                msg: "You aren't currently playing, wait for your round"
-            })
+            alertClient(socket, "You aren't currently playing, wait for your round");
         }
     })
 
