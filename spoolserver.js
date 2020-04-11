@@ -29,6 +29,8 @@ const {
     SpoolUtils
 } = require('./spoolutils.js')
 
+var Perlin = require('perlin-noise');
+
 ////// SERVER //////
 
 /**
@@ -92,7 +94,7 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
 
             // Add player and add it to the list
             var player = playerConstructor({
-                id
+                id: id
             })
 
             if (self.onPlayerSpawn) {
@@ -132,9 +134,13 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
                 }
             });
 
-            socket.emit(SM_PACK_INIT, {
-                ...self.handler.getInitPackage(player.objectType, socket.id)
-            }); // give client the first init package contains all the information about the the state
+            var initPackage = self.handler.getInitPackage(player.objectType, socket.id);
+
+            socket.emit(SM_PACK_INIT,
+                initPackage
+            ); // give client the first init package contains all the information about the the state
+
+            console.log('init', initPackage['PLAYER'].map(value => value.id));
 
             socket.emit(ASIGN_CLIENT_ID, {
                 clientId: socket.id,
@@ -682,16 +688,26 @@ var ServerHandler = () => {
         for (key in self.objects) {
             var objList = self.objects[key];
 
+
+
             var currPackage = [];
             for (objKey in objList) {
                 var object = objList[objKey];
+
+
+
                 var initPack = object.initPack();
 
                 if (objKey == playerId && key == playerType) {
                     initPack["playerFlag"] = true;
                 }
-
                 currPackage.push(initPack);
+
+                // if (key == 'PLAYER') {
+                //     console.log(object);
+                //     console.log(objKey);
+                //     console.log(initPack);
+                // }
             }
 
             pack[key] = currPackage;
@@ -2290,5 +2306,6 @@ module.exports = {
     SpoolTimer,
 
     SpoolMath,
-    SpoolUtils
+    SpoolUtils,
+    Perlin
 }

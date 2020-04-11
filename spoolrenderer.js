@@ -13,6 +13,19 @@ var SpoolRenderer = {
         ctx.stroke();
     },
 
+    fillInscribedOvalPercentFull: (ctx, rect, p) => {
+        ctx.beginPath();
+        if (p > 0.5) {
+            var temp = p - 0.5;
+            var angle = Math.asin(temp * 2)
+            ctx.ellipse(rect.cx, rect.cy, rect.width / 2, rect.height / 2, 0, -angle, Math.PI + angle);
+        } else {
+            var angle = Math.asin((0.5 - p) * 2)
+            ctx.ellipse(rect.cx, rect.cy, rect.width / 2, rect.height / 2, 0, angle, Math.PI - angle);
+        }
+        ctx.fill();
+    },
+
     drawOval: (ctx, cx, cy, radius) => {
         ctx.beginPath();
         ctx.arc(cx, cy, radius, 0, 360);

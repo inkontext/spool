@@ -9,7 +9,8 @@ var {
     ServerObject,
     Line,
     SpoolUtils,
-    SpoolTimer
+    SpoolTimer,
+    Perlin,
 
 } = require('./spoolserver.js');
 
@@ -17,7 +18,27 @@ var {
     FileReader
 } = require('./spoolfilereader.js');
 
+
+
+////// GLOBAL CONSTANTS //////
+
+var TILE_WIDTH = 60;
+var WORLD_LAYERS = 6;
+
+var WORLD_CLIFFSNUMBER = 1;
+
+var CHARACTERS = [
+    'Bob',
+    'Joe',
+    'Adel',
+    'Jack',
+    'Andy',
+    'Sanches'
+];
+
 ////// FUNCTIONS //////
+
+//// TILES ////
 
 function tileDistance(ax, ay, bx, by) {
     return (Math.abs(bx - ax) + Math.abs(by - ay) + Math.abs(bx + by - ax - ay)) / 2
@@ -27,6 +48,31 @@ function tileDistance2T(a, b) {
     return tileDistance(a.tx, a.ty, b.tx, b.ty);
 }
 
+function transformTileCoordToRealCord(x, y) {
+    return {
+        x: x * TILE_WIDTH * 3 / 2,
+        y: y * TILE_WIDTH * 2 * Math.sin(Math.PI / 3) + x * TILE_WIDTH * Math.sin(Math.PI / 3)
+    }
+}
+
+function movingPrice(tilea, tileb) {
+    if (tilea.z !== undefined && tilea.leavingPrice !== undefined && tileb.z !== undefined && tileb.enteringPrice !== undefined) {
+        var res = Math.abs(tilea.z - tileb.z) + tilea.leavingPrice + tileb.enteringPrice;
+        return res;
+    } else {
+        if (tilea.z === undefined || tilea.leavingPrice === undefined) {
+            console.warn('@movingPrice: problem with tileA:', tilea);
+        }
+        if (tileb.z === undefined || tileb.enteringPrice === undefined) {
+            console.warn('@movingPrice: problem with tileB:', tileb);
+        }
+
+        return null;
+    }
+}
+
+//// ALERTING ////
+
 function alertClient(socket, message) {
     socket.emit('ALERT', {
         msg: message
@@ -35,14 +81,13 @@ function alertClient(socket, message) {
 
 ////// SETTING UP SERVER //////
 
-var WORLD_LAYERS = 5;
-
 var server = Server({
     port: 4000,
     TPS: 55,
     chunkSize: 300
 }, ['/', '/textures'])
 
+////// OBJECTS //////
 
 var Player = (initObject) => {
     var self = Entity(initObject);
@@ -55,20 +100,40 @@ var Player = (initObject) => {
     self.width = 42;
     self.height = 64;
 
-    self.tx = 0;
-    self.ty = 0;
-
     self.energy = 0;
+    self.maxEnergy = 30;
 
-    MAP.move(self, self.tx, self.ty);
+    self.maxHp = 10;
+    self.hp = 10;
+
+    self.maxAmmo = 5;
+    self.ammo = 0;
+
+    self.sendUpdatePackageAlways = true;
+
+    self.startPosition = (tx, ty, defs) => {
+        MAP.move(self, tx, ty);
+        //self.setDefs(defs);
+    }
+
+    self.setDefs = (defs) => {
+        Object.assign(self, {
+            energy: 0,
+            maxEnergy: 30,
+            maxHp: 10,
+            hp: 10,
+            maxAmmo: 5,
+            ammo: 0,
+            ...defs
+        })
+    }
+
+    self.startPosition(0, 0, {});
+
 
     self.moveTo = (tx, ty) => {
-
         var temp = MAP.getTile(tx, ty);
-        var price = Math.abs(temp.z - self.tile.z);
-
-        console.log(price);
-
+        var price = movingPrice(self.tile, temp);
         if (self.energy >= price) {
             MAP.move(self, tx, ty);
             self.energy -= price
@@ -78,13 +143,37 @@ var Player = (initObject) => {
         }
     }
 
+    self.energyDelta = (delta) => {
+        self.energy += delta;
+        if (self.energy < 0) {
+            self.energy = 0;
+        } else if (self.energy >= self.maxEnergy) {
+            self.energy = self.maxEnergy;
+        }
+    }
+
     self.updatePack = () => {
         return {
             ...superSelf.updatePack(),
-            z: self.tile ? self.tile.z : -1,
-            tx: self.tx,
-            ty: self.ty,
-            energy: self.energy
+            hp: self.hp,
+            maxHp: self.maxHp,
+            energy: self.energy,
+            maxEnergy: self.maxEnergy,
+            ammo: self.ammo,
+            maxAmmo: self.maxAmmo,
+
+            x: self.x,
+            y: self.y,
+            id: self.id,
+            name: self.name,
+
+            tile: self.tile ? {
+                tx: self.tile.tx,
+                ty: self.tile.ty,
+                z: self.tile.z,
+                leavingPrice: self.tile.leavingPrice,
+                enteringPrice: self.tile.enteringPrice
+            } : null,
         }
     }
 
@@ -95,10 +184,6 @@ var Player = (initObject) => {
 
     return self;
 }
-
-
-
-var TILE_WIDTH = 60;
 
 var Tile = (initObject) => {
     var self = Entity({
@@ -119,6 +204,8 @@ var Tile = (initObject) => {
     self.height = TILE_WIDTH;
 
     self.objectType = 'TILE';
+    self.enteringPrice = 1;
+    self.leavingPrice = 0;
 
     self.hexRadius = TILE_WIDTH;
 
@@ -127,11 +214,14 @@ var Tile = (initObject) => {
     self.initPack = () => {
         return {
             z: self.z,
+            zRandomOffset: self.zRandomOffset,
             tx: self.tx,
             ty: self.ty,
             tw: self.tw,
             hexRadius: self.hexRadius,
             biome: self.biome,
+            enteringPrice: self.enteringPrice,
+            leavingPrice: self.leavingPrice,
             objects: [],
             ...superSelf.initPack()
         }
@@ -151,7 +241,6 @@ var Tile = (initObject) => {
         }
     }
 
-
     self.add = (id) => {
         self.objects.push(id);
         self.setAsyncUpdateValue('objects', self.objects);
@@ -168,94 +257,154 @@ var Tile = (initObject) => {
     return self;
 }
 
-var transformTileCoordToRealCord = (x, y) => {
-    return {
-        x: x * TILE_WIDTH * 3 / 2,
-        y: y * TILE_WIDTH * 2 * Math.sin(Math.PI / 3) + x * TILE_WIDTH * Math.sin(Math.PI / 3)
-    }
-}
+////// MAP //////
 
 var Map = () => {
-
-    var self = {}
-
-    self.tiles = {}
-
-    var layers = WORLD_LAYERS;
-
-    var min = -1;
-    var max = min + layers * 2 - 1;
-
+    var self = {
+        tiles: {}
+    }
 
     self.tileKey = (x, y) => {
         return `[${x},${y}]`
-    }
-
-    for (var y = 1 - layers; y < 0 + layers; y++) {
-        for (var x = 1 - layers; x < 0 + layers; x++) {
-            console.log(min, max);
-            if ((x > min && x <= max)) {
-
-
-
-                var tile = Tile({
-                    tx: x,
-                    ty: y,
-                    z: SpoolMath.randomInt(1, 10)
-                })
-
-                var d = tileDistance2T({
-                    tx: -2,
-                    ty: 2
-                }, tile);
-
-
-
-                if (d <= 2) {
-                    tile.biome = 'stone';
-                }
-
-                self.tiles[self.tileKey(x, y)] = tile;
-                server.handler.add(tile)
-            }
-        }
-        min--;
-        max--;
     }
 
     self.getTile = (x, y) => {
         return self.tiles[self.tileKey(x, y)];
     }
 
+    /**
+     * Get's all the tiles in said radius from said tile and returns it as a array
+     * @param {int} tx
+     * @param {int} ty
+     * @returns returns array of all the tiles in said radius 
+     */
+    self.getTilesInRadius = (tx, ty, r, minR = null) => {
+        var min = -1;
+        var max = min + r * 2 - 1;
+
+        res = []
+
+        for (var y = 1 - r; y < 0 + r; y++) {
+            for (var x = 1 - r; x < 0 + r; x++) {
+                if ((x > min && x <= max)) {
+
+                    if (minR !== null) {
+                        if (tileDistance(tx, ty, x + tx, y + ty) < minR) {
+                            continue;
+                        }
+                    }
+
+                    var temp = self.getTile(x + tx, y + ty);
+
+                    if (temp != null) {
+                        res.push(temp);
+                    }
+                }
+            }
+            min--;
+            max--;
+        }
+        return res;
+    }
+
+    self.initTiles = (layers) => {
+        var min = -1;
+        var max = min + layers * 2 - 1;
+
+        var keys = []
+
+        var worldSize = layers * 2 - 1;
+
+        var options = {
+            persistence: 0.1,
+            amplitude: 0.1,
+            octaveCount: 3,
+        }
+
+        var noiseFactor = 2;
+        var noise = Perlin.generatePerlinNoise(worldSize * noiseFactor, worldSize * noiseFactor, options);
+
+        for (var y = 1 - layers; y < 0 + layers; y++) {
+            for (var x = 1 - layers; x < 0 + layers; x++) {
+
+                var nx = x + layers - 1;
+                var ny = y + layers - 1;
+
+                nx *= noiseFactor;
+                ny *= noiseFactor;
+
+                var noiseValue = noise[(ny) * worldSize + (nx)]
+
+                if ((x > min && x <= max)) {
+                    var tile = Tile({
+                        tx: x,
+                        ty: y,
+                        z: Math.round(noiseValue * 5),
+                        zRandomOffset: Math.random(),
+
+                    })
+                    self.tiles[self.tileKey(x, y)] = tile;
+                    keys.push([x, y]);
+                    server.handler.add(tile)
+                }
+            }
+            min--;
+            max--;
+        }
+
+
+        for (var i = 0; i < 3; i++) {
+            key = SpoolMath.randomChoice(keys);
+
+            var height = SpoolMath.randomInt(5, 10)
+
+            self.getTilesInRadius(key[0], key[1], SpoolMath.randomInt(2, 3)).forEach(tile => {
+                tile.biome = 'stone';
+                tile.z = height + SpoolMath.randomInt(1, 3)
+            })
+        }
+
+
+        for (var i = 0; i < WORLD_CLIFFSNUMBER; i++) {
+            key = SpoolMath.randomChoice(keys);
+
+            var radius = SpoolMath.randomInt(2, 3);
+
+            self.getTilesInRadius(key[0], key[1], radius + 1, radius).forEach(tile => {
+                if (tile.biome == 'grass') {
+                    tile.biome = 'sand';
+
+                    tile.z = 0;
+                }
+            })
+            self.getTilesInRadius(key[0], key[1], radius).forEach(tile => {
+                if (tile.biome == 'grass') {
+                    tile.biome = 'water';
+                    tile.zRandomOffset = -1;
+                    tile.enteringPrice = 1;
+                    tile.leavingPrice = 1;
+                    tile.z = 0;
+                }
+            })
+        }
+
+    }
+
     self.move = (obj, tx, ty) => {
         if (obj.tile) {
             obj.tile.remove(obj.id);
         }
+
         var temp = self.tiles[self.tileKey(tx, ty)]
         temp.moveIn(obj);
 
         obj.tile = temp;
-        console.log(obj.tile.tx, obj.tile.ty);
         obj.tx = tx;
         obj.ty = ty;
-        obj.tw = tx + ty;
     }
-
-
 
     return self;
 }
-
-var CHARACTERS = [
-    'Bob',
-    'Joe',
-    'Adel',
-    'Jack',
-    'Andy',
-    'Sanches'
-];
-
-var MAP = Map()
 
 var PlayerQueue = () => {
     var self = {
@@ -287,6 +436,8 @@ var PlayerQueue = () => {
         SpoolUtils.shuffle(self.queue);
 
         for (var i = 0; i < self.queue.length; i++) {
+            temp = self.queue[i];
+            temp.startPosition(0, 0, {});
             self.queue[i].setName(self.names[i]);
         }
     }
@@ -301,6 +452,7 @@ var GameStep = (playerQueue) => {
         currentPlayer: null,
         currentTimer: null,
         partOfStep: 0,
+        active: false
     }
 
     var self = {
@@ -335,7 +487,8 @@ var GameStep = (playerQueue) => {
                         var diceA = SpoolMath.randomInt(1, 6);
                         var diceB = SpoolMath.randomInt(1, 6);
 
-                        self.currentPlayer.energy += diceA + diceB;
+
+                        self.currentPlayer.energyDelta(diceA + diceB);
 
                         console.log(`${self.currentPlayer.name} rolled ${diceA} and ${diceB}`)
 
@@ -343,8 +496,6 @@ var GameStep = (playerQueue) => {
                             diceA: diceA,
                             diceB: diceB
                         })
-
-
 
                         self.partOfStep = 1;
                         delete currentTimer;
@@ -374,7 +525,6 @@ var GameStep = (playerQueue) => {
         Object.assign(self, defs);
         self.nextPlayer();
         self.active = true;
-
     }
 
     self.end = () => {
@@ -391,6 +541,11 @@ var GameStep = (playerQueue) => {
 
     return self;
 }
+
+////// IMPLEMENTATION //////
+
+var MAP = Map()
+MAP.initTiles(WORLD_LAYERS);
 
 playerQueue = PlayerQueue();
 gameStep = GameStep(playerQueue);
@@ -412,8 +567,6 @@ server.onSocketCreated = (server, socket, player) => {
             alertClient(socket, "You aren't currently playing, wait for your round");
         }
     })
-
-
 }
 
 server.updateCallback = () => {

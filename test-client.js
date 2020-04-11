@@ -8,6 +8,22 @@ function tileDistance2T(a, b) {
     return tileDistance(a.tx, a.ty, b.tx, b.ty);
 }
 
+function movingPrice(tilea, tileb) {
+    if (tilea.z !== undefined && tilea.leavingPrice !== undefined && tileb.z !== undefined && tileb.enteringPrice !== undefined) {
+        var res = Math.abs(tilea.z - tileb.z) + tilea.leavingPrice + tileb.enteringPrice;
+        return res;
+    } else {
+        if (tilea.z === undefined || tilea.leavingPrice === undefined) {
+            console.warn('@movingPrice: problem with tileA:', tilea);
+        }
+        if (tileb.z === undefined || tileb.enteringPrice === undefined) {
+            console.warn('@movingPrice: problem with tileB:', tileb);
+        }
+
+        return null;
+    }
+}
+
 ////// CLIENT //////
 
 var Z_SCALINGFACTOR_MAX = 10;
@@ -21,7 +37,9 @@ var client = null;
 
 BIOME_COLORS = {
     'grass': '#a0d964',
-    'stone': '#757575'
+    'stone': '#757575',
+    'sand': '#f0e089',
+    'water': '#0077be '
 }
 
 var Tile = (initObject) => {
@@ -35,8 +53,6 @@ var Tile = (initObject) => {
 
     self.baseColor = '#b58d65'
     self.baseDark = ['#a37a52', '#a8835e', '#c2a07e']
-
-
 
     self.topColor = BIOME_COLORS[self.biome]
 
@@ -55,16 +71,18 @@ var Tile = (initObject) => {
 
         var innerRadiusFactor = 0.8;
 
+        var zOffset = self.z * Z_SCALINGFACTOR + self.zRandomOffset * Z_SCALINGFACTOR * 1;
+
         for (var i = 0; i < n; i++) {
             angle = startAngle + Math.PI * 2 / n * i;
             var point = camera.transformPoint(self.x - r * Math.cos(angle), self.y - r * Math.sin(angle));
             var pointInner = camera.transformPoint(self.x - r * innerRadiusFactor * Math.cos(angle), self.y - r * innerRadiusFactor * Math.sin(angle))
-            pointInner.y -= self.z * Z_SCALINGFACTOR
+            pointInner.y -= zOffset
             pointsDown.push(point);
             pointsInner.push(pointInner);
             points.push({
                 x: point.x,
-                y: point.y - self.z * Z_SCALINGFACTOR
+                y: point.y - zOffset
             })
         }
 
@@ -102,7 +120,7 @@ var Tile = (initObject) => {
         colPoint = camera.transformPoint(self.x, self.y);
         colBox = {
             x: colPoint.x,
-            y: colPoint.y - self.z * Z_SCALINGFACTOR,
+            y: colPoint.y - zOffset,
             radius: camera.transformDimension(self.hexRadius) * Math.sin(Math.PI / 3),
             tile: self
         }
@@ -138,13 +156,20 @@ var Tile = (initObject) => {
         })
 
         if (client.clientObject) {
-            if (tileDistance2T(client.clientObject, self) == 1) {
-                var clientZ = client.clientObject.z;
-                SpoolRenderer.setFont(ctx, 'Arial', 25);
-                SpoolRenderer.setColor(ctx, 'white');
-                SpoolRenderer.multiLineText(ctx, `${Math.abs(clientZ - self.z)}`, SpoolRect(colBox.x, colBox.y, 0, 0))
-                //SpoolRenderer.multiLineText(ctx, `${self.tx}, ${self.ty}`, SpoolRect(colBox.x, colBox.y, 0, 0));
+            if (client.clientObject.tile) {
+                if (tileDistance2T(client.clientObject.tile, self) == 1) {
+                    SpoolRenderer.setFont(ctx, 'Arial', 25);
+                    SpoolRenderer.setColor(ctx, 'white');
+
+                    var price = movingPrice(self, client.clientObject.tile);
+
+                    SpoolRenderer.multiLineText(ctx, `${price}`, SpoolRect(colBox.x, colBox.y, 0, 0))
+                    // SpoolRenderer.multiLineText(ctx, `${self.tx}, ${self.ty}`, SpoolRect(colBox.x, colBox.y, 0, 0));
+                }
             }
+            // SpoolRenderer.setFont(ctx, 'Arial', 25);
+            // SpoolRenderer.setColor(ctx, 'white');
+            //SpoolRenderer.multiLineText(ctx, `${self.z}`, SpoolRect(colBox.x, colBox.y, 0, 0))
         }
     }
 
@@ -204,10 +229,6 @@ keyListener.onKeyDown = (event) => {
 var mouseListener = MouseListener(client);
 mouseListener.initListener();
 client.onMouseEvent = (event) => {
-
-    console.log(event);
-
-
     if (event.type == 'mousedown') {
         var res = null;
 
@@ -278,7 +299,6 @@ var diceUi = DiceUI({
 client.diceUi = diceUi;
 
 client.socket.on('DICE', (data) => {
-    console.log(data);
     if (data.rolling) {
         client.diceUi.rolling = true;
     } else {
@@ -311,7 +331,13 @@ var QueueUI = (initObject) => {
 
         if (self.endTime) {
             delta = self.endTime - Date.now()
-
+            SpoolRenderer.setColor(ctx, 'green');
+            SpoolRenderer.fillInscribedOvalPercentFull(
+                ctx,
+                SpoolRect(self.x + timerMargin, self.y + timerMargin, 100 - timerMargin * 2, self.height - timerMargin * 2),
+                delta / 10000
+            )
+            SpoolRenderer.setColor(ctx, 'black');
             if (delta > 0) {
                 SpoolRenderer.multiLineText(
                     ctx,
@@ -320,7 +346,6 @@ var QueueUI = (initObject) => {
             }
         }
         for (var i = 0; i < self.queue.length; i++) {
-            SpoolRenderer.setFont(ctx, 'Arial', 20);
 
             var offset = i == 0 ? 100 : 400;
 
@@ -422,29 +447,54 @@ var PlayerInformationUI = (initObject) => {
         ...initObject
     });
 
+    self.renderVialValue = (ctx, color, value, maxValue, box) => {
+        SpoolRenderer.setColor(ctx, 'black');
+        SpoolRenderer.drawInscribedOval(ctx, box);
+        SpoolRenderer.setColor(ctx, color);
+        SpoolRenderer.fillInscribedOvalPercentFull(ctx, box, value / maxValue);
+        SpoolRenderer.setColor(ctx, 'black');
+        SpoolRenderer.multiLineText(ctx, value.toString(), box, box.width);
+    }
+
     self.render = (ctx) => {
         if (client.clientObject) {
-            SpoolRenderer.setColor(ctx, 'red');
-            SpoolRenderer.fillSplRect(ctx, self);
+
+            var vialSize = 60;
+            SpoolRenderer.setFont(ctx, 'Arial', 20);
 
             SpoolRenderer.setColor(ctx, 'black');
-            SpoolRenderer.multiLineText(
-                ctx,
-                `${client.clientObject.energy}`,
-                SpoolRect(self.x + 100, self.y, 100, 100));
+
+            var margin = 10;
+
             SpoolRenderer.multiLineText(
                 ctx,
                 `${client.clientObject.name}`,
-                SpoolRect(self.x, self.y, 100, 100));
+                SpoolRect(self.x, self.y, vialSize, vialSize));
 
+
+            self.renderVialValue(
+                ctx, 'red',
+                client.clientObject.hp, client.clientObject.maxHp,
+                SpoolRect(self.x + vialSize, self.y, vialSize, vialSize));
+
+            self.renderVialValue(
+                ctx, 'yellow',
+                client.clientObject.energy, client.clientObject.maxEnergy,
+                SpoolRect(self.x + vialSize * 2 + margin, self.y, vialSize, vialSize));
+
+            self.renderVialValue(
+                ctx, 'gray',
+                client.clientObject.ammo, client.clientObject.maxAmmo,
+                SpoolRect(self.x + vialSize * 3 + margin * 2, self.y, vialSize, vialSize));
         }
+
     }
 
     return self;
 }
 
 var playerInformation = PlayerInformationUI({
-    x: 0,
+    x: 50,
     y: client.gameArea.height - 100,
     width: 400,
     height: 100
