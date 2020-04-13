@@ -185,7 +185,8 @@ var Player = (initObject) => {
     }
 
     self.die = () => {
-        self.dead = true;
+        self.alive = false;
+
         if (self.onDeath) {
             self.onDeath();
         }
@@ -501,6 +502,7 @@ var Map = () => {
         var tiles = self.getTilesInRadius(0, 0, self.currentRadius, self.currentRadius - 1);
         tiles.forEach(tile => {
             tile.dead = true;
+            tile.z = -20;
 
             if (tile.objects) {
                 tile.objects.forEach(id => {
@@ -609,6 +611,7 @@ var GameStep = (playerQueue) => {
         active: false,
         roundNumber: 0,
         waitingForPlayers: true,
+        playersWaiting: 0
     }
 
     var self = {

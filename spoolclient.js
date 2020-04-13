@@ -66,8 +66,18 @@ var Client = (initObject) => {
     self.socketInit = () => {
         self.socket = io();
         self.socket.on(MessageCodes.SM_PACK_INIT, (data) => {
-            for (key in data) {
 
+            if (data.resetHandler) {
+                self.handler.reset();
+                self.clientObject = undefined;
+            }
+
+            console.log(Object.keys(self.handler));
+
+            for (key in data) {
+                if (key == 'resetHandler') {
+                    continue;
+                }
                 // Constructor function, this pointer is filled with constructor function based on the object type
                 var constFunction = undefined;
 
@@ -108,6 +118,10 @@ var Client = (initObject) => {
                     self.onFirstLoad(self)
                 self.firstInit = true;
             }
+        })
+
+        self.socket.on(MessageCodes.SM_RESET, (data) => {
+            self.client.handler.reset();
         })
 
         self.socket.on(MessageCodes.ASIGN_CLIENT_ID, (data) => {
@@ -191,6 +205,7 @@ var Client = (initObject) => {
             self.camera.height = self.height;
         }
     }
+
     return self;
 }
 
@@ -1138,6 +1153,24 @@ var ClientHandler = (chunkSize, client) => {
                 }
             }
         }
+    }
+
+    self.reset = () => {
+
+        var defs = {
+            objects: {},
+            objectsById: {},
+            chunks: {},
+            client: client,
+            chunkSize: chunkSize
+        };
+
+        Object.keys(defs).forEach(key => {
+            delete self.key;
+        });
+        Object.assign(self, defs);
+
+        console.log(self.objects);
     }
 
     self.getChunks = (min_x, min_y, max_x, max_y) => {

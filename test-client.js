@@ -57,6 +57,7 @@ var Tile = (initObject) => {
 
     self.topColor = BIOME_COLORS[self.biome]
 
+    self.renderZ = self.z;
 
     self.color = SpoolMath.randomColor(100, 255);
     self.darkColor = SpoolMath.divideColor(self.color, 2);
@@ -73,10 +74,11 @@ var Tile = (initObject) => {
         var innerRadiusFactor = 0.8;
 
 
-        var zOffset = self.z * Z_SCALINGFACTOR + self.zRandomOffset * Z_SCALINGFACTOR * 1;
-        if (self.dead) {
-            zOffset = -200;
-        }
+        self.renderZ = SpoolMath.lerp(self.renderZ, self.z, 0.2);
+
+        var zOffset = self.renderZ * Z_SCALINGFACTOR + self.zRandomOffset * Z_SCALINGFACTOR * 1;
+
+
 
         for (var i = 0; i < n; i++) {
             angle = startAngle + Math.PI * 2 / n * i;
