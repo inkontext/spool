@@ -73,12 +73,9 @@ var Tile = (initObject) => {
 
         var innerRadiusFactor = 0.8;
 
-
         self.renderZ = SpoolMath.lerp(self.renderZ, self.z, 0.2);
 
         var zOffset = self.renderZ * Z_SCALINGFACTOR + self.zRandomOffset * Z_SCALINGFACTOR * 1;
-
-
 
         for (var i = 0; i < n; i++) {
             angle = startAngle + Math.PI * 2 / n * i;
@@ -236,6 +233,9 @@ var mouseListener = MouseListener(client);
 mouseListener.initListener();
 client.onMouseEvent = (event) => {
     if (event.type == 'mousedown') {
+
+
+
         var res = null;
 
         Object.keys(colBoxes).forEach(key => {
@@ -244,14 +244,22 @@ client.onMouseEvent = (event) => {
                 res = box.tile;
             }
         })
+
         if (res) {
-            client.emit("MOVE_TO", {
-                tx: res.tx,
-                ty: res.ty
-            });
+            if (event.button == 0) {
+                client.emit("MOVE_TO", {
+                    tx: res.tx,
+                    ty: res.ty
+                });
+            } else if (event.button == 2) {
+                client.emit('PLAY_CARD', {
+                    tx: res.tx,
+                    ty: res.ty,
+                    cardid: 'magician_wand'
+                })
+            }
         }
     }
-
 
 }
 

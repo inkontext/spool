@@ -11,14 +11,11 @@ var {
     SpoolUtils,
     SpoolTimer,
     Perlin,
-
 } = require('./spoolserver.js');
 
 var {
     FileReader
 } = require('./spoolfilereader.js');
-
-
 
 ////// GLOBAL CONSTANTS //////
 
@@ -299,6 +296,32 @@ var Tile = (initObject) => {
         self.setAsyncUpdateValue('objects', self.objects);
     }
 
+    self.setBiomeParameters = (biome, leavingPrice, enteringPrice) => {
+        self.biome = biome;
+        self.leavingPrice = leavingPrice;
+        self.enteringPrice = enteringPrice;
+    }
+
+    self.setBiome = (biome) => {
+        switch (biome) {
+            case 'grass':
+                self.setBiomeParameters(biome, 0, 1);
+                break;
+            case 'water':
+                self.setBiomeParameters(biome, 1, 1);
+                break;
+            case 'stone':
+                self.setBiomeParameters(biome, 0, 1);
+                break;
+            case 'sand':
+                self.setBiomeParameters(biome, 0, 1);
+                break;
+            default:
+                self.setBiomeParameters(biome, 0, 1);
+                break;
+        }
+    }
+
 
 
     return self;
@@ -311,6 +334,90 @@ var Map = () => {
         tiles: {},
         currentRadius: -1,
         possibleCoords: []
+    }
+
+    self.astarNode = (tile, g, h, parent = null) => {
+        return {
+            x: tile.tx,
+            y: tile.ty,
+            f: g + h,
+            g,
+            h,
+            parent: parent,
+            tile,
+            key: self.tileKey(tile.tx, tile.ty)
+        }
+    }
+
+    self.findShortestPath = (ax, ay, bx, by) => {
+        var open = []
+        var closed = []
+
+        var targetTile = self.getTile(bx, by);
+
+        var closedKeys = [];
+
+        open.push(
+            self.astarNode(self.getTile(ax, ay), 0, SpoolMath.distance(ax, ay, bx, by))
+        );
+
+        var resTile = null;
+
+        while (open.length > 0) {
+            open.sort((a, b) => a.f - b.f);
+            currentNode = open[0];
+
+            if (currentNode.x == bx && currentNode.y == by) {
+                resTile = currentNode;
+                break;
+            }
+            open.splice(0, 1);
+            closed.push(currentNode);
+            closedKeys.push(currentNode.key)
+
+            var neighboars = self.getTilesInRadius(currentNode.x, currentNode.y, 1, 1);
+
+            neighboars.forEach(tile => {
+                var key = self.tileKey(tile.tx, tile.ty);
+                if (!closedKeys.includes(key)) {
+
+                    var openListInstance = null;
+                    for (var i = 0; i < open.length; i++) {
+                        if (open[i].key == key) {
+                            openListInstance = open[i];
+                            break;
+                        }
+                    }
+
+                    var price = movingPrice(currentNode.tile, tile);
+
+                    if (!openListInstance) {
+                        open.push(self.astarNode(tile, currentNode.g + price, SpoolMath.distance(tile.x, tile.y, bx, by), currentNode));
+                    } else {
+                        if (openListInstance.parent) {
+                            if (openListInstance.parent.g > currentNode.g) {
+                                openListInstance.parent = currentNode;
+                                openListInstance.g = currentNode.g + price;
+                                openListInstance.f = openListInstance.g + openListInstance.h;
+                            }
+                        }
+                    }
+                }
+            })
+        }
+
+        if (!resTile) {
+            return null;
+        } else {
+            res = []
+            var temp = resTile;
+            while (temp) {
+                res.push([temp.x, temp.y]);
+                temp = temp.parent;
+            }
+            return res;
+        }
+
     }
 
     self.tileKey = (x, y) => {
@@ -328,10 +435,12 @@ var Map = () => {
      * @returns returns array of all the tiles in said radius 
      */
     self.getTilesInRadius = (tx, ty, r, minR = null) => {
+        r += 1;
         var min = -1;
         var max = min + r * 2 - 1;
 
         res = []
+
 
         for (var y = 1 - r; y < 0 + r; y++) {
             for (var x = 1 - r; x < 0 + r; x++) {
@@ -382,8 +491,6 @@ var Map = () => {
         }
     }
 
-
-
     self.spawnWorld = () => {
         self.currentRadius = self.layers;
         var worldSize = self.layers * 2 - 1;
@@ -415,42 +522,20 @@ var Map = () => {
             tile.z = Math.round(noiseValue * 6);
             tile.zRandomOffset = Math.random();
             tile.dead = false;
-            tile.biome = 'grass';
+
+
+            tile.setBiome('grass');
         })
 
         for (var i = 0; i < 3; i++) {
             key = SpoolMath.randomChoice(self.possibleCoords);
-
-            var height = SpoolMath.randomInt(5, 10)
-
-            self.getTilesInRadius(key[0], key[1], SpoolMath.randomInt(2, 3)).forEach(tile => {
-                tile.biome = 'stone';
-                tile.z = height + SpoolMath.randomInt(1, 3)
-            })
+            self.spawnCliff(key[0], key[1], SpoolMath.randomInt(1, 2), SpoolMath.randomInt(5, 10));
         }
 
 
-        for (var i = 0; i < WORLD_CLIFFSNUMBER; i++) {
+        for (var i = 0; i < 3; i++) {
             key = SpoolMath.randomChoice(self.possibleCoords);
-
-            var radius = SpoolMath.randomInt(2, 3);
-
-            self.getTilesInRadius(key[0], key[1], radius + 1, radius).forEach(tile => {
-                if (tile.biome == 'grass') {
-                    tile.biome = 'sand';
-
-                    tile.z = 0;
-                }
-            })
-            self.getTilesInRadius(key[0], key[1], radius).forEach(tile => {
-                if (tile.biome == 'grass') {
-                    tile.biome = 'water';
-                    tile.zRandomOffset = -1;
-                    tile.enteringPrice = 1;
-                    tile.leavingPrice = 1;
-                    tile.z = 0;
-                }
-            })
+            self.spawnLake(key[0], key[1], SpoolMath.randomInt(1, 2))
         }
 
         keys.forEach(key => {
@@ -471,10 +556,60 @@ var Map = () => {
             tile.z = 0;
             tile.zRandomOffset = 0;
             tile.dead = false;
-            tile.biome = 'grass';
+            tile.setBiome('grass');
+        })
 
+        for (var i = 0; i < 3; i++) {
+            key = SpoolMath.randomChoice(self.possibleCoords);
+            self.spawnCliff(key[0], key[1], SpoolMath.randomInt(1, 2), SpoolMath.randomInt(5, 10));
+        }
+
+        for (var i = 0; i < 3; i++) {
+            key = SpoolMath.randomChoice(self.possibleCoords);
+            self.spawnLake(key[0], key[1], SpoolMath.randomInt(1, 2))
+        }
+
+        keys.forEach(key => {
+            var tile = self.tiles[key];
             tile.addAsyncUpdatePackage(tile.initPack());
         })
+    }
+
+    //// SPAWNING FEATURES //// 
+    self.spawnCliff = (x, y, r, height) => {
+        self.getTilesInRadius(x, y, r).forEach(tile => {
+            tile.setBiome('stone');
+            tile.z = height + SpoolMath.randomInt(1, 3)
+        })
+    }
+
+    self.spawnLake = (x, y, r) => {
+        self.getTilesInRadius(x, y, r + 1, r).forEach(tile => {
+            if (tile.biome == 'grass') {
+                tile.setBiome('sand');
+                tile.z = 0;
+            }
+        })
+        self.getTilesInRadius(x, y, r).forEach(tile => {
+            if (tile.biome == 'grass') {
+                tile.setBiome('water');
+
+                tile.zRandomOffset = -1;
+                tile.z = 0;
+            }
+        })
+    }
+
+    self.spawnRiver = (ax, ay, bx, by) => {
+        var path = self.findShortestPath(ax, ay, bx, by);
+
+        if (path) {
+            path.forEach(value => {
+                var tile = self.tiles[self.tileKey(value[0], value[1])]
+                tile.biome = 'water';
+                tile.addAsyncUpdatePackage(tile.initPack());
+            })
+        }
     }
 
     self.move = (obj, tx, ty) => {
@@ -516,10 +651,11 @@ var Map = () => {
                     }
                 })
             }
-
         })
         self.currentRadius -= 1;
     }
+
+
 
     return self;
 }
@@ -647,7 +783,6 @@ var GameStep = (playerQueue) => {
                         var diceA = SpoolMath.randomInt(1, 6);
                         var diceB = SpoolMath.randomInt(1, 6);
 
-
                         self.currentPlayer.energyDelta(diceA + diceB);
 
                         console.log(`${self.currentPlayer.name} rolled ${diceA} and ${diceB}`)
@@ -755,6 +890,7 @@ var GameStep = (playerQueue) => {
 
 var MAP = Map()
 MAP.initBlankTiles(WORLD_LAYERS);
+MAP.spawnWaitingWorld();
 
 playerQueue = PlayerQueue();
 gameStep = GameStep(playerQueue);
@@ -786,6 +922,23 @@ server.onSocketCreated = (server, socket, player) => {
                 alertClient(socket, "You aren't currently playing, wait for your round");
             }
         }
+    })
+
+    socket.on('PLAY_CARD', (data) => {
+        var tile = MAP.getTile(data.tx, data.ty);
+
+        if (tile.dead) {
+            alertClient(socket, "You can't use cards on dead tiles");
+            return;
+        }
+        if (gameStep.active) {
+            if (gameStep.currentPlayer.id == player.id) {
+                player.playCard(data.cardid)
+            } else {
+                alertClient(socket, "You aren't currently playing, wait for your round");
+            }
+        }
+
     })
 }
 
