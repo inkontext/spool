@@ -5,6 +5,7 @@ const {
     ASIGN_CLIENT_ID,
     SM_KEY_PRESS,
     SM_MOUSE_CLICKED,
+    SM_RESET,
 
     KI_MOV_LEFT,
     KI_MOV_UP,
@@ -85,6 +86,8 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
         self.io.sockets.on("connection", socket => {
             //// INIT ////
 
+            // give client the first init package contains all the information about the the state
+
             // Generate ID
             var id = Math.random();
             socket.id = id;
@@ -135,6 +138,7 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
             });
 
             var initPackage = self.handler.getInitPackage(player.objectType, socket.id);
+            initPackage.resetHandler = true;
 
             socket.emit(SM_PACK_INIT,
                 initPackage
@@ -618,6 +622,7 @@ var ServerHandler = () => {
             if (currPackage.length != 0) {
                 pack[key] = currPackage;
             }
+
         }
 
         for (var i = 0; i < self.managers.length; i++) {
@@ -635,7 +640,7 @@ var ServerHandler = () => {
 
     /**
      * Adds object to the handler
-     * @param {object} obj - object we want to add need to contain objecType and id
+     * @param {object} obj - object we want to add need to contain objecType and idf
      */
     self.add = obj => {
         // Add to handler
