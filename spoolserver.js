@@ -150,8 +150,6 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
                 }
             }); // give client his id -> so he knows which player he is in control of
 
-
-
             //// END ////
 
             socket.on("disconnect", () => {
@@ -160,6 +158,9 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
                 delete self.playerList[id];
                 // Remove player from the handler as a object
                 self.handler.remove(player.objectType, id);
+                if (self.onPlayerDisconnected) {
+                    self.onPlayerDisconnected(self, socket, player);
+                }
             });
 
             if (self.onSocketCreated) {
@@ -193,7 +194,12 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
             }
 
             // Give client the update package -> objects are updateg
-            socket.emit(SM_PACK_UPDATE, pack);
+            socket.emit(SM_PACK_UPDATE, pack['general']);
+
+            // Give client his authorized update package 
+            if (pack[socket.id]) {
+                socket.emit(SM_PACK_UPDATE, pack[socket.id]);
+            }
 
             // Give client the remove package -> remove objects from the game
             if (self.handler.somethingToRemove) {
@@ -533,6 +539,7 @@ var ServerHandler = () => {
      */
     self.update = () => {
         var pack = {};
+        var authorizedPacks = {};
 
         for (key in self.objects) {
 
@@ -591,6 +598,19 @@ var ServerHandler = () => {
                         object.asyncUpdateNeeded = false;
                     }
 
+                    var authPack = object.authorizedUpdatePack();
+
+                    if (authPack) {
+                        if (!authorizedPacks[authPack.id]) {
+                            authorizedPacks[authPack.id] = {}
+                        }
+                        if (!authorizedPacks[authPack.id][object.objectType]) {
+                            authorizedPacks[authPack.id][object.objectType] = [];
+                        }
+
+                        authorizedPacks[authPack.id][object.objectType].push(authPack.package);
+                    }
+
                     object.lastUpdatePack = postUpdate;
                 }
 
@@ -605,7 +625,10 @@ var ServerHandler = () => {
                 self.managers[i].handlerUpdate();
         }
 
-        return pack;
+        return {
+            'general': pack,
+            ...authorizedPacks
+        };
     };
 
     //// ADDING REMOVING ////
@@ -1924,9 +1947,18 @@ var Entity = (initPack = {}) => {
         };
     };
 
+    self.authorizedUpdatePack = () => {
+        return null;
+    }
+
     self.setAsyncUpdateValue = (name, value) => {
 
         self.asyncUpdatePackage[name] = value;
+        self.asyncUpdateNeeded = true;
+    }
+
+    self.addAsyncUpdatePackage = (pack) => {
+        Object.assign(self.asyncUpdatePackage, pack);
         self.asyncUpdateNeeded = true;
     }
 

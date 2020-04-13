@@ -100,42 +100,47 @@ var Player = (initObject) => {
     self.width = 42;
     self.height = 64;
 
-    self.energy = 0;
-    self.maxEnergy = 30;
-
-    self.maxHp = 10;
-    self.hp = 10;
-
-    self.maxAmmo = 5;
-    self.ammo = 0;
-
     self.sendUpdatePackageAlways = true;
+    self.name = 'Anonymous'
 
     self.startPosition = (tx, ty, defs) => {
         MAP.move(self, tx, ty);
-        //self.setDefs(defs);
+        self.setDefs(defs);
     }
 
     self.setDefs = (defs) => {
         Object.assign(self, {
-            energy: 0,
             maxEnergy: 30,
+            energy: 0,
             maxHp: 10,
             hp: 10,
             maxAmmo: 5,
             ammo: 0,
+            alive: true,
+            hand: [],
             ...defs
         })
     }
 
-    self.startPosition(0, 0, {});
+    self.setDefs();
 
-
-    self.moveTo = (tx, ty) => {
+    self.moveTo = (tx, ty, hard = false) => {
         var temp = MAP.getTile(tx, ty);
         var price = movingPrice(self.tile, temp);
-        if (self.energy >= price) {
-            MAP.move(self, tx, ty);
+        if (self.energy >= price || hard) {
+            tile = MAP.move(self, tx, ty);
+
+            tile.objects.forEach(value => {
+                var temp = server.handler.objectsById[value]
+                if (temp) {
+                    if (temp.objectType == 'BOX') {
+                        temp.open(self);
+                    }
+                } else {
+                    console.log('ID', value, 'is in the tile, but not in handler');
+                }
+            });
+
             self.energy -= price
             return true;
         } else {
@@ -167,6 +172,8 @@ var Player = (initObject) => {
             id: self.id,
             name: self.name,
 
+            alive: self.alive,
+
             tile: self.tile ? {
                 tx: self.tile.tx,
                 ty: self.tile.ty,
@@ -177,9 +184,47 @@ var Player = (initObject) => {
         }
     }
 
+    self.die = () => {
+        self.dead = true;
+        if (self.onDeath) {
+            self.onDeath();
+        }
+    }
+
+    self.authorizedUpdatePack = () => {
+        return {
+            id: self.id,
+            package: {
+                id: self.id,
+                hand: self.hand
+            }
+        }
+    }
+
     self.setName = (name) => {
         self.name = name;
         self.setAsyncUpdateValue('name', self.name);
+    }
+
+    self.give = (cards) => {
+        self.hand = self.hand.concat(cards);
+    }
+
+    return self;
+}
+
+var Box = (initObject) => {
+    var self = Entity({
+        objectType: 'BOX',
+        width: 42,
+        height: 42,
+        ...initObject
+    });
+
+    self.open = (player) => {
+        player.give(self.cards);
+        server.handler.removeObj(self);
+        MAP.remove(self.id);
     }
 
     return self;
@@ -213,7 +258,6 @@ var Tile = (initObject) => {
 
     self.initPack = () => {
         return {
-            z: self.z,
             zRandomOffset: self.zRandomOffset,
             tx: self.tx,
             ty: self.ty,
@@ -222,13 +266,15 @@ var Tile = (initObject) => {
             biome: self.biome,
             enteringPrice: self.enteringPrice,
             leavingPrice: self.leavingPrice,
-            objects: [],
+            objects: self.objects,
             ...superSelf.initPack()
         }
     }
 
     self.updatePack = () => {
         return {
+            dead: self.dead,
+            z: self.z,
             ...superSelf.updatePack()
         }
     }
@@ -249,10 +295,10 @@ var Tile = (initObject) => {
     self.remove = (id) => {
         var i = self.objects.indexOf(id);
         self.objects.splice(i, 1);
-
         self.setAsyncUpdateValue('objects', self.objects);
-        console.log
     }
+
+
 
     return self;
 }
@@ -261,7 +307,9 @@ var Tile = (initObject) => {
 
 var Map = () => {
     var self = {
-        tiles: {}
+        tiles: {},
+        currentRadius: -1,
+        possibleCoords: []
     }
 
     self.tileKey = (x, y) => {
@@ -307,13 +355,37 @@ var Map = () => {
         return res;
     }
 
-    self.initTiles = (layers) => {
+    self.initBlankTiles = (layers) => {
         var min = -1;
         var max = min + layers * 2 - 1;
 
-        var keys = []
+        self.layers = layers;
+        self.currentRadius = layers;
 
-        var worldSize = layers * 2 - 1;
+        for (var y = 1 - layers; y < 0 + layers; y++) {
+            for (var x = 1 - layers; x < 0 + layers; x++) {
+                if ((x > min && x <= max)) {
+                    var tile = Tile({
+                        tx: x,
+                        ty: y,
+                        z: 0,
+                        zRandomOffset: 0,
+                    })
+                    self.possibleCoords.push([x, y]);
+                    self.tiles[self.tileKey(x, y)] = tile;
+                    server.handler.add(tile)
+                }
+            }
+            min--;
+            max--;
+        }
+    }
+
+
+
+    self.spawnWorld = () => {
+        self.currentRadius = self.layers;
+        var worldSize = self.layers * 2 - 1;
 
         var options = {
             persistence: 0.1,
@@ -324,37 +396,29 @@ var Map = () => {
         var noiseFactor = 2;
         var noise = Perlin.generatePerlinNoise(worldSize * noiseFactor, worldSize * noiseFactor, options);
 
-        for (var y = 1 - layers; y < 0 + layers; y++) {
-            for (var x = 1 - layers; x < 0 + layers; x++) {
+        var keys = Object.keys(self.tiles);
 
-                var nx = x + layers - 1;
-                var ny = y + layers - 1;
+        var coords = [];
 
-                nx *= noiseFactor;
-                ny *= noiseFactor;
+        keys.forEach(key => {
+            var tile = self.tiles[key];
 
-                var noiseValue = noise[(ny) * worldSize + (nx)]
+            var nx = tile.tx + self.layers - 1;
+            var ny = tile.ty + self.layers - 1;
 
-                if ((x > min && x <= max)) {
-                    var tile = Tile({
-                        tx: x,
-                        ty: y,
-                        z: Math.round(noiseValue * 5),
-                        zRandomOffset: Math.random(),
+            nx *= noiseFactor;
+            ny *= noiseFactor;
 
-                    })
-                    self.tiles[self.tileKey(x, y)] = tile;
-                    keys.push([x, y]);
-                    server.handler.add(tile)
-                }
-            }
-            min--;
-            max--;
-        }
+            var noiseValue = noise[(ny) * worldSize + (nx)]
 
+            tile.z = Math.round(noiseValue * 6);
+            tile.zRandomOffset = Math.random();
+            tile.dead = false;
+            tile.biome = 'grass';
+        })
 
         for (var i = 0; i < 3; i++) {
-            key = SpoolMath.randomChoice(keys);
+            key = SpoolMath.randomChoice(self.possibleCoords);
 
             var height = SpoolMath.randomInt(5, 10)
 
@@ -366,7 +430,7 @@ var Map = () => {
 
 
         for (var i = 0; i < WORLD_CLIFFSNUMBER; i++) {
-            key = SpoolMath.randomChoice(keys);
+            key = SpoolMath.randomChoice(self.possibleCoords);
 
             var radius = SpoolMath.randomInt(2, 3);
 
@@ -388,6 +452,28 @@ var Map = () => {
             })
         }
 
+        keys.forEach(key => {
+            var tile = self.tiles[key];
+
+            var pack = tile.initPack();
+            tile.addAsyncUpdatePackage(pack);
+        })
+    }
+
+    self.spawnWaitingWorld = () => {
+        var keys = Object.keys(self.tiles);
+
+        console.log("MAP: waiting world spawned");
+
+        keys.forEach(key => {
+            var tile = self.tiles[key];
+            tile.z = 0;
+            tile.zRandomOffset = 0;
+            tile.dead = false;
+            tile.biome = 'grass';
+
+            tile.addAsyncUpdatePackage(tile.initPack());
+        })
     }
 
     self.move = (obj, tx, ty) => {
@@ -401,6 +487,36 @@ var Map = () => {
         obj.tile = temp;
         obj.tx = tx;
         obj.ty = ty;
+
+        return temp;
+    }
+
+    self.remove = (obj) => {
+        if (obj.tile) {
+            obj.tile.remove(obj.id);
+        }
+    }
+
+    self.removeOuterLayer = () => {
+        var tiles = self.getTilesInRadius(0, 0, self.currentRadius, self.currentRadius - 1);
+        tiles.forEach(tile => {
+            tile.dead = true;
+
+            if (tile.objects) {
+                tile.objects.forEach(id => {
+                    var object = server.handler.objectsById[id]
+                    if (object) {
+                        if (object.die) {
+                            object.die();
+                        } else {
+                            server.handler.removeObj(object);
+                        }
+                    }
+                })
+            }
+
+        })
+        self.currentRadius -= 1;
     }
 
     return self;
@@ -409,14 +525,9 @@ var Map = () => {
 var PlayerQueue = () => {
     var self = {
         players: [],
-        queue: []
+        queue: [],
+        position: 0,
     };
-
-    self.moveToBack = () => {
-        var temp = self.queue[0];
-        self.queue.splice(0, 1);
-        self.queue.push(temp);
-    }
 
     self.refreshFromHandler = () => {
         if (server.handler.objects['PLAYER']) {
@@ -428,6 +539,21 @@ var PlayerQueue = () => {
         }
     }
 
+    self.nextPlayer = () => {
+        self.position += 1;
+        if (self.position >= self.queue.length) {
+            self.position = 0;
+            if (self.onNewRound) {
+
+                self.onNewRound()
+            }
+        }
+    }
+
+    self.getCurrent = () => {
+        return self.queue[self.position];
+    }
+
     self.randomizeQueue = () => {
         self.queue = [...self.players];
         self.names = [...CHARACTERS];
@@ -437,9 +563,37 @@ var PlayerQueue = () => {
 
         for (var i = 0; i < self.queue.length; i++) {
             temp = self.queue[i];
-            temp.startPosition(0, 0, {});
             self.queue[i].setName(self.names[i]);
         }
+    }
+
+    self.getNextPlayers = () => {
+        var names = self.queue.map(value => value.name);
+        return {
+            thisRound: names.slice(self.position, self.queue.length),
+            nextRound: names.slice(0, self.position)
+        }
+    }
+
+    self.remove = (player) => {
+        for (var i = 0; i < self.queue.length; i++) {
+            if (self.queue.id = player.id) {
+                if (i < self.position && self.position > 0) {
+                    self.position--;
+                }
+                self.queue.splice(i, 1);
+                self.sendQue();
+            }
+        }
+        for (var i = 0; i < self.players.length; i++) {
+            if (self.queue.id = player.id) {
+                self.players.splice(i, 1);
+            }
+        }
+    }
+
+    self.sendQue = () => {
+        server.emit('SET_QUEUE', self.getNextPlayers());
     }
 
     return self;
@@ -452,7 +606,9 @@ var GameStep = (playerQueue) => {
         currentPlayer: null,
         currentTimer: null,
         partOfStep: 0,
-        active: false
+        active: false,
+        roundNumber: 0,
+        waitingForPlayers: true,
     }
 
     var self = {
@@ -460,12 +616,13 @@ var GameStep = (playerQueue) => {
         active: false
     }
 
-    self.nextPlayer = () => {
-        self.playerQueue.moveToBack();
-        self.currentPlayer = playerQueue.queue[0];
+    self.nextPlayer = (firstPlayer = false) => {
+        if (!firstPlayer) {
+            self.playerQueue.nextPlayer();
+        }
+        self.currentPlayer = self.playerQueue.getCurrent();
         self.partOfStep = 0;
-
-        server.emit('SET_QUEUE', self.playerQueue.queue.map(value => value.name));
+        self.playerQueue.sendQue();
     }
 
     self.finishStep = () => {
@@ -519,16 +676,65 @@ var GameStep = (playerQueue) => {
         }
     }
 
+    self.removePlayer = (player) => {
+        playerQueue.remove(player);
+        if (playerQueue.players.length == 0) {
+            console.log('All players have disconnected, the round ended')
+            self.end();
+        }
+        if (playerQueue.players.length == 1) {
+            console.log('There is only one player thus he won?')
+
+            server.emit('ALERT', {
+                msg: 'Player ' +
+                    playerQueue.players[0].name + ' remained last'
+            });
+
+            setTimeout(() => {
+                self.end();
+            }, 4000)
+        }
+    }
+
+    self.onNewRound = () => {
+        self.roundNumber += 1;
+
+        if (self.roundNumber % 1 == 0) {
+            MAP.removeOuterLayer();
+        }
+    }
+
     self.start = () => {
-        self.playerQueue.refreshFromHandler();
-        self.playerQueue.randomizeQueue();
-        Object.assign(self, defs);
-        self.nextPlayer();
-        self.active = true;
+
+        if (!self.active) {
+            self.playerQueue.refreshFromHandler();
+            var numberOfPlayers = self.playerQueue.players.length;
+
+            if (numberOfPlayers > 1) {
+                MAP.spawnWorld();
+                self.playerQueue.randomizeQueue();
+                self.playerQueue.onNewRound = self.onNewRound;
+
+                self.playerQueue.queue.forEach(player => {
+                    player.startPosition(0, 0, {});
+                    player.onDeath = () => {
+                        self.removePlayer(player);
+                    }
+                })
+
+                Object.assign(self, defs);
+                console.log('Game started with', numberOfPlayers, 'players');
+                self.nextPlayer(true);
+                self.onNewRound();
+                self.waitingForPlayers = false;
+                self.active = true;
+            }
+        }
     }
 
     self.end = () => {
         self.active = false;
+        MAP.spawnWaitingWorld();
     }
 
     self.pause = () => {
@@ -545,7 +751,7 @@ var GameStep = (playerQueue) => {
 ////// IMPLEMENTATION //////
 
 var MAP = Map()
-MAP.initTiles(WORLD_LAYERS);
+MAP.initBlankTiles(WORLD_LAYERS);
 
 playerQueue = PlayerQueue();
 gameStep = GameStep(playerQueue);
@@ -554,26 +760,49 @@ server.fullStart(Player)
 
 server.onSocketCreated = (server, socket, player) => {
     socket.on('MOVE_TO', (data) => {
-        if (gameStep.currentPlayer.id == player.id) {
-            if (tileDistance2T(player, data) == 1) {
-                var moved = player.moveTo(data.tx, data.ty);
-                if (!moved) {
-                    alertClient(socket, "You don't have enough energy for that move");
+
+        var tile = MAP.getTile(data.tx, data.ty);
+        if (tile.dead) {
+            alertClient(socket, "You are trying to jump of the map bro?");
+            return;
+        }
+
+        if (gameStep.waitingForPlayers) {
+            player.moveTo(data.tx, data.ty, true);
+        } else if (gameStep.active) {
+            if (gameStep.currentPlayer.id == player.id) {
+                if (tileDistance2T(player, data) == 1) {
+                    var moved = player.moveTo(data.tx, data.ty);
+                    if (!moved) {
+                        alertClient(socket, "You don't have enough energy for that move");
+                    }
+                } else {
+                    alertClient(socket, "That tile is out of your reach");
                 }
             } else {
-                alertClient(socket, "That tile is out of your reach");
+                alertClient(socket, "You aren't currently playing, wait for your round");
             }
-        } else {
-            alertClient(socket, "You aren't currently playing, wait for your round");
         }
     })
 }
 
 server.updateCallback = () => {
+    if (gameStep.active == false) {
+        gameStep.start();
+        if (gameStep.active == false) {
+            gameStep.waitingForPlayers = true;
+        }
+    }
     gameStep.update();
 }
 
 server.onPlayerAddedToHandler = (player) => {
-    gameStep.end();
-    gameStep.start();
+    player.alive = false;
+    if (gameStep.waitingForPlayers) {
+        player.startPosition(0, 0, {});
+    }
+}
+
+server.onPlayerDisconnected = (server, socket, player) => {
+    gameStep.removePlayer(player);
 }
