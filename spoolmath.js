@@ -124,12 +124,9 @@ const SpoolMath = {
 
     divideColor: (color, d) => {
         elements = color.substring(4).split(',');
-        console.log(elements);
         for (var i = 0; i < elements.length; i++) {
-            console.log();
             elements[i] = parseInt(parseInt(elements[i]) / d);
         }
-        console.log(elements);
         return SpoolMath.rgbToHex(elements[0], elements[1], elements[2]);
     },
 
@@ -150,6 +147,37 @@ const SpoolMath = {
         } else {
             return false
         }
+    },
+    getYFromCircle: (inX, r) => {
+        if (inX <= r && inX >= -r) {
+            var y = Math.sqrt(Math.pow(r, 2) - Math.pow(inX, 2))
+        }
+        return -y
+    },
+    getYFromMovedCircle: (x, y, inX, r) => {
+        movY = SpoolMath.getYFromCircle(inX, r) + y
+        movX = inX + x
+        pos = [movX, movY]
+        return pos
+    },
+    getAngleFromCircle: (radius, inX) => {
+        var angle = Math.acos(inX / radius) - Math.PI / 2
+        return angle
+    },
+    rectangleMouseCollision: (Ax, Ay, width, height, mouseX, mouseY) => {
+        if (mouseX >= Ax && mouseX <= Ax + width && mouseY <= Ay && mouseY >= Ay - height) {
+            return true
+        } else {
+            return false
+        }
+    },
+    rotatePoint: (Sx, Sy, Px, Py, angle) => {
+        var radius = SpoolMath.distance(Sx, Sy, Px, Py)
+        var newAngle = SpoolMath.globalAngle(Sx, -Sy, Px, -Py) - angle
+        var newX = Math.cos(newAngle) * radius + Sx
+        var newY = -Math.sin(newAngle) * radius + Sy
+        pos = [newX, newY]
+        return pos
     }
 }
 
