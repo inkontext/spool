@@ -51,6 +51,7 @@ var Tile = (initObject) => {
         render: self.render
     }
 
+    self.deadColor = '#444444';
     self.baseColor = '#b58d65'
     self.baseDark = ['#a37a52', '#a8835e', '#c2a07e']
 
@@ -71,7 +72,11 @@ var Tile = (initObject) => {
 
         var innerRadiusFactor = 0.8;
 
+
         var zOffset = self.z * Z_SCALINGFACTOR + self.zRandomOffset * Z_SCALINGFACTOR * 1;
+        if (self.dead) {
+            zOffset = -200;
+        }
 
         for (var i = 0; i < n; i++) {
             angle = startAngle + Math.PI * 2 / n * i;
@@ -139,7 +144,7 @@ var Tile = (initObject) => {
 
         // Drawing the inner part of the hexagon
 
-        ctx.fillStyle = self.topColor;
+        ctx.fillStyle = self.dead ? self.deadColor : BIOME_COLORS[self.biome];
         ctx.beginPath();
         ctx.moveTo(pointsInner[0].x, pointsInner[0].y)
         for (var i = 1; i < n; i++) {
@@ -155,7 +160,7 @@ var Tile = (initObject) => {
             }
         })
 
-        if (client.clientObject) {
+        if (client.clientObject && !self.dead) {
             if (client.clientObject.tile) {
                 if (tileDistance2T(client.clientObject.tile, self) == 1) {
                     SpoolRenderer.setFont(ctx, 'Arial', 25);
@@ -164,19 +169,15 @@ var Tile = (initObject) => {
                     var price = movingPrice(self, client.clientObject.tile);
 
                     SpoolRenderer.multiLineText(ctx, `${price}`, SpoolRect(colBox.x, colBox.y, 0, 0))
-                    // SpoolRenderer.multiLineText(ctx, `${self.tx}, ${self.ty}`, SpoolRect(colBox.x, colBox.y, 0, 0));
                 }
             }
-            // SpoolRenderer.setFont(ctx, 'Arial', 25);
-            // SpoolRenderer.setColor(ctx, 'white');
-            //SpoolRenderer.multiLineText(ctx, `${self.z}`, SpoolRect(colBox.x, colBox.y, 0, 0))
         }
     }
 
     return self;
 }
 
-var Player = (initObject) => {
+var StandableEntity = (initObject) => {
     var self = RectangleEntity({
         ...initObject
     })
@@ -196,7 +197,10 @@ var OBJECTS = {
         const: Tile
     },
     'PLAYER': {
-        const: Player
+        const: StandableEntity
+    },
+    'BOX': {
+        const: StandableEntity
     }
 }
 
@@ -345,14 +349,29 @@ var QueueUI = (initObject) => {
                     SpoolRect(self.x, self.y, 100, self.height))
             }
         }
-        for (var i = 0; i < self.queue.length; i++) {
 
-            var offset = i == 0 ? 100 : 400;
+        x = 100;
 
-            SpoolRenderer.multiLineText(
-                ctx,
-                self.queue[i],
-                SpoolRect(self.x + offset, self.y, 100, self.height))
+        if (self.queue.thisRound) {
+            self.queue.thisRound.forEach(value => {
+                SpoolRenderer.multiLineText(
+                    ctx,
+                    value,
+                    SpoolRect(self.x + x, self.y, 100, self.height))
+                x += 100;
+            })
+
+            SpoolRenderer.fillRect(ctx, x, self.y, 3, self.height);
+        }
+        if (self.queue.nextRound) {
+            x += 3;
+            self.queue.nextRound.forEach(value => {
+                SpoolRenderer.multiLineText(
+                    ctx,
+                    value,
+                    SpoolRect(self.x + x, self.y, 100, self.height))
+                x += 100;
+            })
         }
     }
 
@@ -401,7 +420,7 @@ var AlertUi = (initObject) => {
 
             self.alerts.forEach((value, index) => {
 
-                var invertedIndex = self.alerts.length - (index + 1);
+                var invertedIndex = self.alerts.length - (index);
 
                 var rect = SpoolRect(
                     self.x - self.width / 2,
