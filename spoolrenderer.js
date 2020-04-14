@@ -13,6 +13,12 @@ var SpoolRenderer = {
         ctx.stroke();
     },
 
+    fillInscribedOval: (ctx, rect) => {
+        ctx.beginPath();
+        ctx.ellipse(rect.cx, rect.cy, rect.width / 2, rect.height / 2, 0, 0, 360);
+        ctx.fill();
+    },
+
     fillInscribedOvalPercentFull: (ctx, rect, p) => {
         ctx.beginPath();
         if (p > 0.5) {

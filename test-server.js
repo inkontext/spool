@@ -99,18 +99,19 @@ var DAMAGEFLOATERS = [];
 
 ////// OBJECTS //////
 
-var Player = (initObject) => {
-    var self = Entity(initObject);
+var Player = (initObject = {}) => {
+    var self = Entity({
+        ...initObject
+    });
 
-    superSelf = {
-        updatePack: self.updatePack
+    var superSelf = {
+        updatePack: self.updatePack,
+        initPack: self.initPack
     }
-
-
 
     self.objectType = 'PLAYER';
     self.width = 42;
-    self.height = 64;
+    self.height = 78;
 
     self.sendUpdatePackageAlways = true;
     self.name = 'Anonymous'
@@ -181,6 +182,13 @@ var Player = (initObject) => {
 
     //// UPDATE PACK ////
 
+    self.initPack = () => {
+        return {
+            ...superSelf.initPack(),
+            cardInfo: CARDS
+        }
+    }
+
     self.updatePack = () => {
         return {
             ...superSelf.updatePack(),
@@ -190,11 +198,6 @@ var Player = (initObject) => {
             maxEnergy: self.maxEnergy,
             ammo: self.ammo,
             maxAmmo: self.maxAmmo,
-
-            x: self.x,
-            y: self.y,
-            id: self.id,
-            name: self.name,
 
             alive: self.alive,
 
@@ -425,8 +428,8 @@ var Player = (initObject) => {
 var Box = (initObject) => {
     var self = Entity({
         objectType: 'BOX',
-        width: 42,
-        height: 42,
+        width: 48,
+        height: 48,
         ...initObject
     });
 
@@ -498,6 +501,17 @@ var Tile = (initObject) => {
 
     self.add = (id) => {
         self.objects.push(id);
+
+        self.objects.sort((aid, bid) => {
+            var a = server.handler.objectsById[aid]
+            var b = server.handler.objectsById[bid]
+            if (a && b) {
+                var aoff = a.yOffset ? a.yOffset : 0;
+                var boff = b.yOffset ? b.yOffset : 0;
+                return aoff - boff;
+            }
+        })
+
         self.setAsyncUpdateValue('objects', self.objects);
     }
 
@@ -533,6 +547,25 @@ var Tile = (initObject) => {
         }
     }
 
+    self.reset = () => {
+        self.z = 0;
+        self.zRandomOffset = 0;
+        self.dead = false;
+        self.objects = [];
+        self.setBiome('grass');
+    }
+
+    self.addNature = (nature, count = 1) => {
+        for (var i = 0; i < count; i++) {
+            var nat = Nature({
+                natureType: nature
+            })
+            server.handler.add(nat);
+            self.add(nat.id);
+
+        }
+    }
+
     // DAMAGE //
 
     self.dealDamage = (damage, player = null) => {
@@ -555,6 +588,41 @@ var Tile = (initObject) => {
         });
     }
 
+
+
+
+    return self;
+}
+
+var Nature = (initObject) => {
+    var self = Entity({
+        natureType: 'bush',
+        ...initObject
+    });
+
+    var superSelf = {
+        initPack: self.initPack
+    }
+
+    self.width = 64;
+    self.height = 64;
+    self.objectType = 'NATURE';
+
+    self.xOffset = (Math.random() - 0.5) * TILE_WIDTH
+    self.yOffset = (Math.random() - 0.5) * TILE_WIDTH
+
+
+    self.variationId = SpoolMath.randomInt(0, 3);
+
+    self.initPack = () => {
+        return {
+            ...superSelf.initPack(),
+            natureType: self.natureType,
+            variationId: self.variationId,
+            xOffset: self.xOffset,
+            yOffset: self.yOffset
+        }
+    }
 
     return self;
 }
@@ -751,12 +819,11 @@ var Map = () => {
 
             var noiseValue = noise[(ny) * worldSize + (nx)]
 
+            tile.reset();
+
             tile.z = Math.round(noiseValue * 6);
             tile.zRandomOffset = Math.random();
-            tile.dead = false;
 
-
-            tile.setBiome('grass');
         })
 
         for (var i = 0; i < 3; i++) {
@@ -770,10 +837,21 @@ var Map = () => {
             self.spawnLake(key[0], key[1], SpoolMath.randomInt(1, 2))
         }
 
+        for (var i = 0; i < 3; i++) {
+            key = SpoolMath.randomChoice(self.possibleCoords);
+            self.spawnBox(key[0], key[1]);
+        }
+
         keys.forEach(key => {
             var tile = self.tiles[key];
 
             var pack = tile.initPack();
+
+            if (tile.biome == 'grass') {
+
+                tile.addNature('grass', 3);
+
+            }
             tile.addAsyncUpdatePackage(pack);
         })
     }
@@ -785,10 +863,7 @@ var Map = () => {
 
         keys.forEach(key => {
             var tile = self.tiles[key];
-            tile.z = 0;
-            tile.zRandomOffset = 0;
-            tile.dead = false;
-            tile.setBiome('grass');
+            tile.reset()
         })
 
         for (var i = 0; i < 3; i++) {
@@ -801,22 +876,47 @@ var Map = () => {
             self.spawnLake(key[0], key[1], SpoolMath.randomInt(1, 2))
         }
 
+        for (var i = 0; i < 3; i++) {
+            key = SpoolMath.randomChoice(self.possibleCoords);
+            self.spawnBox(key[0], key[1]);
+        }
+
         keys.forEach(key => {
             var tile = self.tiles[key];
+
+            if (tile.biome == 'grass') {
+                for (var g = 0; g < 5; g++) {
+                    tile.addNature('grass');
+                }
+            }
+
             tile.addAsyncUpdatePackage(tile.initPack());
         })
     }
 
     //// SPAWNING FEATURES //// 
+
+    self.spawnBox = (x, y) => {
+        var box = Box({
+            cards: ['bullets', 'bullets', 'slingshot']
+        });
+        server.handler.add(box);
+        self.getTile(x, y).add(box.id);
+    }
+
     self.spawnCliff = (x, y, r, height) => {
         self.getTilesInRadius(x, y, r).forEach(tile => {
-            tile.setBiome('stone');
-            tile.z = height + SpoolMath.randomInt(1, 3)
+            if (tile.biome != 'stone') {
+                tile.setBiome('stone');
+                tile.z = height + SpoolMath.randomInt(1, 3)
+
+                tile.addNature('stone', 3);
+            }
         })
     }
 
     self.spawnLake = (x, y, r) => {
-        self.getTilesInRadius(x, y, r + 1, r).forEach(tile => {
+        self.getTilesInRadius(x, y, r, r).forEach(tile => {
             if (tile.biome == 'grass') {
                 tile.setBiome('sand');
                 tile.z = 0;
@@ -963,7 +1063,10 @@ var PlayerQueue = () => {
     }
 
     self.sendQue = () => {
-        server.emit('SET_QUEUE', self.getNextPlayers());
+        server.emit('SET_QUEUE', {
+            queue: self.getNextPlayers(),
+            currentPlayerId: self.getCurrent() ? self.getCurrent().id : null
+        });
     }
 
     return self;
@@ -1165,9 +1268,8 @@ server.onSocketCreated = (server, socket, player) => {
             return;
         }
 
-        if (gameStep.active) {
-            if (gameStep.currentPlayer.id == player.id) {
-
+        if (gameStep.active || gameStep.waitingForPlayers) {
+            if (gameStep.waitingForPlayers ? true : gameStep.currentPlayer.id == player.id) {
                 if (data.type == 'card') {
                     console.log(data.cardid);
                     var res = player.playCard(tile, data.cardid);
@@ -1208,6 +1310,8 @@ server.onPlayerAddedToHandler = (player) => {
     if (gameStep.waitingForPlayers) {
         player.startPosition(0, 0, {});
     }
+
+    console.log(Object.keys(server.handler.objects['PLAYER']))
 }
 
 server.onPlayerDisconnected = (server, socket, player) => {
