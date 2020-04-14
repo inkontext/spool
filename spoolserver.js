@@ -91,7 +91,6 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
             // Generate ID
             var id = Math.random();
             socket.id = id;
-
             // Add socket to the list
             self.socketList[id] = socket;
 

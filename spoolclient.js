@@ -72,7 +72,7 @@ var Client = (initObject) => {
                 self.clientObject = undefined;
             }
 
-            console.log(Object.keys(self.handler));
+            console.log(data['PLAYER']);
 
             for (key in data) {
                 if (key == 'resetHandler') {
@@ -394,7 +394,12 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
     }
 
     self.getSprite = (key, x = 0, y = 0) => {
-        return self.spriteSheets[key].sprites[y * self.spriteSheets[key].columns + x];
+        if (!self.spriteSheets[key]) {
+            console.error(`@TextureManager: ${key} is not in spritesheets`);
+            return null;
+        } else {
+            return self.spriteSheets[key].sprites[y * self.spriteSheets[key].columns + x];
+        }
     }
 
     self.prepareChunkImage = () => {
@@ -1519,12 +1524,12 @@ var Entity = (initPack) => {
         ctx.restore()
     }
 
-    self.getMovementAnimationSpriteIndex = () => {
+    self.getMovementAnimationSpriteIndex = (moving = self.moving, angle = self.movementAngle) => {
         var animationRowsNumber = (self.texture.rows - 1);
 
-        if (self.moving) {
+        if (moving) {
 
-            var angleCoef = self.movementAngle;
+            var angleCoef = angle;
             if (angleCoef < 0) {
                 angleCoef += 2 * Math.PI;
             }
