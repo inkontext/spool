@@ -195,36 +195,54 @@ var HandUI = (initObject) => {
     var self = SpoolUIElement({
         visible: true,
 
-        cards: ['bbb', 'vvv', 'bbb'],
-
         cardsPar: [],
 
         cardsCol: [],
 
         lastCol: -1,
 
-        limit: 7,
+        limit: 6,
 
         animTop: 100,
         animStart: 0,
+
+        activatedCard: null,
+
+        yOffsetMax: 200,
+        yOffsetMin: -50,
+        yOffset: -100,
+
+        hidden: false,
 
         ...initObject
     })
 
     self.render = (ctx) => {
+        self.cards = client.clientObject.hand;
+
+
+        self.hidden = self.my < client.gameArea.height / 2;
+
+        if (self.activatedCard || self.hidden) {
+            self.yOffset = SpoolMath.lerp(self.yOffset, self.yOffsetMax, 0.2);
+        } else {
+            self.yOffset = SpoolMath.lerp(self.yOffset, self.yOffsetMin, 0.2);
+        }
+
         var handbounds = {
-            width: 400,
+            width: 600,
         }
         handbounds.middle = client.gameArea.width / 2
+        console.log(client.gameArea.height - self.yOffset);
         var point = {
             x: handbounds.middle,
-            y: client.gameArea.height - 70,
+            y: client.gameArea.height + self.yOffset,
         }
         var bounds = {
-            x: -76.5,
-            y: -285,
-            width: 153,
-            height: 285
+            x: -102,
+            y: -380,
+            width: 204,
+            height: 380
         }
         var circle = {
             radius: 800,
@@ -253,6 +271,7 @@ var HandUI = (initObject) => {
             }
         }
         for (i = 0; i < self.cards.length; i++) {
+
             var rotatedP = SpoolMath.rotatePoint(self.cardsPar[i * 3], self.cardsPar[1 + i * 3], self.mx, self.my, self.cardsPar[2 + i * 3])
             if (SpoolMath.rectangleMouseCollision(self.cardsPar[i * 3] - bounds.width / 2, self.cardsPar[1 + i * 3], bounds.width, bounds.height, rotatedP[0], rotatedP[1])) {
                 self.cardsCol.push(true)
@@ -271,7 +290,7 @@ var HandUI = (initObject) => {
             self.animStart = 0
         }
         if (colOn != undefined) {
-            self.animStart = SpoolMath.lerp(self.animStart, 1, 0.5)
+            self.animStart = SpoolMath.lerp(self.animStart, 1, 0.2)
         } else {
             self.animStart = 0
         }
@@ -287,6 +306,34 @@ var HandUI = (initObject) => {
         self.lastCol = colOn
         self.cardsPar = []
         self.cardsCol = []
+    }
+
+    self.mouseEvent = (event) => {
+        if (event.type == 'mousedown') {
+            if (!self.activatedCard) {
+                if (self.lastCol != undefined) {
+                    var card = self.cards[self.lastCol];
+                    self.activatedCard = card;
+                    return true;
+                }
+            } else {
+                var res = null;
+                Object.keys(colBoxes).forEach(key => {
+                    var box = colBoxes[key];
+                    if (SpoolMath.distance(event.x, event.y, box.x, box.y) <= box.radius) {
+                        res = box.tile;
+                    }
+                })
+                client.emit('CARD_ACTION', {
+                    type: 'card',
+                    tx: res.tx,
+                    ty: res.ty,
+                    cardid: self.activatedCard
+                })
+                self.activatedCard = null;
+                return true;
+            }
+        }
     }
 
     return self
@@ -361,13 +408,7 @@ client.onMouseEvent = (event) => {
                     type: 'card',
                     tx: res.tx,
                     ty: res.ty,
-                    cardid: 'slingshot'
-                })
-            } else if (event.button == 2) {
-                client.emit('CARD_ACTION', {
-                    type: 'weapon',
-                    tx: res.tx,
-                    ty: res.ty
+                    cardid: 'shovel'
                 })
             }
         }

@@ -106,10 +106,7 @@ var Player = (initObject) => {
         updatePack: self.updatePack
     }
 
-    self.equip = {
-        weapon: null,
-        trinkets: []
-    }
+
 
     self.objectType = 'PLAYER';
     self.width = 42;
@@ -135,6 +132,12 @@ var Player = (initObject) => {
             ammo: 0,
             alive: true,
             hand: [],
+            equip: {
+                weapon: null,
+                trinkets: []
+            },
+            stats: {},
+
             ...defs
         })
     }
@@ -273,10 +276,6 @@ var Player = (initObject) => {
     }
 
     self.playCard = (tile, cardid) => {
-        self.give([cardid]);
-        self.deltaValue('energy', 10);
-        self.deltaValue('ammo', 10);
-
         if (self.hand.includes(cardid)) {
             var index = self.hand.indexOf(cardid);
             var card = CARDS[cardid];
@@ -1028,7 +1027,7 @@ var GameStep = (playerQueue) => {
                         self.partOfStep = 1;
                         delete currentTimer;
 
-                        self.currentTimer = SpoolTimer(10000, () => {
+                        self.currentTimer = SpoolTimer(30000, () => {
                             self.finishStep();
                         })
                         server.emit('SET_TIMER', {
@@ -1091,6 +1090,7 @@ var GameStep = (playerQueue) => {
                     player.onDeath = () => {
                         self.removePlayer(player);
                     }
+                    player.give(['shovel', 'slingshot', 'bullets'])
                 })
 
                 Object.assign(self, defs);
@@ -1165,24 +1165,25 @@ server.onSocketCreated = (server, socket, player) => {
             return;
         }
 
-        // if (gameStep.active) {
-        //     if (gameStep.currentPlayer.id == player.id) {
-        console.log(data.type);
-        if (data.type == 'card') {
-            var res = player.playCard(tile, data.cardid);
-            if (res) {
-                alertClient(socket, res);
-            }
-        } else if (data.type == 'weapon') {
-            var res = player.useWeapon(tile);
-            if (res) {
-                alertClient(socket, res);
+        if (gameStep.active) {
+            if (gameStep.currentPlayer.id == player.id) {
+
+                if (data.type == 'card') {
+                    console.log(data.cardid);
+                    var res = player.playCard(tile, data.cardid);
+                    if (res) {
+                        alertClient(socket, res);
+                    }
+                } else if (data.type == 'weapon') {
+                    var res = player.useWeapon(tile);
+                    if (res) {
+                        alertClient(socket, res);
+                    }
+                }
+            } else {
+                alertClient(socket, "You aren't currently playing, wait for your round");
             }
         }
-        // } else {
-        //     alertClient(socket, "You aren't currently playing, wait for your round");
-        //     }
-        // }
     })
 }
 
