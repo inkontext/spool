@@ -17,6 +17,16 @@ var {
     FileReader
 } = require('./spoolfilereader.js');
 
+let {
+    cards
+} = require('./cards.json');
+
+var CARDS = {}
+
+cards.forEach(card => {
+    CARDS[card.cardID] = card;
+})
+
 ////// GLOBAL CONSTANTS //////
 
 var TILE_WIDTH = 60;
@@ -84,6 +94,9 @@ var server = Server({
     chunkSize: 300
 }, ['/', '/textures'])
 
+
+var DAMAGEFLOATERS = [];
+
 ////// OBJECTS //////
 
 var Player = (initObject) => {
@@ -93,12 +106,19 @@ var Player = (initObject) => {
         updatePack: self.updatePack
     }
 
+    self.equip = {
+        weapon: null,
+        trinkets: []
+    }
+
     self.objectType = 'PLAYER';
     self.width = 42;
     self.height = 64;
 
     self.sendUpdatePackageAlways = true;
     self.name = 'Anonymous'
+
+    //// DEFAULT VALUES AND STARTING POSITION ////
 
     self.startPosition = (tx, ty, defs) => {
         MAP.move(self, tx, ty);
@@ -111,7 +131,7 @@ var Player = (initObject) => {
             energy: 0,
             maxHp: 10,
             hp: 10,
-            maxAmmo: 5,
+            maxAmmo: 10,
             ammo: 0,
             alive: true,
             hand: [],
@@ -120,6 +140,8 @@ var Player = (initObject) => {
     }
 
     self.setDefs();
+
+    //// MOVING ////
 
     self.moveTo = (tx, ty, hard = false) => {
         var temp = MAP.getTile(tx, ty);
@@ -154,6 +176,8 @@ var Player = (initObject) => {
         }
     }
 
+    //// UPDATE PACK ////
+
     self.updatePack = () => {
         return {
             ...superSelf.updatePack(),
@@ -171,6 +195,9 @@ var Player = (initObject) => {
 
             alive: self.alive,
 
+            equip: self.equip,
+            stats: self.stats,
+
             tile: self.tile ? {
                 tx: self.tile.tx,
                 ty: self.tile.ty,
@@ -178,14 +205,6 @@ var Player = (initObject) => {
                 leavingPrice: self.tile.leavingPrice,
                 enteringPrice: self.tile.enteringPrice
             } : null,
-        }
-    }
-
-    self.die = () => {
-        self.alive = false;
-
-        if (self.onDeath) {
-            self.onDeath();
         }
     }
 
@@ -204,8 +223,201 @@ var Player = (initObject) => {
         self.setAsyncUpdateValue('name', self.name);
     }
 
+    //// GAMESTEP ACTIONS ////
+
+    self.damage = (dmg) => {
+        console.log('player dmg:', dmg);
+        self.deltaValue('hp', -dmg);
+    }
+
+    self.die = () => {
+        self.alive = false;
+
+        if (self.onDeath) {
+            self.onDeath();
+        }
+    }
+
+    //// CARDS ////
+
     self.give = (cards) => {
         self.hand = self.hand.concat(cards);
+    }
+
+
+    self.recalcEquip = () => {
+        var stats = {};
+
+        if (self.equip.weapon) {
+            if (self.equip.weapon.stats) {
+                Object.keys(self.equip.weapon.stats).forEach(key => {
+                    if (!stats[key]) {
+                        stats[key] = 0;
+                    }
+                    stats[key] += self.equip.weapon.stats[key];
+                })
+            }
+        }
+        self.equip.trinkets.forEach(trinket => {
+            if (trinket.stats) {
+                Object.keys(trinket.stats).forEach(key => {
+                    if (!stats[key]) {
+                        stats[key] = 0;
+                    }
+                    stats[key] += trinket.stats[key];
+                })
+            }
+        })
+
+        self.stats = stats;
+    }
+
+    self.playCard = (tile, cardid) => {
+        self.give([cardid]);
+        self.deltaValue('energy', 10);
+        self.deltaValue('ammo', 10);
+
+        if (self.hand.includes(cardid)) {
+            var index = self.hand.indexOf(cardid);
+            var card = CARDS[cardid];
+
+            if (index != -1) {
+                if (self.energy >= card.cost) {
+                    if (tileDistance2T(self, tile) <= card.range) {
+                        // WEAPONS 
+                        if (card.type == 'weapon') {
+                            self.equip.weapon = card;
+                            self.recalcEquip();
+                        }
+                        if (card.type == 'trinket') {
+                            self.equip.trinkets.push(card);
+                            self.recalcEquip();
+                        }
+
+                        // SPELLS 
+                        // SPECIAL 
+
+                        if (card.type == 'spell' || card.type == 'special') {
+                            if (card.action) {
+                                // Add 
+                                if (card.action.add) {
+                                    Object.keys(card.action.add).forEach(element => {
+                                        self.deltaValue(element, card.action.add[element]);
+                                    });
+                                }
+                                // Remove 
+                                if (card.action.removes) {
+                                    Object.keys(card.action.removes).forEach(element => {
+                                        self.deltaValue(element, card.action.removes[element]);
+                                    });
+                                }
+                                // Special
+                                if (card.action.actionString) {
+                                    var words = card.action.actionString.split(' ');
+
+                                    if (words[0] == 'splashdmg') {
+                                        var dmg = parseInt(words[1]);
+                                        var range = parseInt(words[2]);
+                                        MAP.getTilesInRadius(tile.tx, tile.ty, range).forEach(tile => {
+                                            tile.dealDamage(dmg, self);
+                                        });
+                                    }
+                                    if (words[0] == 'rise') {
+                                        var h = parseInt(words[1]);
+                                        var minRange = parseInt(words[2]);
+                                        var maxRange = parseInt(words[3]);
+
+                                        MAP.getTilesInRadius(tile.tx, tile.ty, maxRange, minRange).forEach(tile => {
+                                            tile.z += h
+                                        });
+                                    }
+                                }
+                            } else {
+                                console.log('Every spell card needs an action');
+                            }
+                        }
+
+                        self.hand.splice(index, 1);
+                    } else {
+                        return "That tile is not in the range of the card"
+                    }
+                } else {
+                    return "You don't have enough energy"
+                }
+            } else {
+                return "You don't have that card"
+            }
+        }
+    }
+
+    self.useWeapon = (tile) => {
+        var weapon = self.equip.weapon;
+        if (weapon) {
+
+            if (weapon.dmg) {
+
+                console.log(weapon.ammoConsuption)
+
+                if (weapon.ammoConsuption) {
+
+                    if (self.ammo >= weapon.ammoConsuption) {
+                        self.deltaValue('ammo', -weapon.ammoConsuption);
+                    } else {
+                        return "You don't have enough ammo";
+                    }
+                }
+                tile.dealDamage(weapon.dmg, self);
+            } else {
+                console.log("This weapon doesn't have damage");
+                console.log(weapon);
+            }
+
+        } else {
+            return "You don't have any weapon";
+        }
+    }
+
+    self.deltaValue = (type, value) => {
+        if (self[type] == undefined) {
+            console.log('Player with id: ', self.id, "doesn't have", `'${type}'`);
+            self[type] = 0;
+        }
+        self[type] += value;
+
+        var max = null;
+        var min = null;
+        var minAction = null;
+        var maxAction = null;
+
+        if (type == 'hp') {
+            max = self.maxHp;
+            min = 0;
+            minAction = self.die
+        }
+
+        if (type == 'energy') {
+            max = self.maxEnergy;
+            min = 0;
+        }
+
+        if (type == 'ammo') {
+            max = self.maxAmmo;
+            min = 0;
+        }
+
+        if (max ? self[type] > max : false) {
+            self[type] = max;
+            if (maxAction) {
+                maxAction();
+            }
+        }
+
+        if (min !== null ? self[type] < min : false) {
+            self[type] = min;
+            if (minAction) {
+                minAction();
+            }
+        }
     }
 
     return self;
@@ -322,6 +534,27 @@ var Tile = (initObject) => {
         }
     }
 
+    // DAMAGE //
+
+    self.dealDamage = (damage, player = null) => {
+        self.objects.forEach(id => {
+            var temp = server.handler.objectsById[id];
+            if (temp) {
+
+                if (player ? temp.id != player.id : true) {
+                    if (temp.damage) {
+                        temp.damage(damage)
+                    }
+                }
+            }
+        })
+        DAMAGEFLOATERS.push({
+            x: self.x,
+            y: self.y,
+            z: self.z,
+            dmg: damage
+        });
+    }
 
 
     return self;
@@ -924,21 +1157,32 @@ server.onSocketCreated = (server, socket, player) => {
         }
     })
 
-    socket.on('PLAY_CARD', (data) => {
+    socket.on('CARD_ACTION', (data) => {
         var tile = MAP.getTile(data.tx, data.ty);
 
         if (tile.dead) {
             alertClient(socket, "You can't use cards on dead tiles");
             return;
         }
-        if (gameStep.active) {
-            if (gameStep.currentPlayer.id == player.id) {
-                player.playCard(data.cardid)
-            } else {
-                alertClient(socket, "You aren't currently playing, wait for your round");
+
+        // if (gameStep.active) {
+        //     if (gameStep.currentPlayer.id == player.id) {
+        console.log(data.type);
+        if (data.type == 'card') {
+            var res = player.playCard(tile, data.cardid);
+            if (res) {
+                alertClient(socket, res);
+            }
+        } else if (data.type == 'weapon') {
+            var res = player.useWeapon(tile);
+            if (res) {
+                alertClient(socket, res);
             }
         }
-
+        // } else {
+        //     alertClient(socket, "You aren't currently playing, wait for your round");
+        //     }
+        // }
     })
 }
 
@@ -949,6 +1193,12 @@ server.updateCallback = () => {
             gameStep.waitingForPlayers = true;
         }
     }
+
+    if (DAMAGEFLOATERS.length != 0) {
+        server.emit('DAMAGE_FLOATERS', DAMAGEFLOATERS);
+        DAMAGEFLOATERS = [];
+    }
+
     gameStep.update();
 }
 

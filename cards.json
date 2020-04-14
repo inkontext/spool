@@ -1,0 +1,198 @@
+{
+  "cards": [{
+      "cardID": "stick",
+      "name": "Stick",
+      "type": "weapon",
+      "rarity": "well",
+      "drop": 0.9,
+      "range": 1,
+      "cost": 1,
+      "dmg": 2,
+      "ammoConsuption": 0,
+      "stats": null,
+      "action": null,
+      "description": "Deals 2 points of demage to other players",
+      "textureTileIndex": 0
+    },
+    {
+      "cardID": "slingshot",
+      "name": "Slingshot",
+      "type": "weapon",
+      "value": "Well",
+      "drop": 0.85,
+      "range": 3,
+      "cost": 1,
+      "dmg": 1,
+      "ammoConsuption": 1,
+      "stats": null,
+      "action": null,
+      "description": "Range weapon dealing a point of demage",
+      "textureTileIndex": 1
+    },
+    {
+      "cardID": "stone",
+      "name": "Stone",
+      "type": "spell",
+      "value": "Well",
+      "drop": 0.8,
+      "range": 2,
+      "cost": 1,
+      "stats": null,
+      "action": {
+        "add": null,
+        "removes": null,
+        "actionString": "splashdmg 3 0"
+      },
+      "description": "Deals a heavy 3-demage hit when thrown",
+      "textureTileIndex": 2
+    },
+    {
+      "cardID": "nuts",
+      "name": "Nuts",
+      "type": "special",
+      "value": "Well",
+      "drop": 0.75,
+      "range": 0,
+      "cost": 1,
+      "stats": null,
+      "action": {
+        "add": {
+          "hp": 3
+        },
+        "removes": null,
+        "actionString": null
+      },
+      "description": "    ",
+      "textureTileIndex": 3
+    },
+    {
+      "cardID": "bullets",
+      "name": "Bullets",
+      "type": "special",
+      "value": "Well",
+      "drop": 0.75,
+      "range": 0,
+      "cost": 1,
+      "stats": null,
+      "action": {
+        "add": {
+          "ammo": 3
+        },
+        "removes": null,
+        "actionString": null
+      },
+      "description": "Full of bullets",
+      "textureTileIndex": 3
+    },
+    {
+      "cardID": "kitchen_knife",
+      "name": "Kitchen knife",
+      "type": "weapon",
+      "value": "Medium Well",
+      "drop": 0.7,
+      "range": 1,
+      "cost": 1,
+      "dmg": 4,
+      "ammoConsuption": 0,
+      "stats": null,
+      "action": null,
+      "description": "Spread that roll than stab a hoe",
+      "textureTileIndex": 4
+    },
+    {
+      "cardID": "boomerang",
+      "name": "Boomerang",
+      "type": "weapon",
+      "value": "Medium Well",
+      "drop": 0.65,
+      "range": 3,
+      "cost": 1,
+      "dmg": 2,
+      "ammoConsuption": 0,
+      "stats": null,
+      "action": null,
+      "description": "Hunting weapon with a deadly use",
+      "textureTileIndex": 5
+    },
+    {
+      "cardID": "magician_wand",
+      "name": "Magician wand",
+      "type": "spell",
+      "value": "Medium Well",
+      "drop": 0.6,
+      "range": 2,
+      "cost": 2,
+      "stats": null,
+      "action": {
+        "add": null,
+        "removes": null,
+        "actionString": "splashdmg 1 1"
+      },
+      "description": "Bad for casting, good for 1 dmg throw",
+      "textureTileIndex": 6
+    },
+    {
+      "cardID": "telescope",
+      "name": "Telescope",
+      "type": "trinket",
+      "value": "Medium Well",
+      "drop": 0.55,
+      "range": 0,
+      "cost": 2,
+      "stats": {
+        "baseRange": 1
+      },
+      "action": null,
+      "description": "See your enemies sooner than they see you",
+      "textureTileIndex": 7
+    },
+    {
+      "cardID": "rusty_blade",
+      "name": "Rusty blade",
+      "type": "weapon",
+      "value": "Medium",
+      "drop": 0.55,
+      "range": 1,
+      "cost": 2,
+      "dmg": 5,
+      "ammoConsuption": 0,
+      "action": null,
+      "description": "Battle-scarred blade with splitting swings",
+      "textureTileIndex": 8
+    },
+    {
+      "cardID": "shovel",
+      "name": "Shovel",
+      "type": "special",
+      "value": "Medium",
+      "drop": 0.45,
+      "range": 0,
+      "cost": 2,
+      "stats": null,
+      "action": {
+        "add": null,
+        "removes": null,
+        "actionString": "rise -4 1 2"
+      },
+      "description": "Elevate yourself above your neighbours",
+      "textureTileIndex": 9
+    },
+    {
+      "cardID": "building_clay",
+      "name": "Building clay",
+      "type": "special",
+      "value": "Medium",
+      "drop": 0.45,
+      "range": 0,
+      "cost": 2,
+      "stats": null,
+      "action": {
+        "add": null,
+        "removes": null,
+        "actionString": "rise 4 1 1"
+      },
+      "description": "Build a barricade from your surroundings",
+      "textureTileIndex": 10
+    }
+  ]
+}

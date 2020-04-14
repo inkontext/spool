@@ -79,5 +79,9 @@ var SpoolRenderer = {
                 box.x + box.width / 2,
                 box.y + box.height / 2 - (lines.length - 1) / 2 * lineHeight + index * lineHeight + lineHeight / 3)
         })
+    },
+
+    simpleText: (ctx, text, x, y) => {
+        ctx.fillText(text, x, y);
     }
 }
