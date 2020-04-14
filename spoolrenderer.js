@@ -38,6 +38,18 @@ var SpoolRenderer = {
         ctx.fill();
     },
 
+    renderRotatedSprite: (ctx, sprite, angle, cx, cy, bounds) => {
+        ctx.save()
+
+        ctx.translate(cx, cy);
+
+        ctx.rotate(-angle)
+        ctx.drawImage(sprite, bounds.x, bounds.y, bounds.width, bounds.height)
+
+        ctx.restore()
+    },
+
+
     drawRect: (ctx, x, y, width, height) => {
         ctx.drawRect(x, y, width, height);
     },
