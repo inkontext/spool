@@ -181,7 +181,19 @@ const SpoolMath = {
     }
 }
 
+var SpoolRect = (x, y, width, height) => {
+    return {
+        x: x,
+        y: y,
+        width: width,
+        height: height,
+        cx: x + width / 2,
+        cy: y + height / 2
+    }
+}
+
 
 module.exports = {
-    SpoolMath
+    SpoolMath,
+    SpoolRect
 }

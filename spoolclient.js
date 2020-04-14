@@ -66,8 +66,18 @@ var Client = (initObject) => {
     self.socketInit = () => {
         self.socket = io();
         self.socket.on(MessageCodes.SM_PACK_INIT, (data) => {
-            for (key in data) {
 
+            if (data.resetHandler) {
+                self.handler.reset();
+                self.clientObject = undefined;
+            }
+
+            console.log(Object.keys(self.handler));
+
+            for (key in data) {
+                if (key == 'resetHandler') {
+                    continue;
+                }
                 // Constructor function, this pointer is filled with constructor function based on the object type
                 var constFunction = undefined;
 
@@ -108,6 +118,10 @@ var Client = (initObject) => {
                     self.onFirstLoad(self)
                 self.firstInit = true;
             }
+        })
+
+        self.socket.on(MessageCodes.SM_RESET, (data) => {
+            self.client.handler.reset();
         })
 
         self.socket.on(MessageCodes.ASIGN_CLIENT_ID, (data) => {
@@ -191,6 +205,7 @@ var Client = (initObject) => {
             self.camera.height = self.height;
         }
     }
+
     return self;
 }
 
@@ -1140,6 +1155,24 @@ var ClientHandler = (chunkSize, client) => {
         }
     }
 
+    self.reset = () => {
+
+        var defs = {
+            objects: {},
+            objectsById: {},
+            chunks: {},
+            client: client,
+            chunkSize: chunkSize
+        };
+
+        Object.keys(defs).forEach(key => {
+            delete self.key;
+        });
+        Object.assign(self, defs);
+
+        console.log(self.objects);
+    }
+
     self.getChunks = (min_x, min_y, max_x, max_y) => {
         result = []
         for (var x = min_x; x <= max_x; x++) {
@@ -1224,15 +1257,16 @@ var Camera = (initPack = {}) => {
 
             if (self.lerpRotation) {
                 self.rotation = SpoolMath.lerpRotation(self.rotation, self.followObject.rotation - Math.PI / 2, self.rotationSpeed);
-                //self.rotation = self.followObject.rotation - Math.PI / 2;
             }
 
             if (self.lerpSpeedToScale) {
                 var vel = self.followObject.velocity ? self.followObject.velocity : 0;
 
-                self.width = self.canvasWidth / self.scaleX;
-                self.height = self.canvasHeight / self.scaleY;
+
             }
+
+            self.width = self.canvasWidth / self.scaleX;
+            self.height = self.canvasHeight / self.scaleY;
 
             if (self.lerp) {
                 self.x = SpoolMath.lerp(self.x, self.followObject.x + self.offsetX, self.followSpeed);

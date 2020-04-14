@@ -5,6 +5,7 @@ const {
     ASIGN_CLIENT_ID,
     SM_KEY_PRESS,
     SM_MOUSE_CLICKED,
+    SM_RESET,
 
     KI_MOV_LEFT,
     KI_MOV_UP,
@@ -28,6 +29,8 @@ const {
 const {
     SpoolUtils
 } = require('./spoolutils.js')
+
+var Perlin = require('perlin-noise');
 
 ////// SERVER //////
 
@@ -83,6 +86,8 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
         self.io.sockets.on("connection", socket => {
             //// INIT ////
 
+            // give client the first init package contains all the information about the the state
+
             // Generate ID
             var id = Math.random();
             socket.id = id;
@@ -92,7 +97,7 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
 
             // Add player and add it to the list
             var player = playerConstructor({
-                id
+                id: id
             })
 
             if (self.onPlayerSpawn) {
@@ -100,6 +105,10 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
             }
 
             self.handler.add(player);
+
+            if (self.onPlayerAddedToHandler) {
+                self.onPlayerAddedToHandler(player);
+            }
 
             self.playerList[id] = player;
 
@@ -128,9 +137,14 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
                 }
             });
 
-            socket.emit(SM_PACK_INIT, {
-                ...self.handler.getInitPackage(player.objectType, socket.id)
-            }); // give client the first init package contains all the information about the the state
+            var initPackage = self.handler.getInitPackage(player.objectType, socket.id);
+            initPackage.resetHandler = true;
+
+            socket.emit(SM_PACK_INIT,
+                initPackage
+            ); // give client the first init package contains all the information about the the state
+
+            console.log('init', initPackage['PLAYER'].map(value => value.id));
 
             socket.emit(ASIGN_CLIENT_ID, {
                 clientId: socket.id,
@@ -140,8 +154,6 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
                 }
             }); // give client his id -> so he knows which player he is in control of
 
-
-
             //// END ////
 
             socket.on("disconnect", () => {
@@ -150,12 +162,21 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
                 delete self.playerList[id];
                 // Remove player from the handler as a object
                 self.handler.remove(player.objectType, id);
+                if (self.onPlayerDisconnected) {
+                    self.onPlayerDisconnected(self, socket, player);
+                }
             });
 
             if (self.onSocketCreated) {
                 self.onSocketCreated(self, socket, player);
             }
         });
+    }
+
+    self.emit = (message, data) => {
+        if (self.io) {
+            self.io.sockets.emit(message, data);
+        }
     }
 
     self.update = () => {
@@ -177,7 +198,12 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
             }
 
             // Give client the update package -> objects are updateg
-            socket.emit(SM_PACK_UPDATE, pack);
+            socket.emit(SM_PACK_UPDATE, pack['general']);
+
+            // Give client his authorized update package 
+            if (pack[socket.id]) {
+                socket.emit(SM_PACK_UPDATE, pack[socket.id]);
+            }
 
             // Give client the remove package -> remove objects from the game
             if (self.handler.somethingToRemove) {
@@ -517,6 +543,7 @@ var ServerHandler = () => {
      */
     self.update = () => {
         var pack = {};
+        var authorizedPacks = {};
 
         for (key in self.objects) {
 
@@ -549,7 +576,7 @@ var ServerHandler = () => {
 
                     var postUpdate = object.updatePack();
 
-                    var sendUpdate = object.sendUpdatePackageAlways;
+                    var sendUpdate = object.sendUpdatePackageAlways || object.asyncUpdateNeeded;
 
                     if (!sendUpdate) {
 
@@ -557,7 +584,6 @@ var ServerHandler = () => {
 
                         if (!change) {
                             for (valueKey in postUpdate) {
-
                                 if (preUpdate[valueKey] !== postUpdate[valueKey]) {
                                     change = true;
                                     break;
@@ -573,6 +599,20 @@ var ServerHandler = () => {
                     if (sendUpdate) {
                         currPackage.push(postUpdate)
                         object.asyncUpdatePackage = {};
+                        object.asyncUpdateNeeded = false;
+                    }
+
+                    var authPack = object.authorizedUpdatePack();
+
+                    if (authPack) {
+                        if (!authorizedPacks[authPack.id]) {
+                            authorizedPacks[authPack.id] = {}
+                        }
+                        if (!authorizedPacks[authPack.id][object.objectType]) {
+                            authorizedPacks[authPack.id][object.objectType] = [];
+                        }
+
+                        authorizedPacks[authPack.id][object.objectType].push(authPack.package);
                     }
 
                     object.lastUpdatePack = postUpdate;
@@ -582,6 +622,7 @@ var ServerHandler = () => {
             if (currPackage.length != 0) {
                 pack[key] = currPackage;
             }
+
         }
 
         for (var i = 0; i < self.managers.length; i++) {
@@ -589,14 +630,17 @@ var ServerHandler = () => {
                 self.managers[i].handlerUpdate();
         }
 
-        return pack;
+        return {
+            'general': pack,
+            ...authorizedPacks
+        };
     };
 
     //// ADDING REMOVING ////
 
     /**
      * Adds object to the handler
-     * @param {object} obj - object we want to add need to contain objecType and id
+     * @param {object} obj - object we want to add need to contain objecType and idf
      */
     self.add = obj => {
         // Add to handler
@@ -672,16 +716,26 @@ var ServerHandler = () => {
         for (key in self.objects) {
             var objList = self.objects[key];
 
+
+
             var currPackage = [];
             for (objKey in objList) {
                 var object = objList[objKey];
+
+
+
                 var initPack = object.initPack();
 
                 if (objKey == playerId && key == playerType) {
                     initPack["playerFlag"] = true;
                 }
-
                 currPackage.push(initPack);
+
+                // if (key == 'PLAYER') {
+                //     console.log(object);
+                //     console.log(objKey);
+                //     console.log(initPack);
+                // }
             }
 
             pack[key] = currPackage;
@@ -1158,7 +1212,6 @@ var CollisionManager = (initPack, handler) => {
             result.direction = closestIntersection.direction;
             return result;
         } else if (harsh) {
-            console.log('harsh');
             result.point = {
                 x: a.px,
                 y: a.py,
@@ -1315,6 +1368,33 @@ var GravityManager = (initPack, handler) => {
 
 var InputManager = () => {
 
+}
+
+////// TIMER //////
+
+var SpoolTimer = (duration, event, object = null) => {
+    var self = {
+        startTime: Date.now(),
+        duration: duration,
+        event: event,
+        object: object,
+        active: true,
+        timeLeft: 0,
+    }
+
+    self.update = () => {
+        self.timeLeft = self.startTime + self.duration - Date.now()
+        if (self.timeLeft < 0 && self.active) {
+            self.event(object);
+            self.active = false;
+        }
+    }
+
+    self.stop = () => {
+        self.active = false;
+    }
+
+    return self;
 }
 
 ////// OBJECTSPAWNER //////
@@ -1768,6 +1848,7 @@ var Entity = (initPack = {}) => {
     var self = {
         //// STATE ////
         asyncUpdatePackage: {},
+        asyncUpdateNeeded: false,
 
         //// VELOCITIES ////
         x: 0, // x pos of the objects center
@@ -1866,9 +1947,25 @@ var Entity = (initPack = {}) => {
             rotation: self.rotation,
             id: self.id,
             movementAngle: self.movementAngle,
-            moving: self.moving
+            moving: self.moving,
+            ...self.asyncUpdatePackage,
         };
     };
+
+    self.authorizedUpdatePack = () => {
+        return null;
+    }
+
+    self.setAsyncUpdateValue = (name, value) => {
+
+        self.asyncUpdatePackage[name] = value;
+        self.asyncUpdateNeeded = true;
+    }
+
+    self.addAsyncUpdatePackage = (pack) => {
+        Object.assign(self.asyncUpdatePackage, pack);
+        self.asyncUpdateNeeded = true;
+    }
 
     //// UPDATING ////
 
@@ -2243,6 +2340,9 @@ module.exports = {
     OvalBodyParameters,
     RectangleBodyParameters,
 
+    SpoolTimer,
+
     SpoolMath,
-    SpoolUtils
+    SpoolUtils,
+    Perlin
 }

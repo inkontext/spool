@@ -1,4 +1,7 @@
 var MessageCodes = {
+
+    SM_RESET: 'reset',
+
     SM_PACK_INIT: 'init-pack',
     SM_PACK_UPDATE: 'update-pack',
     SM_PACK_REMOVE: 'remove-pack',
