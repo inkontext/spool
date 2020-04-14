@@ -73,12 +73,9 @@ var Tile = (initObject) => {
 
         var innerRadiusFactor = 0.8;
 
-
         self.renderZ = SpoolMath.lerp(self.renderZ, self.z, 0.2);
 
         var zOffset = self.renderZ * Z_SCALINGFACTOR + self.zRandomOffset * Z_SCALINGFACTOR * 1;
-
-
 
         for (var i = 0; i < n; i++) {
             angle = startAngle + Math.PI * 2 / n * i;
@@ -327,8 +324,6 @@ client.preHandler = () => {
     }
 }
 
-
-
 client.camera.scaleY = 0.8
 
 client.socketInit()
@@ -343,6 +338,7 @@ keyListener.onKeyDown = (event) => {
 
 var mouseListener = MouseListener(client);
 mouseListener.initListener();
+
 client.onMouseEvent = (event) => {
     if (event.type == 'mousedown') {
         var res = null;
@@ -353,15 +349,29 @@ client.onMouseEvent = (event) => {
                 res = box.tile;
             }
         })
+
         if (res) {
-            client.emit("MOVE_TO", {
-                tx: res.tx,
-                ty: res.ty
-            });
+            if (event.button == 0) {
+                client.emit("MOVE_TO", {
+                    tx: res.tx,
+                    ty: res.ty
+                });
+            } else if (event.button == 1) {
+                client.emit('CARD_ACTION', {
+                    type: 'card',
+                    tx: res.tx,
+                    ty: res.ty,
+                    cardid: 'slingshot'
+                })
+            } else if (event.button == 2) {
+                client.emit('CARD_ACTION', {
+                    type: 'weapon',
+                    tx: res.tx,
+                    ty: res.ty
+                })
+            }
         }
     }
-
-
 }
 
 client.startGameLoop()
@@ -569,6 +579,68 @@ client.socket.on('ALERT', (data) => {
 client.uiHandler.add(alertUi);
 
 
+//// DAMAGE FLOATERS ////
+
+var DamageFloatersUI = (initObject) => {
+    var self = SpoolUIElement(initObject);
+
+    self.damageFloaters = [];
+
+    self.render = (ctx) => {
+        SpoolRenderer.setColor(ctx, 'white');
+
+        var cuttingIndex = -1;
+
+        self.damageFloaters.forEach((floater, index) => {
+            if (!floater.frameCounter) {
+                floater.frameCounter = 0;
+            }
+
+            var point = client.camera.transformPoint(floater.x, floater.y);
+            point.y -= Z_SCALINGFACTOR * floater.z + floater.frameCounter * 5;
+
+            ctx.globalAlpha = 1 - floater.frameCounter / 30;
+            console.log(ctx.globalAlpha);
+
+            SpoolRenderer.setFont(ctx, 'Arial', 25);
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 4;
+            ctx.strokeText(floater.dmg, point.x, point.y);
+            SpoolRenderer.simpleText(ctx, floater.dmg, point.x, point.y);
+
+            ctx.globalAlpha = 1;
+
+            floater.frameCounter += 1;
+
+            console.log(floater.frameCounter);
+
+            if (floater.frameCounter > 30) {
+                if (index > cuttingIndex) {
+                    cuttingIndex = index;
+                }
+            }
+        })
+
+        if (cuttingIndex > -1) {
+            self.damageFloaters.splice(0, cuttingIndex + 1);
+        }
+    }
+
+    self.add = (data) => {
+        self.damageFloaters = self.damageFloaters.concat(data);
+    }
+
+    return self;
+}
+
+
+var damageFloatersUI = DamageFloatersUI();
+client.uiHandler.add(damageFloatersUI);
+client.damageFloatersUI = damageFloatersUI;
+
+client.socket.on('DAMAGE_FLOATERS', data => {
+    client.damageFloatersUI.add(data);
+})
 
 //// PLAYER INFORMATION ////
 
@@ -601,7 +673,7 @@ var PlayerInformationUI = (initObject) => {
                 `${client.clientObject.name}`,
                 SpoolRect(self.x, self.y, vialSize, vialSize));
 
-
+            ctx.lineWidth = 2;
             self.renderVialValue(
                 ctx, 'red',
                 client.clientObject.hp, client.clientObject.maxHp,
@@ -616,8 +688,19 @@ var PlayerInformationUI = (initObject) => {
                 ctx, 'gray',
                 client.clientObject.ammo, client.clientObject.maxAmmo,
                 SpoolRect(self.x + vialSize * 3 + margin * 2, self.y, vialSize, vialSize));
-        }
 
+            if (client.clientObject.equip.weapon) {
+                SpoolRenderer.simpleText(ctx, client.clientObject.equip.weapon.name, 100, 400);
+            }
+
+            client.clientObject.equip.trinkets.forEach((trinket, index) => {
+                SpoolRenderer.simpleText(ctx, trinket.name, 100, 450 + index * 50);
+            })
+
+            Object.keys(client.clientObject.stats).forEach((key, index) => {
+                SpoolRenderer.simpleText(ctx, `${key}: ${client.clientObject.stats[key]}`, client.gameArea.width - 100, 400 + index * 50)
+            });
+        }
     }
 
     return self;

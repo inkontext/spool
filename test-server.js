@@ -11,14 +11,21 @@ var {
     SpoolUtils,
     SpoolTimer,
     Perlin,
-
 } = require('./spoolserver.js');
 
 var {
     FileReader
 } = require('./spoolfilereader.js');
 
+let {
+    cards
+} = require('./cards.json');
 
+var CARDS = {}
+
+cards.forEach(card => {
+    CARDS[card.cardID] = card;
+})
 
 ////// GLOBAL CONSTANTS //////
 
@@ -87,6 +94,9 @@ var server = Server({
     chunkSize: 300
 }, ['/', '/textures'])
 
+
+var DAMAGEFLOATERS = [];
+
 ////// OBJECTS //////
 
 var Player = (initObject) => {
@@ -96,12 +106,19 @@ var Player = (initObject) => {
         updatePack: self.updatePack
     }
 
+    self.equip = {
+        weapon: null,
+        trinkets: []
+    }
+
     self.objectType = 'PLAYER';
     self.width = 42;
     self.height = 64;
 
     self.sendUpdatePackageAlways = true;
     self.name = 'Anonymous'
+
+    //// DEFAULT VALUES AND STARTING POSITION ////
 
     self.startPosition = (tx, ty, defs) => {
         MAP.move(self, tx, ty);
@@ -114,7 +131,7 @@ var Player = (initObject) => {
             energy: 0,
             maxHp: 10,
             hp: 10,
-            maxAmmo: 5,
+            maxAmmo: 10,
             ammo: 0,
             alive: true,
             hand: [],
@@ -123,6 +140,8 @@ var Player = (initObject) => {
     }
 
     self.setDefs();
+
+    //// MOVING ////
 
     self.moveTo = (tx, ty, hard = false) => {
         var temp = MAP.getTile(tx, ty);
@@ -157,6 +176,8 @@ var Player = (initObject) => {
         }
     }
 
+    //// UPDATE PACK ////
+
     self.updatePack = () => {
         return {
             ...superSelf.updatePack(),
@@ -174,6 +195,9 @@ var Player = (initObject) => {
 
             alive: self.alive,
 
+            equip: self.equip,
+            stats: self.stats,
+
             tile: self.tile ? {
                 tx: self.tile.tx,
                 ty: self.tile.ty,
@@ -181,14 +205,6 @@ var Player = (initObject) => {
                 leavingPrice: self.tile.leavingPrice,
                 enteringPrice: self.tile.enteringPrice
             } : null,
-        }
-    }
-
-    self.die = () => {
-        self.alive = false;
-
-        if (self.onDeath) {
-            self.onDeath();
         }
     }
 
@@ -207,8 +223,201 @@ var Player = (initObject) => {
         self.setAsyncUpdateValue('name', self.name);
     }
 
+    //// GAMESTEP ACTIONS ////
+
+    self.damage = (dmg) => {
+        console.log('player dmg:', dmg);
+        self.deltaValue('hp', -dmg);
+    }
+
+    self.die = () => {
+        self.alive = false;
+
+        if (self.onDeath) {
+            self.onDeath();
+        }
+    }
+
+    //// CARDS ////
+
     self.give = (cards) => {
         self.hand = self.hand.concat(cards);
+    }
+
+
+    self.recalcEquip = () => {
+        var stats = {};
+
+        if (self.equip.weapon) {
+            if (self.equip.weapon.stats) {
+                Object.keys(self.equip.weapon.stats).forEach(key => {
+                    if (!stats[key]) {
+                        stats[key] = 0;
+                    }
+                    stats[key] += self.equip.weapon.stats[key];
+                })
+            }
+        }
+        self.equip.trinkets.forEach(trinket => {
+            if (trinket.stats) {
+                Object.keys(trinket.stats).forEach(key => {
+                    if (!stats[key]) {
+                        stats[key] = 0;
+                    }
+                    stats[key] += trinket.stats[key];
+                })
+            }
+        })
+
+        self.stats = stats;
+    }
+
+    self.playCard = (tile, cardid) => {
+        self.give([cardid]);
+        self.deltaValue('energy', 10);
+        self.deltaValue('ammo', 10);
+
+        if (self.hand.includes(cardid)) {
+            var index = self.hand.indexOf(cardid);
+            var card = CARDS[cardid];
+
+            if (index != -1) {
+                if (self.energy >= card.cost) {
+                    if (tileDistance2T(self, tile) <= card.range) {
+                        // WEAPONS 
+                        if (card.type == 'weapon') {
+                            self.equip.weapon = card;
+                            self.recalcEquip();
+                        }
+                        if (card.type == 'trinket') {
+                            self.equip.trinkets.push(card);
+                            self.recalcEquip();
+                        }
+
+                        // SPELLS 
+                        // SPECIAL 
+
+                        if (card.type == 'spell' || card.type == 'special') {
+                            if (card.action) {
+                                // Add 
+                                if (card.action.add) {
+                                    Object.keys(card.action.add).forEach(element => {
+                                        self.deltaValue(element, card.action.add[element]);
+                                    });
+                                }
+                                // Remove 
+                                if (card.action.removes) {
+                                    Object.keys(card.action.removes).forEach(element => {
+                                        self.deltaValue(element, card.action.removes[element]);
+                                    });
+                                }
+                                // Special
+                                if (card.action.actionString) {
+                                    var words = card.action.actionString.split(' ');
+
+                                    if (words[0] == 'splashdmg') {
+                                        var dmg = parseInt(words[1]);
+                                        var range = parseInt(words[2]);
+                                        MAP.getTilesInRadius(tile.tx, tile.ty, range).forEach(tile => {
+                                            tile.dealDamage(dmg, self);
+                                        });
+                                    }
+                                    if (words[0] == 'rise') {
+                                        var h = parseInt(words[1]);
+                                        var minRange = parseInt(words[2]);
+                                        var maxRange = parseInt(words[3]);
+
+                                        MAP.getTilesInRadius(tile.tx, tile.ty, maxRange, minRange).forEach(tile => {
+                                            tile.z += h
+                                        });
+                                    }
+                                }
+                            } else {
+                                console.log('Every spell card needs an action');
+                            }
+                        }
+
+                        self.hand.splice(index, 1);
+                    } else {
+                        return "That tile is not in the range of the card"
+                    }
+                } else {
+                    return "You don't have enough energy"
+                }
+            } else {
+                return "You don't have that card"
+            }
+        }
+    }
+
+    self.useWeapon = (tile) => {
+        var weapon = self.equip.weapon;
+        if (weapon) {
+
+            if (weapon.dmg) {
+
+                console.log(weapon.ammoConsuption)
+
+                if (weapon.ammoConsuption) {
+
+                    if (self.ammo >= weapon.ammoConsuption) {
+                        self.deltaValue('ammo', -weapon.ammoConsuption);
+                    } else {
+                        return "You don't have enough ammo";
+                    }
+                }
+                tile.dealDamage(weapon.dmg, self);
+            } else {
+                console.log("This weapon doesn't have damage");
+                console.log(weapon);
+            }
+
+        } else {
+            return "You don't have any weapon";
+        }
+    }
+
+    self.deltaValue = (type, value) => {
+        if (self[type] == undefined) {
+            console.log('Player with id: ', self.id, "doesn't have", `'${type}'`);
+            self[type] = 0;
+        }
+        self[type] += value;
+
+        var max = null;
+        var min = null;
+        var minAction = null;
+        var maxAction = null;
+
+        if (type == 'hp') {
+            max = self.maxHp;
+            min = 0;
+            minAction = self.die
+        }
+
+        if (type == 'energy') {
+            max = self.maxEnergy;
+            min = 0;
+        }
+
+        if (type == 'ammo') {
+            max = self.maxAmmo;
+            min = 0;
+        }
+
+        if (max ? self[type] > max : false) {
+            self[type] = max;
+            if (maxAction) {
+                maxAction();
+            }
+        }
+
+        if (min !== null ? self[type] < min : false) {
+            self[type] = min;
+            if (minAction) {
+                minAction();
+            }
+        }
     }
 
     return self;
@@ -299,6 +508,53 @@ var Tile = (initObject) => {
         self.setAsyncUpdateValue('objects', self.objects);
     }
 
+    self.setBiomeParameters = (biome, leavingPrice, enteringPrice) => {
+        self.biome = biome;
+        self.leavingPrice = leavingPrice;
+        self.enteringPrice = enteringPrice;
+    }
+
+    self.setBiome = (biome) => {
+        switch (biome) {
+            case 'grass':
+                self.setBiomeParameters(biome, 0, 1);
+                break;
+            case 'water':
+                self.setBiomeParameters(biome, 1, 1);
+                break;
+            case 'stone':
+                self.setBiomeParameters(biome, 0, 1);
+                break;
+            case 'sand':
+                self.setBiomeParameters(biome, 0, 1);
+                break;
+            default:
+                self.setBiomeParameters(biome, 0, 1);
+                break;
+        }
+    }
+
+    // DAMAGE //
+
+    self.dealDamage = (damage, player = null) => {
+        self.objects.forEach(id => {
+            var temp = server.handler.objectsById[id];
+            if (temp) {
+
+                if (player ? temp.id != player.id : true) {
+                    if (temp.damage) {
+                        temp.damage(damage)
+                    }
+                }
+            }
+        })
+        DAMAGEFLOATERS.push({
+            x: self.x,
+            y: self.y,
+            z: self.z,
+            dmg: damage
+        });
+    }
 
 
     return self;
@@ -311,6 +567,90 @@ var Map = () => {
         tiles: {},
         currentRadius: -1,
         possibleCoords: []
+    }
+
+    self.astarNode = (tile, g, h, parent = null) => {
+        return {
+            x: tile.tx,
+            y: tile.ty,
+            f: g + h,
+            g,
+            h,
+            parent: parent,
+            tile,
+            key: self.tileKey(tile.tx, tile.ty)
+        }
+    }
+
+    self.findShortestPath = (ax, ay, bx, by) => {
+        var open = []
+        var closed = []
+
+        var targetTile = self.getTile(bx, by);
+
+        var closedKeys = [];
+
+        open.push(
+            self.astarNode(self.getTile(ax, ay), 0, SpoolMath.distance(ax, ay, bx, by))
+        );
+
+        var resTile = null;
+
+        while (open.length > 0) {
+            open.sort((a, b) => a.f - b.f);
+            currentNode = open[0];
+
+            if (currentNode.x == bx && currentNode.y == by) {
+                resTile = currentNode;
+                break;
+            }
+            open.splice(0, 1);
+            closed.push(currentNode);
+            closedKeys.push(currentNode.key)
+
+            var neighboars = self.getTilesInRadius(currentNode.x, currentNode.y, 1, 1);
+
+            neighboars.forEach(tile => {
+                var key = self.tileKey(tile.tx, tile.ty);
+                if (!closedKeys.includes(key)) {
+
+                    var openListInstance = null;
+                    for (var i = 0; i < open.length; i++) {
+                        if (open[i].key == key) {
+                            openListInstance = open[i];
+                            break;
+                        }
+                    }
+
+                    var price = movingPrice(currentNode.tile, tile);
+
+                    if (!openListInstance) {
+                        open.push(self.astarNode(tile, currentNode.g + price, SpoolMath.distance(tile.x, tile.y, bx, by), currentNode));
+                    } else {
+                        if (openListInstance.parent) {
+                            if (openListInstance.parent.g > currentNode.g) {
+                                openListInstance.parent = currentNode;
+                                openListInstance.g = currentNode.g + price;
+                                openListInstance.f = openListInstance.g + openListInstance.h;
+                            }
+                        }
+                    }
+                }
+            })
+        }
+
+        if (!resTile) {
+            return null;
+        } else {
+            res = []
+            var temp = resTile;
+            while (temp) {
+                res.push([temp.x, temp.y]);
+                temp = temp.parent;
+            }
+            return res;
+        }
+
     }
 
     self.tileKey = (x, y) => {
@@ -328,10 +668,12 @@ var Map = () => {
      * @returns returns array of all the tiles in said radius 
      */
     self.getTilesInRadius = (tx, ty, r, minR = null) => {
+        r += 1;
         var min = -1;
         var max = min + r * 2 - 1;
 
         res = []
+
 
         for (var y = 1 - r; y < 0 + r; y++) {
             for (var x = 1 - r; x < 0 + r; x++) {
@@ -382,8 +724,6 @@ var Map = () => {
         }
     }
 
-
-
     self.spawnWorld = () => {
         self.currentRadius = self.layers;
         var worldSize = self.layers * 2 - 1;
@@ -415,42 +755,20 @@ var Map = () => {
             tile.z = Math.round(noiseValue * 6);
             tile.zRandomOffset = Math.random();
             tile.dead = false;
-            tile.biome = 'grass';
+
+
+            tile.setBiome('grass');
         })
 
         for (var i = 0; i < 3; i++) {
             key = SpoolMath.randomChoice(self.possibleCoords);
-
-            var height = SpoolMath.randomInt(5, 10)
-
-            self.getTilesInRadius(key[0], key[1], SpoolMath.randomInt(2, 3)).forEach(tile => {
-                tile.biome = 'stone';
-                tile.z = height + SpoolMath.randomInt(1, 3)
-            })
+            self.spawnCliff(key[0], key[1], SpoolMath.randomInt(1, 2), SpoolMath.randomInt(5, 10));
         }
 
 
-        for (var i = 0; i < WORLD_CLIFFSNUMBER; i++) {
+        for (var i = 0; i < 3; i++) {
             key = SpoolMath.randomChoice(self.possibleCoords);
-
-            var radius = SpoolMath.randomInt(2, 3);
-
-            self.getTilesInRadius(key[0], key[1], radius + 1, radius).forEach(tile => {
-                if (tile.biome == 'grass') {
-                    tile.biome = 'sand';
-
-                    tile.z = 0;
-                }
-            })
-            self.getTilesInRadius(key[0], key[1], radius).forEach(tile => {
-                if (tile.biome == 'grass') {
-                    tile.biome = 'water';
-                    tile.zRandomOffset = -1;
-                    tile.enteringPrice = 1;
-                    tile.leavingPrice = 1;
-                    tile.z = 0;
-                }
-            })
+            self.spawnLake(key[0], key[1], SpoolMath.randomInt(1, 2))
         }
 
         keys.forEach(key => {
@@ -471,10 +789,60 @@ var Map = () => {
             tile.z = 0;
             tile.zRandomOffset = 0;
             tile.dead = false;
-            tile.biome = 'grass';
+            tile.setBiome('grass');
+        })
 
+        for (var i = 0; i < 3; i++) {
+            key = SpoolMath.randomChoice(self.possibleCoords);
+            self.spawnCliff(key[0], key[1], SpoolMath.randomInt(1, 2), SpoolMath.randomInt(5, 10));
+        }
+
+        for (var i = 0; i < 3; i++) {
+            key = SpoolMath.randomChoice(self.possibleCoords);
+            self.spawnLake(key[0], key[1], SpoolMath.randomInt(1, 2))
+        }
+
+        keys.forEach(key => {
+            var tile = self.tiles[key];
             tile.addAsyncUpdatePackage(tile.initPack());
         })
+    }
+
+    //// SPAWNING FEATURES //// 
+    self.spawnCliff = (x, y, r, height) => {
+        self.getTilesInRadius(x, y, r).forEach(tile => {
+            tile.setBiome('stone');
+            tile.z = height + SpoolMath.randomInt(1, 3)
+        })
+    }
+
+    self.spawnLake = (x, y, r) => {
+        self.getTilesInRadius(x, y, r + 1, r).forEach(tile => {
+            if (tile.biome == 'grass') {
+                tile.setBiome('sand');
+                tile.z = 0;
+            }
+        })
+        self.getTilesInRadius(x, y, r).forEach(tile => {
+            if (tile.biome == 'grass') {
+                tile.setBiome('water');
+
+                tile.zRandomOffset = -1;
+                tile.z = 0;
+            }
+        })
+    }
+
+    self.spawnRiver = (ax, ay, bx, by) => {
+        var path = self.findShortestPath(ax, ay, bx, by);
+
+        if (path) {
+            path.forEach(value => {
+                var tile = self.tiles[self.tileKey(value[0], value[1])]
+                tile.biome = 'water';
+                tile.addAsyncUpdatePackage(tile.initPack());
+            })
+        }
     }
 
     self.move = (obj, tx, ty) => {
@@ -516,10 +884,11 @@ var Map = () => {
                     }
                 })
             }
-
         })
         self.currentRadius -= 1;
     }
+
+
 
     return self;
 }
@@ -647,7 +1016,6 @@ var GameStep = (playerQueue) => {
                         var diceA = SpoolMath.randomInt(1, 6);
                         var diceB = SpoolMath.randomInt(1, 6);
 
-
                         self.currentPlayer.energyDelta(diceA + diceB);
 
                         console.log(`${self.currentPlayer.name} rolled ${diceA} and ${diceB}`)
@@ -755,6 +1123,7 @@ var GameStep = (playerQueue) => {
 
 var MAP = Map()
 MAP.initBlankTiles(WORLD_LAYERS);
+MAP.spawnWaitingWorld();
 
 playerQueue = PlayerQueue();
 gameStep = GameStep(playerQueue);
@@ -787,6 +1156,34 @@ server.onSocketCreated = (server, socket, player) => {
             }
         }
     })
+
+    socket.on('CARD_ACTION', (data) => {
+        var tile = MAP.getTile(data.tx, data.ty);
+
+        if (tile.dead) {
+            alertClient(socket, "You can't use cards on dead tiles");
+            return;
+        }
+
+        // if (gameStep.active) {
+        //     if (gameStep.currentPlayer.id == player.id) {
+        console.log(data.type);
+        if (data.type == 'card') {
+            var res = player.playCard(tile, data.cardid);
+            if (res) {
+                alertClient(socket, res);
+            }
+        } else if (data.type == 'weapon') {
+            var res = player.useWeapon(tile);
+            if (res) {
+                alertClient(socket, res);
+            }
+        }
+        // } else {
+        //     alertClient(socket, "You aren't currently playing, wait for your round");
+        //     }
+        // }
+    })
 }
 
 server.updateCallback = () => {
@@ -796,6 +1193,12 @@ server.updateCallback = () => {
             gameStep.waitingForPlayers = true;
         }
     }
+
+    if (DAMAGEFLOATERS.length != 0) {
+        server.emit('DAMAGE_FLOATERS', DAMAGEFLOATERS);
+        DAMAGEFLOATERS = [];
+    }
+
     gameStep.update();
 }
 
