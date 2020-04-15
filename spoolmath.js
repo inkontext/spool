@@ -188,7 +188,10 @@ var SpoolRect = (x, y, width, height) => {
         width: width,
         height: height,
         cx: x + width / 2,
-        cy: y + height / 2
+        cy: y + height / 2,
+        contains: (ax, ay) => {
+            return x <= ax && ax <= x + width && y <= ay && ay <= y + height;
+        }
     }
 }
 

@@ -68,34 +68,47 @@ var SpoolRenderer = {
         ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
     },
 
-    multiLineText: (ctx, text, box, maxWidth) => {
-        var words = text.split(' ');
-        var line = '';
+    multiLineText: (ctx, text, box, maxWidth, fontOffsetCoef = 0.33, strokeWidth = null) => {
+
+        var hardLines = text.split('\n');
         var lines = [];
 
-        ctx.textAlign = 'center';
+        hardLines.forEach(singleHardLine => {
+            var words = singleHardLine.split(' ');
+            var line = '';
 
-        words.forEach((word, index) => {
-            var tempWidth = ctx.measureText(line + word).width;
-            if (tempWidth >= maxWidth) {
+            ctx.textAlign = 'center';
+
+            words.forEach((word, index) => {
+                var tempWidth = ctx.measureText(line + word).width;
+                if (tempWidth >= maxWidth) {
+                    lines.push(line.trim());
+                    line = word;
+                } else {
+                    line += ' ' + word;
+                }
+            })
+
+            if (line) {
                 lines.push(line.trim());
-                line = word;
-            } else {
-                line += ' ' + word;
             }
         })
-
-        if (line) {
-            lines.push(line.trim());
-        }
 
         var lineHeight = parseInt(ctx.font) + 3;
 
         lines.forEach((line, index) => {
+
+            var tx = box.x + box.width / 2;
+            var ty = box.y + box.height / 2 - (lines.length - 1) / 2 * lineHeight + index * lineHeight + lineHeight * fontOffsetCoef;
+
+            if (strokeWidth) {
+                ctx.lineWidth = strokeWidth;
+                ctx.strokeText(line, tx, ty);
+            }
             ctx.fillText(
                 line,
-                box.x + box.width / 2,
-                box.y + box.height / 2 - (lines.length - 1) / 2 * lineHeight + index * lineHeight + lineHeight / 3)
+                tx,
+                ty)
         })
     },
 
