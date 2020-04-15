@@ -1246,6 +1246,7 @@ var Camera = (initPack = {}) => {
         canvasHeight: 0,
         scaleX: 1,
         scaleY: 1,
+
         followSpeed: CAMERA_FOLLOW_SPEED,
         rotationSpeed: CAMERA_ROTATION_SPEED,
         followObject: null,

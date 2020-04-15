@@ -23,6 +23,8 @@ let {
 
 var CARDS = {}
 
+var DECKS = require('./decks.json');
+
 cards.forEach(card => {
     CARDS[card.cardID] = card;
 })
@@ -30,7 +32,7 @@ cards.forEach(card => {
 ////// GLOBAL CONSTANTS //////
 
 var TILE_WIDTH = 60;
-var WORLD_LAYERS = 6;
+var WORLD_LAYERS = 12;
 
 var WORLD_CLIFFSNUMBER = 1;
 
@@ -352,14 +354,11 @@ var Player = (initObject = {}) => {
         }
     }
 
-    self.useWeapon = (tile) => {
+    self.useWeapon = (tile, value) => {
         var weapon = self.equip.weapon;
         if (weapon) {
-
             if (weapon.dmg) {
-
                 console.log(weapon.ammoConsuption)
-
                 if (weapon.ammoConsuption) {
 
                     if (self.ammo >= weapon.ammoConsuption) {
@@ -566,6 +565,20 @@ var Tile = (initObject) => {
         }
     }
 
+    self.hasObjectType = (objectType) => {
+        self.objects.forEach(obj => {
+            var temp = server.handler.objectsById[obj];
+            if (temp) {
+                if (temp.objectType == objectType) {
+                    return true;
+                }
+            } else {
+                console.log(obj);
+            }
+        })
+        return false;
+    }
+
     // DAMAGE //
 
     self.dealDamage = (damage, player = null) => {
@@ -587,8 +600,6 @@ var Tile = (initObject) => {
             dmg: damage
         });
     }
-
-
 
 
     return self;
@@ -633,7 +644,8 @@ var Map = () => {
     var self = {
         tiles: {},
         currentRadius: -1,
-        possibleCoords: []
+        possibleCoords: [],
+        layers: 0,
     }
 
     self.astarNode = (tile, g, h, parent = null) => {
@@ -837,11 +849,6 @@ var Map = () => {
             self.spawnLake(key[0], key[1], SpoolMath.randomInt(1, 2))
         }
 
-        for (var i = 0; i < 3; i++) {
-            key = SpoolMath.randomChoice(self.possibleCoords);
-            self.spawnBox(key[0], key[1]);
-        }
-
         keys.forEach(key => {
             var tile = self.tiles[key];
 
@@ -876,11 +883,6 @@ var Map = () => {
             self.spawnLake(key[0], key[1], SpoolMath.randomInt(1, 2))
         }
 
-        for (var i = 0; i < 3; i++) {
-            key = SpoolMath.randomChoice(self.possibleCoords);
-            self.spawnBox(key[0], key[1]);
-        }
-
         keys.forEach(key => {
             var tile = self.tiles[key];
 
@@ -895,6 +897,25 @@ var Map = () => {
     }
 
     //// SPAWNING FEATURES //// 
+
+    self.getNRandomTiles = (n) => {
+        var temp = [...self.possibleCoords.map(value => getTile(value[0], value[1]))];
+        SpoolUtils.shuffle(temp);
+        return temp;
+    }
+
+    self.getNRandomTilesWithoutBox = (n) => {
+
+        var coords = [...self.possibleCoords.filter(value => !self.getTile(value[0], value[1]).hasObjectType('BOX'))]
+        SpoolUtils.shuffle(coords);
+        coords = coords.splice(0, n);
+
+        var temp = coords.map(value =>
+            self.getTile(value[0], value[1])
+        )
+
+        return temp;
+    }
 
     self.spawnBox = (x, y) => {
         var box = Box({
@@ -987,6 +1008,53 @@ var Map = () => {
         self.currentRadius -= 1;
     }
 
+    //// STARTING POSITIONS ////
+
+    self.getStartingPosition = (i) => {
+
+        var l = self.layers - 1;
+
+        if (i == 0) {
+            return [0, l]
+        } else if (i == 1) {
+            return [l, 0]
+        } else if (i == 2) {
+            return [l, -l]
+        } else if (i == 3) {
+            return [0, -l]
+        } else if (i == 4) {
+            return [-l, 0]
+        } else if (i == 5) {
+            return [-l, l]
+        }
+    }
+
+    self.getStartingPositions = (n) => {
+        return self.getStartingPositionsIndexes(n).map(val => self.getStartingPosition(val));
+    }
+
+    self.getStartingPositionsIndexes = (n) => {
+        var a = SpoolMath.randomInt(0, 5);
+
+        switch (n) {
+            case 1:
+                return [a];
+            case 2:
+                return [a, (a + 3) % 6];
+            case 3:
+                return [a, (a + 2) % 6, (a + 4) % 6];
+            case 4:
+                return [a, (a + 1) % 6, (a + 3) % 6, (a + 4) % 6];
+            case 5:
+                return [
+                    [0, 1, 2, 3, 4, 5].filter(val => val != a)
+                ];
+            case 6:
+                return [0, 1, 2, 3, 4, 5]
+        }
+    }
+
+
 
 
     return self;
@@ -1072,9 +1140,55 @@ var PlayerQueue = () => {
     return self;
 }
 
-var GameStep = (playerQueue) => {
+var Deck = () => {
+    var self = {
+        stock: [],
+        deckPreset: null,
+        playerCards: [],
+    };
+
+    self.shuffle = () => {
+        SpoolUtils.shuffle(self.stock);
+    }
+
+    self.createDeck = (id) => {
+        var preset = DECKS[id];
+
+        console.log(preset);
+
+        var deck = [];
+
+        Object.keys(preset).forEach(key => {
+            for (var i = 0; i < preset[key]; i++) {
+                deck.push(key);
+            }
+        })
+
+        console.log(deck);
+
+        self.deckPreset = preset;
+        self.stock = deck;
+    }
+
+    self.addCard = (cardid) => {
+        self.stock.push(cardid);
+    }
+
+    self.getFirstCards = (n) => {
+        if (n > self.stock.length) {
+            return null;
+        } else {
+            return self.stock.splice(0, n);
+        }
+    }
+
+    return self;
+}
+
+var GameStep = (playerQueue, deck) => {
     var defs = {
         playerQueue: playerQueue,
+        deck: deck,
         rolling: false,
         currentPlayer: null,
         currentTimer: null,
@@ -1082,7 +1196,7 @@ var GameStep = (playerQueue) => {
         active: false,
         roundNumber: 0,
         waitingForPlayers: true,
-        playersWaiting: 0
+        playersWaiting: 0,
     }
 
     var self = {
@@ -1099,9 +1213,11 @@ var GameStep = (playerQueue) => {
         self.playerQueue.sendQue();
     }
 
-    self.finishStep = () => {
-        delete self.currentTimer;
-        self.nextPlayer();
+    self.finishStep = (id) => {
+        if (id == self.currentPlayer.id && self.partOfStep == 1) {
+            delete self.currentTimer;
+            self.nextPlayer();
+        }
     }
 
     self.update = () => {
@@ -1114,7 +1230,6 @@ var GameStep = (playerQueue) => {
                     rolling = true;
 
                     self.currentTimer = SpoolTimer(1000, (self) => {
-
                         var diceA = SpoolMath.randomInt(1, 6);
                         var diceB = SpoolMath.randomInt(1, 6);
 
@@ -1130,8 +1245,8 @@ var GameStep = (playerQueue) => {
                         self.partOfStep = 1;
                         delete currentTimer;
 
-                        self.currentTimer = SpoolTimer(30000, () => {
-                            self.finishStep();
+                        self.currentTimer = SpoolTimer(60000, () => {
+                            self.finishStep(self.currentPlayer.id);
                         })
                         server.emit('SET_TIMER', {
                             endTime: self.currentTimer.startTime + self.currentTimer.duration
@@ -1172,10 +1287,32 @@ var GameStep = (playerQueue) => {
     self.onNewRound = () => {
         self.roundNumber += 1;
 
-        if (self.roundNumber % 1 == 0) {
+        if (self.roundNumber % 10 == 0) {
             MAP.removeOuterLayer();
         }
     }
+
+    self.addBoxes = () => {
+
+        var n = Math.floor(self.deck.stock.length / 3);
+        if (n <= 0) {
+            return;
+        }
+
+        var tiles = MAP.getNRandomTilesWithoutBox(n);
+
+        for (var i = 0; i < n; i++) {
+            var temp = self.deck.getFirstCards(3);
+            var box = Box({
+                cards: temp
+            })
+
+            console.log(box.cards);
+            server.handler.add(box);
+            tiles[i].add(box.id);
+        }
+    }
+
 
     self.start = () => {
 
@@ -1185,15 +1322,26 @@ var GameStep = (playerQueue) => {
 
             if (numberOfPlayers > 1) {
                 MAP.spawnWorld();
+
+                self.deck.createDeck('basic');
+
+                self.addBoxes();
+
                 self.playerQueue.randomizeQueue();
                 self.playerQueue.onNewRound = self.onNewRound;
 
-                self.playerQueue.queue.forEach(player => {
-                    player.startPosition(0, 0, {});
+                self.startingPOsitions = MAP.getStartingPositions(numberOfPlayers);
+
+                self.playerQueue.queue.forEach((player, index) => {
+                    var pos = self.startingPOsitions[index]
+
+                    console.log(pos);
+
+                    player.startPosition(pos[0], pos[1], {});
                     player.onDeath = () => {
                         self.removePlayer(player);
                     }
-                    player.give(['shovel', 'slingshot', 'bullets'])
+                    player.give('telescope');
                 })
 
                 Object.assign(self, defs);
@@ -1219,6 +1367,10 @@ var GameStep = (playerQueue) => {
         self.active = true;
     }
 
+    self.skip = (id) => {
+        self.finishStep(id);
+    }
+
     return self;
 }
 
@@ -1229,7 +1381,9 @@ MAP.initBlankTiles(WORLD_LAYERS);
 MAP.spawnWaitingWorld();
 
 playerQueue = PlayerQueue();
-gameStep = GameStep(playerQueue);
+deck = Deck();
+gameStep = GameStep(playerQueue, deck);
+
 
 server.fullStart(Player)
 
@@ -1277,7 +1431,7 @@ server.onSocketCreated = (server, socket, player) => {
                         alertClient(socket, res);
                     }
                 } else if (data.type == 'weapon') {
-                    var res = player.useWeapon(tile);
+                    var res = player.useWeapon(tile, data.cardid);
                     if (res) {
                         alertClient(socket, res);
                     }
@@ -1285,6 +1439,12 @@ server.onSocketCreated = (server, socket, player) => {
             } else {
                 alertClient(socket, "You aren't currently playing, wait for your round");
             }
+        }
+    })
+
+    socket.on('SKIP_ROUND', () => {
+        if (gameStep.currentPlayer.id == player.id) {
+            gameStep.skip(player.id);
         }
     })
 }
