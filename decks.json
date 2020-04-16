@@ -1,16 +1,16 @@
 {
     "basic": {
-        "stick": 1,
-        "slingshot": 1,
-        "stone": 1,
-        "nuts": 5,
-        "bullets": 5,
+        "stick": 2,
+        "slingshot": 2,
+        "stone": 10,
+        "nuts": 10,
+        "bullets": 10,
         "kitchen_knife": 2,
         "boomerang": 2,
         "magician_wand": 2,
-        "telescope": 1,
+        "telescope": 2,
         "rusty_blade": 2,
-        "shovel": 2,
-        "building_clay": 2
+        "shovel": 4,
+        "building_clay": 4
     }
 }

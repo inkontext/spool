@@ -33,6 +33,7 @@ cards.forEach(card => {
 
 var TILE_WIDTH = 60;
 var WORLD_LAYERS = 12;
+var BOX_SIZE = 2;
 
 var WORLD_CLIFFSNUMBER = 1;
 
@@ -252,7 +253,6 @@ var Player = (initObject = {}) => {
         self.hand = self.hand.concat(cards);
     }
 
-
     self.recalcEquip = () => {
         var stats = {};
 
@@ -290,6 +290,11 @@ var Player = (initObject = {}) => {
                     if (tileDistance2T(self, tile) <= card.range) {
                         // WEAPONS 
                         if (card.type == 'weapon') {
+
+                            if (self.equip.weapon) {
+                                DECK.addCard(self.equip.weapon.cardID);
+                            }
+
                             self.equip.weapon = card;
                             self.recalcEquip();
                         }
@@ -338,10 +343,12 @@ var Player = (initObject = {}) => {
                                 }
                             } else {
                                 console.log('Every spell card needs an action');
+                                return "Error while playing card"
                             }
                         }
 
                         self.hand.splice(index, 1);
+                        DECK.addCard(cardid);
                     } else {
                         return "That tile is not in the range of the card"
                     }
@@ -849,6 +856,23 @@ var Map = () => {
             self.spawnLake(key[0], key[1], SpoolMath.randomInt(1, 2))
         }
 
+        for (var i = 0; i < 3; i++) {
+            key = SpoolMath.randomChoice(self.possibleCoords);
+            self.spawnBush(key[0], key[1], SpoolMath.randomInt(1, 2))
+        }
+
+        var tiles = self.getTilesInRadius(0, 0, WORLD_LAYERS - 1, WORLD_LAYERS - 1);
+        SpoolUtils.shuffle(tiles);
+
+
+        var path = self.findShortestPath(tiles[0].tx, tiles[0].ty, tiles[1].tx, tiles[1].ty);
+        console.log(path);
+
+        path.forEach(point => {
+            var tile = self.getTile(point[0], point[1]);
+            tile.setBiome('water');
+        })
+
         keys.forEach(key => {
             var tile = self.tiles[key];
 
@@ -864,6 +888,9 @@ var Map = () => {
     }
 
     self.spawnWaitingWorld = () => {
+
+        return self.spawnWorld();
+
         var keys = Object.keys(self.tiles);
 
         console.log("MAP: waiting world spawned");
@@ -965,6 +992,16 @@ var Map = () => {
         }
     }
 
+    self.spawnBush = (x, y, r) => {
+        self.getTilesInRadius(x, y, r).forEach(tile => {
+            if (tile.biome == 'grass') {
+                tile.setBiome('bush');
+                tile.z = 0;
+                tile.addNature('bush', 3);
+            }
+        })
+    }
+
     self.move = (obj, tx, ty) => {
         if (obj.tile) {
             obj.tile.remove(obj.id);
@@ -1056,7 +1093,6 @@ var Map = () => {
 
 
 
-
     return self;
 }
 
@@ -1145,6 +1181,7 @@ var Deck = () => {
         stock: [],
         deckPreset: null,
         playerCards: [],
+        onDeckChanged: () => {}
     };
 
     self.shuffle = () => {
@@ -1172,6 +1209,7 @@ var Deck = () => {
 
     self.addCard = (cardid) => {
         self.stock.push(cardid);
+        onDeckChanged()
     }
 
     self.getFirstCards = (n) => {
@@ -1202,6 +1240,10 @@ var GameStep = (playerQueue, deck) => {
     var self = {
         ...defs,
         active: false
+    }
+
+    deck.onDeckChanged = () => {
+        self.addBoxes();
     }
 
     self.nextPlayer = (firstPlayer = false) => {
@@ -1293,8 +1335,7 @@ var GameStep = (playerQueue, deck) => {
     }
 
     self.addBoxes = () => {
-
-        var n = Math.floor(self.deck.stock.length / 3);
+        var n = Math.floor(self.deck.stock.length / BOX_SIZE);
         if (n <= 0) {
             return;
         }
@@ -1302,7 +1343,7 @@ var GameStep = (playerQueue, deck) => {
         var tiles = MAP.getNRandomTilesWithoutBox(n);
 
         for (var i = 0; i < n; i++) {
-            var temp = self.deck.getFirstCards(3);
+            var temp = self.deck.getFirstCards(BOX_SIZE);
             var box = Box({
                 cards: temp
             })
@@ -1312,7 +1353,6 @@ var GameStep = (playerQueue, deck) => {
             tiles[i].add(box.id);
         }
     }
-
 
     self.start = () => {
 
@@ -1324,6 +1364,7 @@ var GameStep = (playerQueue, deck) => {
                 MAP.spawnWorld();
 
                 self.deck.createDeck('basic');
+                self.deck.shuffle();
 
                 self.addBoxes();
 
@@ -1381,8 +1422,8 @@ MAP.initBlankTiles(WORLD_LAYERS);
 MAP.spawnWaitingWorld();
 
 playerQueue = PlayerQueue();
-deck = Deck();
-gameStep = GameStep(playerQueue, deck);
+DECK = Deck();
+gameStep = GameStep(playerQueue, DECK);
 
 
 server.fullStart(Player)

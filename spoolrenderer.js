@@ -112,7 +112,11 @@ var SpoolRenderer = {
         })
     },
 
-    simpleText: (ctx, text, x, y) => {
+    simpleText: (ctx, text, x, y, stroke = null) => {
+        if (stroke) {
+            ctx.lineWidth = stroke;
+            ctx.strokeText(text, x, y);
+        }
         ctx.fillText(text, x, y);
     }
 }
