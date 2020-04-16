@@ -73,15 +73,17 @@ BIOME_COLORS = {
     'grass': '#a0d964',
     'stone': '#757575',
     'sand': '#f0e089',
-    'water': '#0077be '
+    'water': '#0077be',
+    'dead': ''
 }
 
 BIOME_TEXTROWS = {
-    'grass': 2,
-    'stone': 3,
-    'sand': 1,
-    'water': 0,
-    'dead': 4,
+    'grass': 3,
+    'stone': 4,
+    'sand': 2,
+    'water': 1,
+    'dead': 0,
+    'bush': 3,
 }
 
 NATURE_TEXTROWS = {
@@ -102,7 +104,8 @@ var SELECTOR = {
 
 var Tile = (initObject) => {
     var self = Entity({
-        ...initObject
+        ...initObject,
+        lastBiome: null
     });
 
     var superSelf = {
@@ -116,7 +119,7 @@ var Tile = (initObject) => {
     self.topColor = BIOME_COLORS[self.biome]
 
     self.renderZ = self.z;
-    self.renderR = self.hexRadius;
+    self.renderR = 0;
 
     self.color = SpoolMath.randomColor(100, 255);
     self.darkColor = SpoolMath.divideColor(self.color, 2);
@@ -129,8 +132,15 @@ var Tile = (initObject) => {
         Object.assign(self, data);
     }
 
+
+
     self.render = (ctx, camera) => {
+        // Calculating the distance from the player 
+
+
         var distanceFromPlayer = client.clientObject ? client.clientObject.tile ? tileDistance2T(client.clientObject.tile, self) : null : null;
+
+        // Not rendering tile if not in sight (not secure)
 
         if (distanceFromPlayer) {
             if (distanceFromPlayer > 4) {
@@ -138,6 +148,22 @@ var Tile = (initObject) => {
                 return;
             }
         }
+
+        // Adding to animationFrame (at top because of the returns at the bottom)
+
+        if (self.biome == 'water') {
+            self.frameCounter += 1;
+            if (self.frameCounter >= 20) {
+                self.frameCounter = 0;
+                self.animationFrame += 1;
+                if (self.animationFrame >= 4) {
+                    self.animationFrame = 0;
+                }
+            }
+        }
+
+        // Calculating tile radius (small if on the border of sight)
+
         var r = self.hexRadius;
 
         if (distanceFromPlayer) {
@@ -152,6 +178,8 @@ var Tile = (initObject) => {
 
         var r = self.renderR;
 
+        // Calculating the hexagons points 
+
         var startAngle = 0;
         var n = 6;
 
@@ -164,7 +192,6 @@ var Tile = (initObject) => {
         self.renderZ = SpoolMath.lerp(self.renderZ, self.z, 0.2);
 
         var zOffset = self.renderZ * Z_SCALINGFACTOR + self.zRandomOffset * Z_SCALINGFACTOR * 1;
-
 
         for (var i = 0; i < n; i++) {
             angle = startAngle + Math.PI * 2 / n * i;
@@ -179,38 +206,11 @@ var Tile = (initObject) => {
             })
         }
 
-        // Drawing the base going down the screen
-
-        // ctx.fillStyle = self.baseDark[0];
-        // ctx.beginPath();
-        // ctx.moveTo(points[0].x, points[0].y)
-        // ctx.lineTo(points[1].x, points[1].y)
-        // ctx.lineTo(points[1].x, client.gameArea.height)
-        // ctx.lineTo(points[0].x, client.gameArea.height) //, pointsDown[0].y)
-        // ctx.closePath();
-        // ctx.fill();
-
-        // ctx.fillStyle = self.baseDark[1];
-        // ctx.beginPath();
-        // ctx.moveTo(points[1].x, points[1].y)
-        // ctx.lineTo(points[2].x, points[2].y)
-        // ctx.lineTo(points[2].x, client.gameArea.height) //pointsDown[3].y)
-        // ctx.lineTo(points[1].x, client.gameArea.height)
-        // ctx.closePath();
-        // ctx.fill();
-
-        // ctx.fillStyle = self.baseDark[2];
-        // ctx.beginPath();
-        // ctx.moveTo(points[2].x, points[2].y)
-        // ctx.lineTo(points[3].x, points[3].y)
-        // ctx.lineTo(points[3].x, client.gameArea.height) //pointsDown[3].y)
-        // ctx.lineTo(points[2].x, client.gameArea.height)
-        // ctx.closePath();
-        // ctx.fill();
-
         ctx.imageSmoothingEnabled = false;
 
         var rectHeight = client.gameArea.height - points[0].y;
+
+        // Drawing the faces that go down to the void
 
         ctx.fillStyle = self.baseDark[0];
         ctx.fillRect(points[0].x, points[0].y, points[1].x - points[0].x, rectHeight)
@@ -219,7 +219,7 @@ var Tile = (initObject) => {
         ctx.fillStyle = self.baseDark[2];
         ctx.fillRect(points[2].x, points[0].y, points[3].x - points[2].x, rectHeight)
 
-        // Calculating the upper point 
+        // Calculating the upper centerp point 
 
         colPoint = camera.transformPoint(self.x, self.y);
         colBox = {
@@ -230,37 +230,27 @@ var Tile = (initObject) => {
         }
         colBoxes[self.id] = colBox;
 
-        // Drawing the upper face of the hexagon
-
-        // ctx.fillStyle = self.baseColor;
-        // ctx.beginPath();
-        // ctx.moveTo(points[0].x, points[0].y)
-        // for (var i = 1; i < n; i++) {
-        //     ctx.lineTo(points[i].x, points[i].y)
-        // }
-        // ctx.closePath();
-        // ctx.fill();
-
-        // Drawing the inner part of the hexagon
-
         var t_width = r * 2;
 
-        var sprite = textureManager.getSprite('tiles', BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4)
-        var t_height = t_width / sprite.width * sprite.height;
 
-        ctx.drawImage(sprite, colBox.x - t_width / 2, colBox.y - t_height / 2, t_width, t_height);
-
-        /*
-        ctx.fillStyle = self.dead ? self.deadColor : BIOME_COLORS[self.biome];
-        ctx.beginPath();
-        ctx.moveTo(pointsInner[0].x, pointsInner[0].y)
-        for (var i = 1; i < n; i++) {
-            ctx.lineTo(pointsInner[i].x, pointsInner[i].y)
+        // Changing sprites if biome changed
+        if (self.biome != self.lastBiome) {
+            self.sprite = textureManager.getSprite('tiles', BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4)
+            self.resizedSprite = null;
+            textureManager.resizeSprite(self.sprite, self.hexRadius * 2, self.hexRadius * 2 / self.sprite.width * self.sprite.height, (result) => {
+                self.resizedSprite = result;
+            })
+            self.lastBiome = self.biome;
         }
-        ctx.closePath();
-        ctx.fill();
-        */
 
+        if (self.resizedSprite && Math.abs(self.renderR - self.hexRadius) < 2 && self.animationFrame == 0) {
+            var t_height = self.resizedSprite.height;
+            ctx.drawImage(self.resizedSprite, colBox.x - self.resizedSprite.width / 2, colBox.y - self.resizedSprite.height / 2);
+        } else {
+            var sprite = textureManager.getSprite('tiles', BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4)
+            var t_height = t_width / sprite.width * sprite.height;
+            ctx.drawImage(sprite, colBox.x - t_width / 2, colBox.y - t_height / 2, t_width, t_height);
+        }
         if (distanceFromPlayer) {
             if (distanceFromPlayer > 3) {
                 return;
@@ -323,17 +313,6 @@ var Tile = (initObject) => {
         // ctx.strokeStyle = 'black';
         // SpoolRenderer.multiLineText(ctx, `${self.tx} ${self.ty}`, SpoolRect(colBox.x, colBox.y, 0, 0), 100, FONT_OFFSETCOEF, 3)
 
-
-        if (self.biome == 'water') {
-            self.frameCounter += 1;
-            if (self.frameCounter >= 20) {
-                self.frameCounter = 0;
-                self.animationFrame += 1;
-                if (self.animationFrame >= 4) {
-                    self.animationFrame = 0;
-                }
-            }
-        }
     }
 
     return self;
@@ -378,6 +357,15 @@ var Player = (initObject) => {
         var textureOffsetY = self.textureOffsetY ? self.textureOffsetY : 0;
         ctx.drawImage(self.texture.sprites[index], tilex - self.width / 2, tiley - self.height + textureOffsetY, self.width, self.height)
 
+        if (client.clientObject) {
+            if (client.clientObject.id != self.id) {
+                var nameY = tiley - self.height - 10;
+                ctx.fillStyle = 'white';
+                ctx.strokeStyle = 'black';
+                SpoolRenderer.setFont(ctx, FONT, 20);
+                SpoolRenderer.simpleText(ctx, `${self.name} ${self.hp}/${self.maxHp}`, tilex, nameY, 3)
+            }
+        }
         // Counter 
 
         if (self.animationCounter == self.animationTime) {
@@ -404,10 +392,18 @@ var Nature = (initObject) => {
 
     self.render = () => {};
 
+    textureManager.resizeSprite(textureManager.getSprite('nature', NATURE_TEXTROWS[self.natureType] * 4 + self.variationId), self.width, self.height, (result) => {
+        self.sprite = result;
+    })
+
     self.renderOnTile = (ctx, camera, tilex, tiley) => {
-        var sprite = textureManager.getSprite('nature', NATURE_TEXTROWS[self.natureType] * 4 + self.variationId);
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(sprite, tilex - self.width / 2 + self.xOffset, tiley - self.height + self.yOffset * camera.scaleY, self.width, self.height);
+        if (!self.sprite) {
+            var sprite = textureManager.getSprite('nature', NATURE_TEXTROWS[self.natureType] * 4 + self.variationId);
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(sprite, tilex - self.width / 2 + self.xOffset, tiley - self.height + self.yOffset * camera.scaleY);
+        } else {
+            ctx.drawImage(self.sprite, tilex - self.width / 2 + self.xOffset, tiley - self.height + self.yOffset * camera.scaleY)
+        }
     }
 
     return self;
@@ -440,7 +436,7 @@ textureManager = TextureManager({
     },
     'tiles': {
         src: './textures/tiles.png',
-        r: 5,
+        r: 6,
         c: 4,
     },
     'tileselector': {
@@ -502,7 +498,8 @@ textureManager = TextureManager({
 })
 
 client = Client({
-    keyToConstructor: OBJECTS
+    keyToConstructor: OBJECTS,
+    FPS: 70
 });
 
 client.preHandler = () => {
@@ -845,6 +842,11 @@ var HandUI = (initObject) => {
 
     self.render = (ctx) => {
 
+        if (!client.clientObject) {
+            console.warn('@HandUI no clientObject');
+            return null;
+        }
+
         self.delayedMx = SpoolMath.lerp(self.delayedMx, self.mx, 0.15);
         self.delayedMy = SpoolMath.lerp(self.delayedMy, self.my, 0.15);
         if (self.handType == 'card') {
@@ -1130,8 +1132,6 @@ var damageFloatersUI = DamageFloatersUI();
 
 client.damageFloatersUI = damageFloatersUI;
 
-
-
 //// PLAYER INFORMATION ////
 
 var vialInformation = VialInformation();
@@ -1203,9 +1203,6 @@ var PlayerInformationUI = (initObject) => {
             ammoVial.value = client.clientObject.ammo
             ammoVial.maxValue = client.clientObject.maxAmmo
 
-            if (client.clientObject.equip.weapon) {
-                SpoolRenderer.simpleText(ctx, client.clientObject.equip.weapon.name, 100, 400);
-            }
             superSelf.render(ctx);
 
             if (nameBox.contains(self.mx, self.my)) {

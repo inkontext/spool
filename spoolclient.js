@@ -31,8 +31,11 @@ var Client = (initObject) => {
         frameCounter: 0,
         chunkSize: 1000,
         FPS: 60,
+
         ...initObject
     }
+
+    self.frameTime = 1000 / self.FPS;
 
     //// CLIENT INFORMATION ////
 
@@ -157,9 +160,21 @@ var Client = (initObject) => {
     //// GAME LOOP ////
 
     self.startGameLoop = () => {
-        setInterval(() => {
-            // Clear the canvas
-            self.gameArea.clear();
+
+        // Start game loop
+
+        self.lastMillisTimer = Date.now();
+        self.lastMillis = Date.now();
+
+        self.lastFrameTime = Date.now();
+        self.loop();
+    }
+
+    self.render = () => {
+        // Clear the canvas
+        self.gameArea.clear();
+
+        try {
 
             if (self.background) {
                 self.background(self.gameArea.ctx, self.camera);
@@ -171,6 +186,8 @@ var Client = (initObject) => {
 
             // Render objects
             self.handler.render(self.gameArea.ctx, self.camera);
+
+
 
             if (self.postHandler) {
                 self.postHandler(self.gameArea.ctx, self.camera);
@@ -184,14 +201,30 @@ var Client = (initObject) => {
                 self.postUi(self.gameArea.ctx, self.camera);
             }
 
-            self.frameCounter += 1;
+        } catch (e) {
+            console.error(e.stack);
+        }
+    }
 
-            if (Date.now() - self.lastTime > 1000) {
+    self.loop = () => {
+        let now = Date.now()
+        if (now - self.lastFrameTime >= self.frameTime) {
+            var delta = (now - self.lastFrameTime) / 1000
+            self.lastFrameTime = now;
+
+            self.render();
+
+            var delta = Date.now() - self.lastMillisTimer;
+
+            if (delta >= 1000) {
                 console.log('FPS:' + self.frameCounter);
                 self.frameCounter = 0;
-                self.lastTime = Date.now();
+                self.lastMillisTimer = Date.now();
+            } else {
+                self.frameCounter += 1;
             }
-        }, 1000 / client.FPS)
+        }
+        setTimeout(self.loop)
     }
 
     //// GAME AREA ////
@@ -359,9 +392,6 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
     }
 
     self.getSubSpriteSheet = (key, x, y, xx, yy) => {
-
-
-
         var c = xx - x + 1;
         var r = yy - y + 1;
 
@@ -480,6 +510,23 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
             obj.texture = sheet;
         } else if (obj.objectType == 'SPL_CHUNK') {
             obj.sprite = self.chunkBlankImage;
+        }
+    }
+
+    self.resizeSprite = (originalSprite, width, height, callback) => {
+        var canvas = document.createElement('canvas');
+        var context = canvas.getContext('2d');
+        canvas.width = width;
+        canvas.height = height;
+
+        context.imageSmoothingEnabled = false;
+        context.drawImage(originalSprite, 0, 0, width, height);
+
+        var sprite = new Image();
+        sprite.src = canvas.toDataURL('image/png');
+
+        sprite.onload = () => {
+            callback(sprite);
         }
     }
 
