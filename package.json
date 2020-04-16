@@ -1,0 +1,29 @@
+{
+  "name": "spool",
+  "version": "1.0.0",
+  "description": "Spool is a framework for creating socket.io based multiplayer games",
+  "main": "spoolclient.js",
+  "dependencies": {
+    "express": "^4.17.1",
+    "get-pixels": "^3.3.2",
+    "fs": "^0.0.1-security",
+    "http": "^0.0.0",
+    "nodemon": "^2.0.2",
+    "perlin-noise": "^0.0.1",
+    "socket.io": "^2.3.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sixkey/spool.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/sixkey/spool/issues"
+  },
+  "homepage": "https://github.com/sixkey/spool#readme"
+}
