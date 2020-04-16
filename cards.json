@@ -7,12 +7,13 @@
       "drop": 0.9,
       "range": 1,
       "cost": 1,
-      "dmg": 2,
+      "dmg": 1,
       "ammoConsuption": 0,
       "stats": null,
       "action": null,
-      "description": "Deals 2 points of demage to other players",
-      "textureTileIndex": 0
+      "description": "Deals *2 dmg* to other players",
+      "textureTileIndex": 0,
+      "cardTileIndex": 0
     },
     {
       "cardID": "slingshot",
@@ -20,14 +21,15 @@
       "type": "weapon",
       "value": "Well",
       "drop": 0.85,
-      "range": 3,
+      "range": 2,
       "cost": 1,
       "dmg": 1,
       "ammoConsuption": 1,
       "stats": null,
       "action": null,
       "description": "Range weapon dealing a point of demage",
-      "textureTileIndex": 1
+      "textureTileIndex": 1,
+      "cardTileIndex": 1
     },
     {
       "cardID": "stone",
@@ -41,10 +43,11 @@
       "action": {
         "add": null,
         "removes": null,
-        "actionString": "splashdmg 3 0"
+        "actionString": "splashdmg 2 0"
       },
-      "description": "Deals a heavy 3-demage hit when thrown",
-      "textureTileIndex": 2
+      "description": "Deals a heavy *2-damage* hit when thrown",
+      "textureTileIndex": 2,
+      "cardTileIndex": 2
     },
     {
       "cardID": "nuts",
@@ -57,13 +60,14 @@
       "stats": null,
       "action": {
         "add": {
-          "hp": 3
+          "hp": 2
         },
         "removes": null,
         "actionString": null
       },
-      "description": "    ",
-      "textureTileIndex": 3
+      "description": "Healthy uwu",
+      "textureTileIndex": 3,
+      "cardTileIndex": 3
     },
     {
       "cardID": "bullets",
@@ -82,7 +86,8 @@
         "actionString": null
       },
       "description": "Full of bullets",
-      "textureTileIndex": 3
+      "textureTileIndex": 3,
+      "cardTileIndex": 4
     },
     {
       "cardID": "kitchen_knife",
@@ -91,13 +96,14 @@
       "value": "Medium Well",
       "drop": 0.7,
       "range": 1,
-      "cost": 1,
-      "dmg": 4,
+      "cost": 2,
+      "dmg": 3,
       "ammoConsuption": 0,
       "stats": null,
       "action": null,
       "description": "Spread that roll than stab a hoe",
-      "textureTileIndex": 4
+      "textureTileIndex": 4,
+      "cardTileIndex": 5
     },
     {
       "cardID": "boomerang",
@@ -106,13 +112,14 @@
       "value": "Medium Well",
       "drop": 0.65,
       "range": 3,
-      "cost": 1,
+      "cost": 3,
       "dmg": 2,
       "ammoConsuption": 0,
       "stats": null,
       "action": null,
       "description": "Hunting weapon with a deadly use",
-      "textureTileIndex": 5
+      "textureTileIndex": 5,
+      "cardTileIndex": 6
     },
     {
       "cardID": "magician_wand",
@@ -128,8 +135,9 @@
         "removes": null,
         "actionString": "splashdmg 1 1"
       },
-      "description": "Bad for casting, good for 1 dmg throw",
-      "textureTileIndex": 6
+      "description": "Bad for casting, good for *1 dmg throw*",
+      "textureTileIndex": 7,
+      "cardTileIndex": 7
     },
     {
       "cardID": "telescope",
@@ -144,7 +152,8 @@
       },
       "action": null,
       "description": "See your enemies sooner than they see you",
-      "textureTileIndex": 7
+      "textureTileIndex": 6,
+      "cardTileIndex": 8
     },
     {
       "cardID": "rusty_blade",
@@ -153,12 +162,13 @@
       "value": "Medium",
       "drop": 0.55,
       "range": 1,
-      "cost": 2,
-      "dmg": 5,
+      "cost": 3,
+      "dmg": 4,
       "ammoConsuption": 0,
       "action": null,
       "description": "Battle-scarred blade with splitting swings",
-      "textureTileIndex": 8
+      "textureTileIndex": 8,
+      "cardTileIndex": 9
     },
     {
       "cardID": "shovel",
@@ -175,7 +185,8 @@
         "actionString": "rise -4 1 2"
       },
       "description": "Elevate yourself above your neighbours",
-      "textureTileIndex": 9
+      "textureTileIndex": 9,
+      "cardTileIndex": 10
     },
     {
       "cardID": "building_clay",
@@ -192,7 +203,8 @@
         "actionString": "rise 4 1 1"
       },
       "description": "Build a barricade from your surroundings",
-      "textureTileIndex": 10
+      "textureTileIndex": 10,
+      "cardTileIndex": 11
     }
   ]
 }

@@ -32,8 +32,10 @@ cards.forEach(card => {
 ////// GLOBAL CONSTANTS //////
 
 var TILE_WIDTH = 60;
-var WORLD_LAYERS = 12;
+var WORLD_LAYERS = 5;
 var BOX_SIZE = 2;
+
+var ROUNDS_PER_DROP = 3;
 
 var WORLD_CLIFFSNUMBER = 1;
 
@@ -97,7 +99,6 @@ var server = Server({
     chunkSize: 300
 }, ['/', '/textures'])
 
-
 var DAMAGEFLOATERS = [];
 
 ////// OBJECTS //////
@@ -130,8 +131,8 @@ var Player = (initObject = {}) => {
         Object.assign(self, {
             maxEnergy: 30,
             energy: 0,
-            maxHp: 10,
-            hp: 10,
+            maxHp: 15,
+            hp: 15,
             maxAmmo: 10,
             ammo: 0,
             alive: true,
@@ -155,7 +156,6 @@ var Player = (initObject = {}) => {
         var price = movingPrice(self.tile, temp);
         if (self.energy >= price || hard) {
             tile = MAP.move(self, tx, ty);
-
             tile.objects.forEach(value => {
                 var temp = server.handler.objectsById[value]
                 if (temp) {
@@ -166,11 +166,10 @@ var Player = (initObject = {}) => {
                     console.log('ID', value, 'is in the tile, but not in handler');
                 }
             });
-
             self.energy -= price
-            return true;
+            return null;
         } else {
-            return false;
+            return `You don't have enough energy ${self.energy} / ${price}`;
         }
     }
 
@@ -242,6 +241,12 @@ var Player = (initObject = {}) => {
     self.die = () => {
         self.alive = false;
 
+        self.hand = [];
+        self.equip = {
+            weapon: null,
+            trinkets: []
+        }
+
         if (self.onDeath) {
             self.onDeath();
         }
@@ -281,12 +286,19 @@ var Player = (initObject = {}) => {
     }
 
     self.playCard = (tile, cardid) => {
+
+        if (!self.alive) {
+            return "You are dead"
+        }
+
         if (self.hand.includes(cardid)) {
             var index = self.hand.indexOf(cardid);
             var card = CARDS[cardid];
 
             if (index != -1) {
                 if (self.energy >= card.cost) {
+                    var deltaEnergy = -card.cost;
+
                     if (tileDistance2T(self, tile) <= card.range) {
                         // WEAPONS 
                         if (card.type == 'weapon') {
@@ -348,6 +360,7 @@ var Player = (initObject = {}) => {
                         }
 
                         self.hand.splice(index, 1);
+                        self.deltaValue('energy', deltaEnergy);
                         DECK.addCard(cardid);
                     } else {
                         return "That tile is not in the range of the card"
@@ -362,18 +375,43 @@ var Player = (initObject = {}) => {
     }
 
     self.useWeapon = (tile, value) => {
+
+        if (!self.alive) {
+            return "You are dead"
+        }
+
         var weapon = self.equip.weapon;
         if (weapon) {
             if (weapon.dmg) {
                 console.log(weapon.ammoConsuption)
-                if (weapon.ammoConsuption) {
 
+                var ammoDelta = null;
+                var energyDelta = null;
+
+                if (weapon.ammoConsuption) {
                     if (self.ammo >= weapon.ammoConsuption) {
-                        self.deltaValue('ammo', -weapon.ammoConsuption);
+                        ammoDelta = -weapon.ammoConsuption
                     } else {
                         return "You don't have enough ammo";
                     }
                 }
+
+                if (weapon.cost) {
+                    if (self.energy >= weapon.cost) {
+                        energyDelta = -weapon.cost;
+                    } else {
+                        return "You don't have enough energy";
+                    }
+                }
+
+                if (ammoDelta) {
+                    self.deltaValue('ammo', ammoDelta);
+                }
+
+                if (energyDelta) {
+                    self.deltaValue('energy', energyDelta);
+                }
+
                 tile.dealDamage(weapon.dmg, self);
             } else {
                 console.log("This weapon doesn't have damage");
@@ -413,14 +451,14 @@ var Player = (initObject = {}) => {
             min = 0;
         }
 
-        if (max ? self[type] > max : false) {
+        if (max !== null ? self[type] >= max : false) {
             self[type] = max;
             if (maxAction) {
                 maxAction();
             }
         }
 
-        if (min !== null ? self[type] < min : false) {
+        if (min !== null ? self[type] <= min : false) {
             self[type] = min;
             if (minAction) {
                 minAction();
@@ -885,6 +923,23 @@ var Map = () => {
             }
             tile.addAsyncUpdatePackage(pack);
         })
+
+        server.emit('SET_MINIMAP_TILES', self.getMinimap());
+    }
+
+    self.getMinimap = () => {
+        var res = {};
+
+        Object.keys(self.tiles).forEach(key => {
+            res[key] = {
+                biome: self.tiles[key].biome,
+                z: self.tiles[key].z,
+                tx: self.tiles[key].tx,
+                ty: self.tiles[key].ty
+            };
+        })
+
+        return res;
     }
 
     self.spawnWaitingWorld = () => {
@@ -933,7 +988,10 @@ var Map = () => {
 
     self.getNRandomTilesWithoutBox = (n) => {
 
-        var coords = [...self.possibleCoords.filter(value => !self.getTile(value[0], value[1]).hasObjectType('BOX'))]
+        var coords = [...self.possibleCoords.filter(value => {
+            var tile = self.getTile(value[0], value[1]);
+            return !tile.hasObjectType('BOX') && !tile.dead
+        })]
         SpoolUtils.shuffle(coords);
         coords = coords.splice(0, n);
 
@@ -1142,7 +1200,12 @@ var PlayerQueue = () => {
     }
 
     self.getNextPlayers = () => {
-        var names = self.queue.map(value => value.name);
+        var names = self.queue.map(value => {
+            return {
+                name: value.name,
+                id: value.id
+            }
+        });
         return {
             thisRound: names.slice(self.position, self.queue.length),
             nextRound: names.slice(0, self.position)
@@ -1151,7 +1214,7 @@ var PlayerQueue = () => {
 
     self.remove = (player) => {
         for (var i = 0; i < self.queue.length; i++) {
-            if (self.queue.id = player.id) {
+            if (self.queue[i].id == player.id) {
                 if (i < self.position && self.position > 0) {
                     self.position--;
                 }
@@ -1160,14 +1223,20 @@ var PlayerQueue = () => {
             }
         }
         for (var i = 0; i < self.players.length; i++) {
-            if (self.queue.id = player.id) {
+            if (self.players[i].id == player.id) {
                 self.players.splice(i, 1);
             }
         }
+
+        console.log(self.queue.map(value => value.name));
+        console.log(self.players.map(value => value.name));
+
     }
 
     self.sendQue = () => {
         server.emit('SET_QUEUE', {
+            currentRound: gameStep.roundNumber,
+            roundsPerDrop: ROUNDS_PER_DROP,
             queue: self.getNextPlayers(),
             currentPlayerId: self.getCurrent() ? self.getCurrent().id : null
         });
@@ -1191,8 +1260,6 @@ var Deck = () => {
     self.createDeck = (id) => {
         var preset = DECKS[id];
 
-        console.log(preset);
-
         var deck = [];
 
         Object.keys(preset).forEach(key => {
@@ -1201,15 +1268,13 @@ var Deck = () => {
             }
         })
 
-        console.log(deck);
-
         self.deckPreset = preset;
         self.stock = deck;
     }
 
     self.addCard = (cardid) => {
         self.stock.push(cardid);
-        onDeckChanged()
+        self.onDeckChanged()
     }
 
     self.getFirstCards = (n) => {
@@ -1324,12 +1389,18 @@ var GameStep = (playerQueue, deck) => {
                 self.end();
             }, 4000)
         }
+
+        playerQueue.players.forEach(player => {
+            console.log('Remaining player: ' + player.name);
+        })
     }
 
     self.onNewRound = () => {
         self.roundNumber += 1;
 
-        if (self.roundNumber % 10 == 0) {
+        playerQueue.sendQue();
+
+        if (self.roundNumber % ROUNDS_PER_DROP == 0) {
             MAP.removeOuterLayer();
         }
     }
@@ -1342,7 +1413,7 @@ var GameStep = (playerQueue, deck) => {
 
         var tiles = MAP.getNRandomTilesWithoutBox(n);
 
-        for (var i = 0; i < n; i++) {
+        for (var i = 0; i < tiles.length; i++) {
             var temp = self.deck.getFirstCards(BOX_SIZE);
             var box = Box({
                 cards: temp
@@ -1375,14 +1446,11 @@ var GameStep = (playerQueue, deck) => {
 
                 self.playerQueue.queue.forEach((player, index) => {
                     var pos = self.startingPOsitions[index]
-
-                    console.log(pos);
-
                     player.startPosition(pos[0], pos[1], {});
+                    player.give(['bullets'])
                     player.onDeath = () => {
                         self.removePlayer(player);
                     }
-                    player.give('telescope');
                 })
 
                 Object.assign(self, defs);
@@ -1431,7 +1499,18 @@ server.fullStart(Player)
 server.onSocketCreated = (server, socket, player) => {
     socket.on('MOVE_TO', (data) => {
 
+        if (!player.alive) {
+            alertClient(socket, "You are dead")
+            return;
+        }
+
         var tile = MAP.getTile(data.tx, data.ty);
+
+        if (!tile) {
+            alertClient(socket, "Invalidtimer");
+            console.log(data.tx, data.ty, "Invalid coords");
+            return;
+        }
         if (tile.dead) {
             alertClient(socket, "You are trying to jump of the map bro?");
             return;
@@ -1441,13 +1520,14 @@ server.onSocketCreated = (server, socket, player) => {
             player.moveTo(data.tx, data.ty, true);
         } else if (gameStep.active) {
             if (gameStep.currentPlayer.id == player.id) {
-                if (tileDistance2T(player, data) == 1) {
+                var dist = tileDistance2T(player, data);
+                if (dist == 1) {
                     var moved = player.moveTo(data.tx, data.ty);
-                    if (!moved) {
-                        alertClient(socket, "You don't have enough energy for that move");
+                    if (moved) {
+                        alertClient(socket, moved);
                     }
                 } else {
-                    alertClient(socket, "That tile is out of your reach");
+                    alertClient(socket, "That tile is out of your reach: " + `${player.tx}, ${player.ty} ${data.tx}, ${data.ty}`);
                 }
             } else {
                 alertClient(socket, "You aren't currently playing, wait for your round");
@@ -1456,7 +1536,18 @@ server.onSocketCreated = (server, socket, player) => {
     })
 
     socket.on('CARD_ACTION', (data) => {
+        if (!player.alive) {
+            alertClient(socket, "You are dead")
+            return;
+        }
+
+
         var tile = MAP.getTile(data.tx, data.ty);
+
+        if (!tile) {
+            alertClient(socket, "No tile");
+            return;
+        }
 
         if (tile.dead) {
             alertClient(socket, "You can't use cards on dead tiles");
@@ -1466,7 +1557,6 @@ server.onSocketCreated = (server, socket, player) => {
         if (gameStep.active || gameStep.waitingForPlayers) {
             if (gameStep.waitingForPlayers ? true : gameStep.currentPlayer.id == player.id) {
                 if (data.type == 'card') {
-                    console.log(data.cardid);
                     var res = player.playCard(tile, data.cardid);
                     if (res) {
                         alertClient(socket, res);
