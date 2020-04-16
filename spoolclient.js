@@ -31,8 +31,11 @@ var Client = (initObject) => {
         frameCounter: 0,
         chunkSize: 1000,
         FPS: 60,
+
         ...initObject
     }
+
+    self.frameTime = 1000 / self.FPS;
 
     //// CLIENT INFORMATION ////
 
@@ -66,8 +69,18 @@ var Client = (initObject) => {
     self.socketInit = () => {
         self.socket = io();
         self.socket.on(MessageCodes.SM_PACK_INIT, (data) => {
-            for (key in data) {
 
+            if (data.resetHandler) {
+                self.handler.reset();
+                self.clientObject = undefined;
+            }
+
+            console.log(data['PLAYER']);
+
+            for (key in data) {
+                if (key == 'resetHandler') {
+                    continue;
+                }
                 // Constructor function, this pointer is filled with constructor function based on the object type
                 var constFunction = undefined;
 
@@ -90,9 +103,15 @@ var Client = (initObject) => {
                             ...data[key][i]
                         });
 
+                        if (!obj) {
+                            console.error(`Object ${key} doesn't return anything, check if constructor returns self.`)
+                        }
+
                         obj.clientInstance = self;
                         self.handler.add(obj)
                     }
+                } else {
+                    console.error(`Object ${key} doesn't have a constructor`)
                 }
             }
 
@@ -102,6 +121,10 @@ var Client = (initObject) => {
                     self.onFirstLoad(self)
                 self.firstInit = true;
             }
+        })
+
+        self.socket.on(MessageCodes.SM_RESET, (data) => {
+            self.client.handler.reset();
         })
 
         self.socket.on(MessageCodes.ASIGN_CLIENT_ID, (data) => {
@@ -130,13 +153,28 @@ var Client = (initObject) => {
         self.objectServer.init(self.socket);
     }
 
+    self.emit = (message, data) => {
+        self.socket.emit(message, data);
+    }
+
     //// GAME LOOP ////
 
     self.startGameLoop = () => {
 
-        setInterval(() => {
-            // Clear the canvas
-            self.gameArea.clear();
+        // Start game loop
+
+        self.lastMillisTimer = Date.now();
+        self.lastMillis = Date.now();
+
+        self.lastFrameTime = Date.now();
+        self.loop();
+    }
+
+    self.render = () => {
+        // Clear the canvas
+        self.gameArea.clear();
+
+        try {
 
             if (self.background) {
                 self.background(self.gameArea.ctx, self.camera);
@@ -149,6 +187,8 @@ var Client = (initObject) => {
             // Render objects
             self.handler.render(self.gameArea.ctx, self.camera);
 
+
+
             if (self.postHandler) {
                 self.postHandler(self.gameArea.ctx, self.camera);
             }
@@ -157,19 +197,34 @@ var Client = (initObject) => {
                 self.uiHandler.render(self.gameArea.ctx);
             }
 
-
             if (self.postUi) {
                 self.postUi(self.gameArea.ctx, self.camera);
             }
 
-            self.frameCounter += 1;
+        } catch (e) {
+            console.error(e.stack);
+        }
+    }
 
-            if (Date.now() - self.lastTime > 1000) {
+    self.loop = () => {
+        let now = Date.now()
+        if (now - self.lastFrameTime >= self.frameTime) {
+            var delta = (now - self.lastFrameTime) / 1000
+            self.lastFrameTime = now;
+
+            self.render();
+
+            var delta = Date.now() - self.lastMillisTimer;
+
+            if (delta >= 1000) {
                 console.log('FPS:' + self.frameCounter);
                 self.frameCounter = 0;
-                self.lastTime = Date.now();
+                self.lastMillisTimer = Date.now();
+            } else {
+                self.frameCounter += 1;
             }
-        }, 1000 / client.FPS)
+        }
+        setTimeout(self.loop)
     }
 
     //// GAME AREA ////
@@ -183,6 +238,7 @@ var Client = (initObject) => {
             self.camera.height = self.height;
         }
     }
+
     return self;
 }
 
@@ -336,9 +392,6 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
     }
 
     self.getSubSpriteSheet = (key, x, y, xx, yy) => {
-
-
-
         var c = xx - x + 1;
         var r = yy - y + 1;
 
@@ -371,7 +424,12 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
     }
 
     self.getSprite = (key, x = 0, y = 0) => {
-        return self.spriteSheets[key].sprites[y * self.spriteSheets[key].columns + x];
+        if (!self.spriteSheets[key]) {
+            console.error(`@TextureManager: ${key} is not in spritesheets`);
+            return null;
+        } else {
+            return self.spriteSheets[key].sprites[y * self.spriteSheets[key].columns + x];
+        }
     }
 
     self.prepareChunkImage = () => {
@@ -405,8 +463,6 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
             var info = objectSheetInitObject[key];
             var spriteSheet = self.spriteSheets[info.src];
 
-            console.log(info.x, info.y, info.xx, info.yy)
-
             var x = SpoolMath.numberDefined(info.x) ? info.x : 0;
             var y = SpoolMath.numberDefined(info.y) ? info.y : 0;
             var xx = SpoolMath.numberDefined(info.xx) ? info.xx : spriteSheet.columns - 1;
@@ -429,7 +485,6 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
 
 
                     temp.title = key;
-                    console.log(temp.title, temp);
                     variants.push(temp);
                 }
             }
@@ -455,6 +510,23 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
             obj.texture = sheet;
         } else if (obj.objectType == 'SPL_CHUNK') {
             obj.sprite = self.chunkBlankImage;
+        }
+    }
+
+    self.resizeSprite = (originalSprite, width, height, callback) => {
+        var canvas = document.createElement('canvas');
+        var context = canvas.getContext('2d');
+        canvas.width = width;
+        canvas.height = height;
+
+        context.imageSmoothingEnabled = false;
+        context.drawImage(originalSprite, 0, 0, width, height);
+
+        var sprite = new Image();
+        sprite.src = canvas.toDataURL('image/png');
+
+        sprite.onload = () => {
+            callback(sprite);
         }
     }
 
@@ -720,6 +792,7 @@ var ClientObjectServer = (client, caching = []) => {
 var ClientHandler = (chunkSize, client) => {
     var self = {
         objects: {},
+        objectsById: {},
         chunks: {},
         client: client,
         chunkSize: chunkSize
@@ -1084,6 +1157,7 @@ var ClientHandler = (chunkSize, client) => {
             self.objects[obj.objectType] = {};
         }
         self.objects[obj.objectType][obj.id] = obj;
+        self.objectsById[obj.id] = obj;
         self.updateObjectsChunk(obj);
         if (self.textureManager) {
             self.textureManager.textureObj(obj);
@@ -1101,6 +1175,7 @@ var ClientHandler = (chunkSize, client) => {
             })
             delete self.objects[obj.objectType][obj.id];
         }
+        delete self.objectsById[obj.id];
     }
 
     /**
@@ -1130,6 +1205,24 @@ var ClientHandler = (chunkSize, client) => {
                 }
             }
         }
+    }
+
+    self.reset = () => {
+
+        var defs = {
+            objects: {},
+            objectsById: {},
+            chunks: {},
+            client: client,
+            chunkSize: chunkSize
+        };
+
+        Object.keys(defs).forEach(key => {
+            delete self.key;
+        });
+        Object.assign(self, defs);
+
+        console.log(self.objects);
     }
 
     self.getChunks = (min_x, min_y, max_x, max_y) => {
@@ -1198,7 +1291,9 @@ var Camera = (initPack = {}) => {
         height: 0,
         canvasWidth: 0,
         canvasHeight: 0,
-        scale: 1,
+        scaleX: 1,
+        scaleY: 1,
+
         followSpeed: CAMERA_FOLLOW_SPEED,
         rotationSpeed: CAMERA_ROTATION_SPEED,
         followObject: null,
@@ -1210,22 +1305,23 @@ var Camera = (initPack = {}) => {
     };
 
     self.update = () => {
-        if (self.followObject && self.lerp) {
+        if (self.followObject) {
             //self.rotation += 0.0
 
-            self.rotation = SpoolMath.lerpRotation(self.rotation, self.followObject.rotation - Math.PI / 2, self.rotationSpeed);
-            //self.rotation = self.followObject.rotation - Math.PI / 2;
+            if (self.lerpRotation) {
+                self.rotation = SpoolMath.lerpRotation(self.rotation, self.followObject.rotation - Math.PI / 2, self.rotationSpeed);
+            }
 
-            var vel = self.followObject.velocity ? self.followObject.velocity : 0;
-
-            var wantedScale = SpoolMath.lerp(CAMERA_MAXIMAL_SCALE, CAMERA_MINIMAL_SCALE, vel / CAMERA_MAXIMAL_SCALE_HANDLEVEL);
-            self.scale = SpoolMath.lerp(self.scale, wantedScale, CAMERA_SCALE_SPEED);
-
-            self.width = self.canvasWidth / self.scale;
-            self.height = self.canvasHeight / self.scale;
+            if (self.lerpSpeedToScale) {
+                var vel = self.followObject.velocity ? self.followObject.velocity : 0;
 
 
-            if (self.followObject) {
+            }
+
+            self.width = self.canvasWidth / self.scaleX;
+            self.height = self.canvasHeight / self.scaleY;
+
+            if (self.lerp) {
                 self.x = SpoolMath.lerp(self.x, self.followObject.x + self.offsetX, self.followSpeed);
                 self.y = SpoolMath.lerp(self.y, self.followObject.y + self.offsetY, self.followSpeed);
             }
@@ -1251,8 +1347,8 @@ var Camera = (initPack = {}) => {
         return {
             x: point.x,
             y: point.y,
-            width: width * self.scale,
-            height: height * self.scale
+            width: width * self.scaleX,
+            height: height * self.scaleY
         };
     }
 
@@ -1263,8 +1359,8 @@ var Camera = (initPack = {}) => {
         var cos = Math.cos(self.rotation);
 
 
-        var newX = self.scale * ((x - self.x) * cos - (-y + self.y) * sin + self.width / 2);
-        var newY = self.scale * ((x - self.x) * sin + (-y + self.y) * cos + self.height / 2);
+        var newX = self.scaleX * ((x - self.x) * cos - (-y + self.y) * sin + self.width / 2);
+        var newY = self.scaleY * ((x - self.x) * sin + (-y + self.y) * cos + self.height / 2);
 
         return {
             x: newX,
@@ -1273,7 +1369,7 @@ var Camera = (initPack = {}) => {
     }
 
     self.transformDimension = (d) => {
-        return self.scale * d;
+        return self.scaleX * d;
     }
 
     self.clickTransfer = (x, y) => {
@@ -1298,8 +1394,8 @@ var Camera = (initPack = {}) => {
         var sin = Math.sin(self.rotation);
         var cos = Math.cos(self.rotation);
 
-        var b = self.y - (-sin * (x / self.scale - self.width / 2) + cos * (y / self.scale - self.height / 2));
-        var a = cos * (x / self.scale - self.width / 2) + sin * (y / self.scale - self.height / 2) + self.x;
+        var b = self.y - (-sin * (x / self.scaleX - self.width / 2) + cos * (y / self.scaleY - self.height / 2));
+        var a = cos * (x / self.scaleX - self.width / 2) + sin * (y / self.scaleY - self.height / 2) + self.x;
 
         return {
             x: a,
@@ -1371,6 +1467,26 @@ var Entity = (initPack) => {
         } = camera.transformBounds(self.x, self.y, radius, radius);
 
         ctx.arc(x, y, width, 0, 360);
+        ctx.fill();
+    }
+
+    self.renderNtagon = (ctx, camera, n, radius, startAngle = 0, color = self.color) => {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+
+
+        var point = camera.transformBounds(self.x, self.y, radius, radius);
+
+        var r = point.width;
+
+        ctx.moveTo(point.x - r * Math.cos(startAngle), point.y - r * Math.sin(startAngle))
+
+        for (var i = 1; i < n; i++) {
+            angle = startAngle + Math.PI * 2 / n * i;
+            ctx.lineTo(point.x - r * Math.cos(angle), point.y - r * Math.sin(angle))
+        }
+
+        ctx.closePath();
         ctx.fill();
     }
 
@@ -1456,12 +1572,12 @@ var Entity = (initPack) => {
         ctx.restore()
     }
 
-    self.getMovementAnimationSpriteIndex = () => {
+    self.getMovementAnimationSpriteIndex = (moving = self.moving, angle = self.movementAngle) => {
         var animationRowsNumber = (self.texture.rows - 1);
 
-        if (self.moving) {
+        if (moving) {
 
-            var angleCoef = self.movementAngle;
+            var angleCoef = angle;
             if (angleCoef < 0) {
                 angleCoef += 2 * Math.PI;
             }
@@ -1505,7 +1621,6 @@ var Entity = (initPack) => {
         }
 
         return [self.renderSprite(ctx, camera, self.texture.sprites[index]), index]
-
 
     }
 
@@ -1564,12 +1679,16 @@ var Entity = (initPack) => {
 
             var offsetBounds = camera.transformBounds(x, y, offsetX, offsetY);
 
-            return {
+            ctx.imageSmoothingEnabled = false;
+
+            finalBounds = {
                 x: bounds.x - offsetBounds.width,
                 y: bounds.y - offsetBounds.height,
                 width: bounds.width,
                 height: bounds.height
             }
+
+            return finalBounds
         }
 
         return bounds;
@@ -1743,6 +1862,9 @@ var KeyboardListener = (socket) => {
                     value: true
                 });
             }
+            if (self.onKeyDown) {
+                self.onKeyDown(event)
+            }
         }
 
         document.onkeyup = event => {
@@ -1766,6 +1888,9 @@ var KeyboardListener = (socket) => {
                     inputId: MessageCodes.KI_MOV_DOWN,
                     value: false
                 });
+            }
+            if (self.onKeyUp) {
+                self.onKeyUp(event)
             }
         }
     }
@@ -1819,7 +1944,6 @@ var MouseListener = (client) => {
         }
 
         document.onmousemove = event => {
-
             self.client.uiHandler.mouseMove(event);
         }
 

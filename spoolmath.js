@@ -101,6 +101,13 @@ const SpoolMath = {
         return min + Math.round(Math.random() * (max - min));
     },
 
+    randomChoice: (array) => {
+        if (array.length == 0) {
+            return null;
+        }
+        return array[SpoolMath.randomInt(0, array.length - 1)];
+    },
+
     //// INTERVAL ////
 
     toHex: num => {
@@ -115,6 +122,14 @@ const SpoolMath = {
         return SpoolMath.toHex(r) + SpoolMath.toHex(g) + SpoolMath.toHex(b);
     },
 
+    divideColor: (color, d) => {
+        elements = color.substring(4).split(',');
+        for (var i = 0; i < elements.length; i++) {
+            elements[i] = parseInt(parseInt(elements[i]) / d);
+        }
+        return SpoolMath.rgbToHex(elements[0], elements[1], elements[2]);
+    },
+
     inInterval: (val, a, b, offset = 0) => {
         if (a < b) {
             var min = a;
@@ -127,16 +142,61 @@ const SpoolMath = {
     },
 
     numberDefined: (x) => {
-        console.log(x)
         if (x !== undefined && x !== null) {
             return true
         } else {
             return false
+        }
+    },
+    getYFromCircle: (inX, r) => {
+        if (inX <= r && inX >= -r) {
+            var y = Math.sqrt(Math.pow(r, 2) - Math.pow(inX, 2))
+        }
+        return -y
+    },
+    getYFromMovedCircle: (x, y, inX, r) => {
+        movY = SpoolMath.getYFromCircle(inX, r) + y
+        movX = inX + x
+        pos = [movX, movY]
+        return pos
+    },
+    getAngleFromCircle: (radius, inX) => {
+        var angle = Math.acos(inX / radius) - Math.PI / 2
+        return angle
+    },
+    rectangleMouseCollision: (Ax, Ay, width, height, mouseX, mouseY) => {
+        if (mouseX >= Ax && mouseX <= Ax + width && mouseY <= Ay && mouseY >= Ay - height) {
+            return true
+        } else {
+            return false
+        }
+    },
+    rotatePoint: (Sx, Sy, Px, Py, angle) => {
+        var radius = SpoolMath.distance(Sx, Sy, Px, Py)
+        var newAngle = SpoolMath.globalAngle(Sx, -Sy, Px, -Py) - angle
+        var newX = Math.cos(newAngle) * radius + Sx
+        var newY = -Math.sin(newAngle) * radius + Sy
+        pos = [newX, newY]
+        return pos
+    }
+}
+
+var SpoolRect = (x, y, width, height) => {
+    return {
+        x: x,
+        y: y,
+        width: width,
+        height: height,
+        cx: x + width / 2,
+        cy: y + height / 2,
+        contains: (ax, ay) => {
+            return x <= ax && ax <= x + width && y <= ay && ay <= y + height;
         }
     }
 }
 
 
 module.exports = {
-    SpoolMath
+    SpoolMath,
+    SpoolRect
 }

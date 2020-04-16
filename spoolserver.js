@@ -5,6 +5,7 @@ const {
     ASIGN_CLIENT_ID,
     SM_KEY_PRESS,
     SM_MOUSE_CLICKED,
+    SM_RESET,
 
     KI_MOV_LEFT,
     KI_MOV_UP,
@@ -24,6 +25,12 @@ var CHUNK_SIZE = 300;
 const {
     SpoolMath
 } = require('./spoolmath.js')
+
+const {
+    SpoolUtils
+} = require('./spoolutils.js')
+
+var Perlin = require('perlin-noise');
 
 ////// SERVER //////
 
@@ -54,6 +61,8 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
     self.http = require("http").createServer(self.app);
     self.io = require("socket.io")(self.http);
 
+    self.updateTime = 1000 / self.TPS;
+
     self.fullStart = (playerConstructor) => {
         self.start()
         self.startSocket(playerConstructor)
@@ -77,16 +86,17 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
         self.io.sockets.on("connection", socket => {
             //// INIT ////
 
+            // give client the first init package contains all the information about the the state
+
             // Generate ID
             var id = Math.random();
             socket.id = id;
-
             // Add socket to the list
             self.socketList[id] = socket;
 
             // Add player and add it to the list
             var player = playerConstructor({
-                id
+                id: id
             })
 
             if (self.onPlayerSpawn) {
@@ -94,6 +104,10 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
             }
 
             self.handler.add(player);
+
+            if (self.onPlayerAddedToHandler) {
+                self.onPlayerAddedToHandler(player);
+            }
 
             self.playerList[id] = player;
 
@@ -111,6 +125,9 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
                 } else if (data.inputId === KI_MOV_DOWN) {
                     player.pressedDown = data.value;
                 }
+                if (self.keyEvent) {
+                    self.keyEvent(data, socket, player);
+                }
             });
 
             socket.on(SM_MOUSE_CLICKED, data => {
@@ -119,9 +136,14 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
                 }
             });
 
-            socket.emit(SM_PACK_INIT, {
-                ...self.handler.getInitPackage(player.objectType, socket.id)
-            }); // give client the first init package contains all the information about the the state
+            var initPackage = self.handler.getInitPackage(player.objectType, socket.id);
+            initPackage.resetHandler = true;
+
+            socket.emit(SM_PACK_INIT,
+                initPackage
+            ); // give client the first init package contains all the information about the the state
+
+            console.log('init', initPackage['PLAYER'].map(value => value.id));
 
             socket.emit(ASIGN_CLIENT_ID, {
                 clientId: socket.id,
@@ -131,8 +153,6 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
                 }
             }); // give client his id -> so he knows which player he is in control of
 
-
-
             //// END ////
 
             socket.on("disconnect", () => {
@@ -141,6 +161,9 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
                 delete self.playerList[id];
                 // Remove player from the handler as a object
                 self.handler.remove(player.objectType, id);
+                if (self.onPlayerDisconnected) {
+                    self.onPlayerDisconnected(self, socket, player);
+                }
             });
 
             if (self.onSocketCreated) {
@@ -149,53 +172,94 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
         });
     }
 
-    self.startGameLoop = (callback = null) => {
+    self.emit = (message, data) => {
+        if (self.io) {
+            self.io.sockets.emit(message, data);
+        }
+    }
+
+    self.update = () => {
+        // Update the game state and get update package
+        var pack = self.handler.update();
+
+        if (self.updateCallback) {
+            self.updateCallback(self)
+        }
+
+        // Go through all the sockets
+        for (var i in self.socketList) {
+            // Get players socket
+            var socket = self.socketList[i];
+
+            // Give client the init package -> objects are added to the client
+            if (self.handler.somethingToAdd) {
+                socket.emit(SM_PACK_INIT, self.handler.initPack);
+            }
+
+            // Give client the update package -> objects are updateg
+            socket.emit(SM_PACK_UPDATE, pack['general']);
+
+            // Give client his authorized update package 
+            if (pack[socket.id]) {
+                socket.emit(SM_PACK_UPDATE, pack[socket.id]);
+            }
+
+            // Give client the remove package -> remove objects from the game
+            if (self.handler.somethingToRemove) {
+                socket.emit(SM_PACK_REMOVE, self.handler.removePack);
+            }
+        }
+        // Reset both the init package and remove package
+        self.handler.resetPacks();
+    }
+
+    self.startGameLoop = () => {
         // Start game loop
 
+        self.lastMillisTimer = Date.now();
         self.lastMillis = Date.now();
-        setInterval(() => {
-            // Update the game state and get update package
-            var pack = self.handler.update();
 
-            if (callback) {
-                callback()
-            }
+        self.lastUpdateTime = Date.now();
+        self.loop();
+    }
 
-            if (self.updateCallback) {
-                self.updateCallback(self)
-            }
+    self.loop = () => {
+        let now = Date.now()
+        if (now - self.lastUpdateTime >= self.updateTime) {
+            var delta = (now - self.lastUpdateTime) / 1000
+            self.lastUpdateTime = now
 
-            // Go through all the sockets
-            for (var i in self.socketList) {
-                // Get players socket
-                var socket = self.socketList[i];
+            self.update(delta);
 
-                // Give client the init package -> objects are added to the client
-                if (self.handler.somethingToAdd) {
-                    socket.emit(SM_PACK_INIT, self.handler.initPack);
-                }
-
-                // Give client the update package -> objects are updateg
-                socket.emit(SM_PACK_UPDATE, pack);
-
-                // Give client the remove package -> remove objects from the game
-                if (self.handler.somethingToRemove) {
-                    socket.emit(SM_PACK_REMOVE, self.handler.removePack);
-                }
-            }
-            // Reset both the init package and remove package
-            self.handler.resetPacks();
-
-
-            var delta = Date.now() - self.lastMillis;
+            var delta = Date.now() - self.lastMillisTimer;
             if (delta >= 1000) {
                 console.log('UPS: ', self.updateCounter);
                 self.updateCounter = 0;
-                self.lastMillis = Date.now()
+                self.lastMillisTimer = Date.now()
             } else {
                 self.updateCounter += 1;
             }
-        }, 1000 / self.TPS);
+        }
+
+        if (Date.now() - self.lastUpdateTime < self.updateTime - 16) {
+            setTimeout(self.loop)
+        } else {
+            setImmediate(self.loop)
+        }
+    }
+
+    self.loop_d = () => {
+        setTimeout(self.loop, self.updateTime)
+        self.update();
+
+        var delta = Date.now() - self.lastMillisTimer;
+        if (delta >= 1000) {
+            console.log('UPS: ', self.updateCounter);
+            self.updateCounter = 0;
+            self.lastMillisTimer = Date.now()
+        } else {
+            self.updateCounter += 1;
+        }
     }
 
     return self
@@ -378,6 +442,7 @@ var ServerObject = (initObject) => {
  */
 var ServerHandler = () => {
     var self = {
+        objectsById: {},
         objects: {}, // All objects in the game
         chunks: {}, // All the chunks in the game 
 
@@ -477,6 +542,7 @@ var ServerHandler = () => {
      */
     self.update = () => {
         var pack = {};
+        var authorizedPacks = {};
 
         for (key in self.objects) {
 
@@ -509,20 +575,43 @@ var ServerHandler = () => {
 
                     var postUpdate = object.updatePack();
 
-                    var change = !preUpdate ? true : false;
+                    var sendUpdate = object.sendUpdatePackageAlways || object.asyncUpdateNeeded;
 
-                    if (!change) {
-                        for (valueKey in postUpdate) {
-                            if (preUpdate[valueKey] !== postUpdate[valueKey]) {
-                                change = true;
-                                break;
+                    if (!sendUpdate) {
+
+                        var change = !preUpdate;
+
+                        if (!change) {
+                            for (valueKey in postUpdate) {
+                                if (preUpdate[valueKey] !== postUpdate[valueKey]) {
+                                    change = true;
+                                    break;
+                                }
+                            }
+
+                            if (change) {
+                                sendUpdate = true;
                             }
                         }
+                    }
 
-                        if (change) {
-                            currPackage.push(postUpdate)
-                            object.asyncUpdatePackage = {};
+                    if (sendUpdate) {
+                        currPackage.push(postUpdate)
+                        object.asyncUpdatePackage = {};
+                        object.asyncUpdateNeeded = false;
+                    }
+
+                    var authPack = object.authorizedUpdatePack();
+
+                    if (authPack) {
+                        if (!authorizedPacks[authPack.id]) {
+                            authorizedPacks[authPack.id] = {}
                         }
+                        if (!authorizedPacks[authPack.id][object.objectType]) {
+                            authorizedPacks[authPack.id][object.objectType] = [];
+                        }
+
+                        authorizedPacks[authPack.id][object.objectType].push(authPack.package);
                     }
 
                     object.lastUpdatePack = postUpdate;
@@ -532,6 +621,7 @@ var ServerHandler = () => {
             if (currPackage.length != 0) {
                 pack[key] = currPackage;
             }
+
         }
 
         for (var i = 0; i < self.managers.length; i++) {
@@ -539,14 +629,17 @@ var ServerHandler = () => {
                 self.managers[i].handlerUpdate();
         }
 
-        return pack;
+        return {
+            'general': pack,
+            ...authorizedPacks
+        };
     };
 
     //// ADDING REMOVING ////
 
     /**
      * Adds object to the handler
-     * @param {object} obj - object we want to add need to contain objecType and id
+     * @param {object} obj - object we want to add need to contain objecType and idf
      */
     self.add = obj => {
         // Add to handler
@@ -554,6 +647,7 @@ var ServerHandler = () => {
             self.objects[obj.objectType] = {};
         }
         self.objects[obj.objectType][obj.id] = obj;
+        self.objectsById[obj.id] = obj;
         self.updateObjectsChunk(obj);
 
         // Add to init pack
@@ -582,6 +676,8 @@ var ServerHandler = () => {
             }
             delete self.objects[type][id];
         }
+
+        delete self.objectsById[id];
 
         // Add to remove pack
         if (!(type in self.removePack)) {
@@ -619,16 +715,26 @@ var ServerHandler = () => {
         for (key in self.objects) {
             var objList = self.objects[key];
 
+
+
             var currPackage = [];
             for (objKey in objList) {
                 var object = objList[objKey];
+
+
+
                 var initPack = object.initPack();
 
                 if (objKey == playerId && key == playerType) {
                     initPack["playerFlag"] = true;
                 }
-
                 currPackage.push(initPack);
+
+                // if (key == 'PLAYER') {
+                //     console.log(object);
+                //     console.log(objKey);
+                //     console.log(initPack);
+                // }
             }
 
             pack[key] = currPackage;
@@ -709,6 +815,18 @@ var ServerHandler = () => {
                 }
             }
         })
+
+        if (!res) {
+            for (key in self.chunks) {
+                var chunk = self.chunks[key];
+                var temp = chunk.getClosestObject(x, y, attributes);
+                if (temp) {
+                    if (res ? temp.distance < res.distance : true) {
+                        res = temp
+                    }
+                }
+            }
+        }
 
         return res;
     }
@@ -828,7 +946,7 @@ var CollisionManager = (initPack, handler) => {
                     b: cpb,
                     func: cp.func,
                     exception: cp.exception,
-                    notSolid: cp.notSolid,
+                    solid: cp.solid !== undefined ? cp.solid : true,
                     solidException: cp.solidException
                 });
             })
@@ -868,6 +986,7 @@ var CollisionManager = (initPack, handler) => {
             for (var i = 0; i < self.colPairs.length; i++) {
 
                 var aType = self.colPairs[i].a;
+                var harsh = self.colPairs[i].harsh;
 
                 if (objectType == aType) {
 
@@ -894,11 +1013,11 @@ var CollisionManager = (initPack, handler) => {
                                             var collision = self.objectRectCollision;
                                         }
 
-                                        var col = collision(a, b);
+                                        var col = collision(a, b, harsh);
 
                                         if (col) {
                                             if (col.result) {
-                                                if (!self.colPairs[i].notSolid && col.point) {
+                                                if (self.colPairs[i].solid && col.point) {
                                                     if (self.colPairs[i].solidException ? !self.colPairs[i].solidException(a, b) : true) {
                                                         a.x = Math.round(col.point.x);
                                                         a.y = Math.round(col.point.y);
@@ -1000,7 +1119,7 @@ var CollisionManager = (initPack, handler) => {
         }
     }
 
-    self.objectRectCollision = (a, b) => {
+    self.objectRectCollision = (a, b, harsh = false) => {
 
         var rx = parseInt(b.x - b.width / 2 - a.width / 2);
         var ry = parseInt(b.y - b.height / 2 - a.height / 2);
@@ -1091,7 +1210,13 @@ var CollisionManager = (initPack, handler) => {
             };
             result.direction = closestIntersection.direction;
             return result;
+        } else if (harsh) {
+            result.point = {
+                x: a.px,
+                y: a.py,
+            }
         }
+
         return result;
 
     }
@@ -1244,11 +1369,38 @@ var InputManager = () => {
 
 }
 
+////// TIMER //////
+
+var SpoolTimer = (duration, event, object = null) => {
+    var self = {
+        startTime: Date.now(),
+        duration: duration,
+        event: event,
+        object: object,
+        active: true,
+        timeLeft: 0,
+    }
+
+    self.update = () => {
+        self.timeLeft = self.startTime + self.duration - Date.now()
+        if (self.timeLeft < 0 && self.active) {
+            self.event(object);
+            self.active = false;
+        }
+    }
+
+    self.stop = () => {
+        self.active = false;
+    }
+
+    return self;
+}
+
 ////// OBJECTSPAWNER //////
 
 var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
     var self = {
-        keyToConstAndDefs: keyToConstAndDefs, // keyToConstAndDefs[key] = {const: object's constructor - funcpointer, defs: initPack - {object}}
+        keyToConstAndDefs: keyToConstAndDefs, // keyToConstAndDefs[key] = {const: object's constructor - funcpointer, defs: initPack - {object}, }
         handler: handler,
         ...inputObject,
 
@@ -1439,39 +1591,54 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
         });
     }
 
-    self.spawnFromKeyArray = (array, gx = self.gx, gy = self.gy) => {
+    self.spawnFromKeyArray = (array, gx = self.gx, gy = self.gy, colorArray = null) => {
         for (var y = 0; y < array.length; y++) {
             for (var x = 0; x < array[y].length; x++) {
                 if (array[y][x]) {
                     var pair = keyToConstAndDefs[array[y][x]];
                     if (pair) {
+
+                        var dependantConst = {}
+                        if (pair.dependantConst) {
+                            dependantConst = pair.dependantConst(self, colorArray ? colorArray[y][x] : null)
+                        }
+
                         var object = pair.const({
                             ...pair.defs,
                             x: parseInt((x - array[y].length / 2) * gx),
                             y: parseInt((-y + array.length / 2) * gy),
                             gridX: x,
-                            gridY: y
+                            gridY: y,
+                            ...dependantConst
                         })
+
+                        var valueArray = [array[y][x]]
+
+                        if (pair.gridColRemovalSiblings) {
+                            valueArray = [array[y][x], ...pair.gridColRemovalSiblings]
+                        }
+
+
 
                         if (object.gridColRemoval) {
                             if (x > 0) {
-                                if (array[y][x - 1] == array[y][x]) {
+                                if (valueArray.includes(array[y][x - 1])) {
                                     object.leftColIgnore = true;
                                 }
                             }
                             if (x < array[y].length - 1) {
-                                if (array[y][x + 1] == array[y][x]) {
+                                if (valueArray.includes(array[y][x + 1])) {
                                     object.rightColIgnore = true;
                                 }
                             }
 
                             if (y > 0) {
-                                if (array[y - 1][x] == array[y][x]) {
+                                if (valueArray.includes(array[y - 1][x])) {
                                     object.topColIgnore = true;
                                 }
                             }
                             if (y < array.length - 1) {
-                                if (array[y + 1][x] == array[y][x]) {
+                                if (valueArray.includes(array[y + 1][x])) {
                                     object.bottomColIgnore = true;
                                 }
                             }
@@ -1549,7 +1716,7 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
 
     }
 
-    self.spawnFromImageMap = (fileName, colorToKey, gx = self.gx, gy = self.gy) => {
+    self.spawnFromImageMap = (fileName, colorToKey, callback, gx = self.gx, gy = self.gy) => {
         FileReader.readImage(fileName, (data) => {
 
             var array = [];
@@ -1559,25 +1726,43 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
             var pixels = data.data;
             var shape = data.shape;
 
+            var nonBlack = colorToKey['non-black']
+            var colorArray = []
+
             for (var y = 0; y < shape[1]; y++) {
                 var lineArray = []
+                var colorLine = []
                 for (var x = 0; x < shape[0]; x++) {
                     var index = (y * shape[0] + x) * shape[2];
                     var r = pixels[index];
                     var g = pixels[index + 1];
                     var b = pixels[index + 2];
 
-                    var key = colorToKey[SpoolMath.rgbToHex(r, g, b)];
+                    var colorcode = SpoolMath.rgbToHex(r, g, b);
+                    var key = colorToKey[colorcode];
+
+                    if (nonBlack && !key && (r != 0 || g != 0 || b != 0)) {
+                        key = nonBlack
+                    }
+
                     if (key) {
                         lineArray.push(key);
                     } else {
                         lineArray.push(null);
                     }
+
+                    colorLine.push([r, g, b, colorcode])
                 }
                 array.push(lineArray);
+                colorArray.push(colorLine)
             }
 
-            self.spawnFromKeyArray(array, gx, gy);
+
+
+            self.spawnFromKeyArray(array, gx, gy, colorArray);
+            if (callback) {
+                callback()
+            }
         });
     }
 
@@ -1635,8 +1820,10 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
         if (zone) {
             var tile = zone[Math.round(Math.random() * (zone.length - 1))];
 
+
+
             var px = (tile[0] - self.mapPxWidth / 2) * self.gx + Math.round(Math.random() * self.gx);
-            var py = (-tile[1] + self.mapPxWidth / 2) * self.gy + Math.round(Math.random() * self.gy);
+            var py = (-tile[1] + self.mapPxHeight / 2) * self.gy + Math.round(Math.random() * self.gy);
 
             return ({
                 x: px,
@@ -1660,6 +1847,7 @@ var Entity = (initPack = {}) => {
     var self = {
         //// STATE ////
         asyncUpdatePackage: {},
+        asyncUpdateNeeded: false,
 
         //// VELOCITIES ////
         x: 0, // x pos of the objects center
@@ -1758,9 +1946,25 @@ var Entity = (initPack = {}) => {
             rotation: self.rotation,
             id: self.id,
             movementAngle: self.movementAngle,
-            moving: self.moving
+            moving: self.moving,
+            ...self.asyncUpdatePackage,
         };
     };
+
+    self.authorizedUpdatePack = () => {
+        return null;
+    }
+
+    self.setAsyncUpdateValue = (name, value) => {
+
+        self.asyncUpdatePackage[name] = value;
+        self.asyncUpdateNeeded = true;
+    }
+
+    self.addAsyncUpdatePackage = (pack) => {
+        Object.assign(self.asyncUpdatePackage, pack);
+        self.asyncUpdateNeeded = true;
+    }
 
     //// UPDATING ////
 
@@ -2135,5 +2339,9 @@ module.exports = {
     OvalBodyParameters,
     RectangleBodyParameters,
 
-    SpoolMath
+    SpoolTimer,
+
+    SpoolMath,
+    SpoolUtils,
+    Perlin
 }

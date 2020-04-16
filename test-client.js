@@ -1,201 +1,1465 @@
-//// OBJECTS ////
+////// FUNCTIONS //////
 
-var NetworkTileEntity = (initObject = {}) => {
-    var self = SpriteEntity(initObject);
+
+
+function tileDistance(ax, ay, bx, by) {
+    return (Math.abs(bx - ax) + Math.abs(by - ay) + Math.abs(bx + by - ax - ay)) / 2
+}
+
+function tileDistance2T(a, b) {
+    return tileDistance(a.tx, a.ty, b.tx, b.ty);
+}
+
+function movingPrice(tilea, tileb) {
+    if (tilea.z !== undefined && tilea.leavingPrice !== undefined && tileb.z !== undefined && tileb.enteringPrice !== undefined) {
+        var res = Math.abs(tilea.z - tileb.z) + tilea.leavingPrice + tileb.enteringPrice;
+        return res;
+    } else {
+        if (tilea.z === undefined || tilea.leavingPrice === undefined) {
+            console.warn('@movingPrice: problem with tileA:', tilea);
+        }
+        if (tileb.z === undefined || tileb.enteringPrice === undefined) {
+            console.warn('@movingPrice: problem with tileB:', tileb);
+        }
+
+        return null;
+    }
+}
+
+function renderVialValue(ctx, color, value, maxValue, box, text = null) {
+    SpoolRenderer.setColor(ctx, '#333333');
+    var newBox = SpoolRect(box.x + 5, box.y + 5, box.width - 10, box.height - 10);
+    ctx.drawImage(textureManager.getSprite('hotbarbg_sq', 1), box.x + 5, box.y + 5, box.width - 10, box.height - 10);
+
+    SpoolRenderer.setColor(ctx, color);
+    SpoolRenderer.fillInscribedOvalPercentFull(ctx, newBox, value / maxValue);
+    ctx.imageSmoothingEnabled = false;
+
+
+    ctx.drawImage(textureManager.getSprite('ring'), box.x, box.y, box.width, box.height);
+
+    SpoolRenderer.setColor(ctx, 'white');
+    ctx.strokeStyle = 'black';
+    SpoolRenderer.multiLineText(ctx, text ? text : value.toString(), box, box.width, FONT_OFFSETCOEF, 3);
+}
+
+function getTileInPoint(x, y) {
+    var res = null;
+    Object.keys(colBoxes).forEach(key => {
+        var box = colBoxes[key];
+        if (SpoolMath.distance(x, y, box.x, box.y) <= box.radius) {
+            res = box.tile;
+        }
+    })
+    return res;
+}
+
+////// CLIENT //////
+
+var Z_SCALINGFACTOR_MAX = 10;
+var Z_SCALINGFACTOR_MIN = 3;
+var Z_SCALINGFACTOR = Z_SCALINGFACTOR_MAX;
+var Z_SCALINGENABLED = true;
+
+var colBoxes = {};
+
+var client = null;
+
+var FONT = "'dpcomic'"
+var FONT_OFFSETCOEF = 0.2;
+
+
+BIOME_COLORS = {
+    'grass': '#a0d964',
+    'stone': '#757575',
+    'sand': '#f0e089',
+    'water': '#0077be',
+    'dead': '#444444',
+    'bush': '#13612d',
+}
+
+BIOME_TEXTROWS = {
+    'grass': 3,
+    'stone': 4,
+    'sand': 2,
+    'water': 1,
+    'dead': 0,
+    'bush': 3,
+}
+
+NATURE_TEXTROWS = {
+    'bush': 0,
+    'grass': 1,
+    'stone': 2,
+}
+
+TILE_SELECTOR_FCOUNTER = 0;
+TILE_SELECTOR_INDEX = 0;
+TILE_SELECTOR_LENGTH = 5;
+
+var SELECTOR = {
+    activatedCard: null,
+    selectedTx: null,
+    selectedTy: null,
+}
+
+var Tile = (initObject) => {
+    var self = Entity({
+        ...initObject,
+        lastBiome: null
+    });
+
+    var superSelf = {
+        render: self.render
+    }
+
+    self.deadColor = '#444444';
+    self.baseColor = '#b58d65'
+    self.baseDark = ['#a37a52', '#a8835e', '#c2a07e']
+
+    self.topColor = BIOME_COLORS[self.biome]
+
+    self.renderZ = self.z;
+    self.renderR = 0;
+
+    self.color = SpoolMath.randomColor(100, 255);
+    self.darkColor = SpoolMath.divideColor(self.color, 2);
+
+    self.textureId = SpoolMath.randomInt(0, 3);
+    self.biome;
+    self.frameCounter = 0;
+
+    self.update = (data) => {
+        Object.assign(self, data);
+    }
+
+
 
     self.render = (ctx, camera) => {
-        var tid = self.textureId;
+        // Calculating the distance from the player 
 
-        if (self.active) {
-            tid += 16
+
+        var distanceFromPlayer = client.clientObject ? client.clientObject.tile ? tileDistance2T(client.clientObject.tile, self) : null : null;
+
+        delete colBoxes[self.id];
+
+        // Not rendering tile if not in sight (not secure)
+
+        if (distanceFromPlayer) {
+            if (distanceFromPlayer > 4) {
+                self.renderR = SpoolMath.lerp(self.renderR, self.hexRadius, 0)
+                return;
+            }
         }
-        self.renderSprite(ctx, camera, sprite = self.texture.sprites[tid]);
+
+        // Adding to animationFrame (at top because of the returns at the bottom)
+
+        if (self.biome == 'water') {
+            self.frameCounter += 1;
+            if (self.frameCounter >= 20) {
+                self.frameCounter = 0;
+                self.animationFrame += 1;
+                if (self.animationFrame >= 4) {
+                    self.animationFrame = 0;
+                }
+            }
+        }
+
+        // Calculating tile radius (small if on the border of sight)
+
+        var r = self.hexRadius;
+
+        if (distanceFromPlayer) {
+            if (distanceFromPlayer > 3) {
+                self.renderR = SpoolMath.lerp(self.renderR, self.hexRadius / 2, 0.2)
+            } else {
+                self.renderR = SpoolMath.lerp(self.renderR, self.hexRadius, 0.2)
+            }
+        } else {
+            self.renderR = SpoolMath.lerp(self.renderR, self.hexRadius, 0.2)
+        }
+
+        var r = self.renderR;
+
+        // Calculating the hexagons points 
+
+        var startAngle = 0;
+        var n = 6;
+
+        var points = []
+        var pointsDown = []
+        var pointsInner = []
+
+        var innerRadiusFactor = 0.8;
+
+        self.renderZ = SpoolMath.lerp(self.renderZ, self.z, 0.2);
+
+        var zOffset = self.renderZ * Z_SCALINGFACTOR + self.zRandomOffset * Z_SCALINGFACTOR * 1;
+
+        for (var i = 0; i < n; i++) {
+            angle = startAngle + Math.PI * 2 / n * i;
+            var point = camera.transformPoint(self.x - r * Math.cos(angle), self.y - r * Math.sin(angle));
+            var pointInner = camera.transformPoint(self.x - r * innerRadiusFactor * Math.cos(angle), self.y - r * innerRadiusFactor * Math.sin(angle))
+            pointInner.y -= zOffset
+            pointsDown.push(point);
+            pointsInner.push(pointInner);
+            points.push({
+                x: point.x,
+                y: point.y - zOffset
+            })
+        }
+
+        ctx.imageSmoothingEnabled = false;
+
+        var rectHeight = client.gameArea.height - points[0].y;
+
+        // Drawing the faces that go down to the void
+
+        ctx.fillStyle = self.baseDark[0];
+        ctx.fillRect(points[0].x, points[0].y, points[1].x - points[0].x, rectHeight)
+        ctx.fillStyle = self.baseDark[1];
+        ctx.fillRect(points[1].x, points[0].y, points[2].x - points[1].x, rectHeight)
+        ctx.fillStyle = self.baseDark[2];
+        ctx.fillRect(points[2].x, points[0].y, points[3].x - points[2].x, rectHeight)
+
+        // Calculating the upper centerp point 
+
+        colPoint = camera.transformPoint(self.x, self.y);
+        colBox = {
+            x: colPoint.x,
+            y: colPoint.y - zOffset,
+            radius: camera.transformDimension(self.hexRadius) * Math.sin(Math.PI / 3),
+            tile: self
+        }
+        colBoxes[self.id] = colBox;
+
+        var t_width = r * 2;
+
+
+        // Changing sprites if biome changed
+        if ((self.biome != self.lastBiome && !self.dead) || (self.lastBiome != 'dead' && self.dead)) {
+            self.sprite = textureManager.getSprite('tiles', BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4)
+            self.resizedSprite = null;
+            textureManager.resizeSprite(self.sprite, self.hexRfadius * 2, self.hexRadius * 2 / self.sprite.width * self.sprite.height, (result) => {
+                self.resizedSprite = result;
+            })
+            if (self.dead) {
+                self.lastBiome = 'dead';
+            } else {
+                self.lastBiome = self.biome;
+            }
+        }
+
+        if (self.resizedSprite && Math.abs(self.renderR - self.hexRadius) < 2 && self.animationFrame == 0) {
+            var t_height = self.resizedSprite.height;
+            ctx.drawImage(self.resizedSprite, colBox.x - self.resizedSprite.width / 2, colBox.y - self.resizedSprite.height / 2);
+        } else {
+            var sprite = textureManager.getSprite('tiles', BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4)
+            var t_height = t_width / sprite.width * sprite.height;
+            ctx.drawImage(sprite, colBox.x - t_width / 2, colBox.y - t_height / 2, t_width, t_height);
+        }
+        if (distanceFromPlayer) {
+            if (distanceFromPlayer > 3) {
+                return;
+            }
+        }
+
+        self.objects.forEach(object => {
+            var temp = client.handler.objectsById[object];
+            if (temp) {
+                temp.renderOnTile(ctx, camera, colBox.x, colBox.y);
+            }
+        })
+
+
+        if (client.handUi) {
+            if (SELECTOR.activatedCard) {
+
+                var selectorId = null;
+
+                if (distanceFromPlayer <= SELECTOR.activatedCard.range) {
+                    selectorId = 0;
+                }
+
+                if (SELECTOR.selectedTx == self.tx && SELECTOR.selectedTy == self.ty) {
+                    if (selectorId != null) {
+                        selectorId = 1;
+                    } else {
+                        selectorId = 2;
+                    }
+                }
+
+                if (selectorId != null) {
+                    var selectorWidth = t_width * 1 / 2;
+                    var selectorHeight = t_height * 1 / 2;
+                    var selectorZ = 10;
+                    ctx.drawImage(textureManager.getSprite('tileselector', selectorId * 4 + TILE_SELECTOR_INDEX), colBox.x - selectorWidth / 2, colBox.y - selectorHeight / 2 - selectorZ, selectorWidth, selectorHeight);
+                }
+            }
+        }
+
+        if (client.clientObject && !self.dead) {
+            if (client.clientObject.tile) {
+                if (distanceFromPlayer == 1) {
+                    SpoolRenderer.setFont(ctx, FONT, 25);
+                    SpoolRenderer.setColor(ctx, 'white');
+
+                    var price = movingPrice(client.clientObject.tile, self);
+
+                    ctx.strokeStyle = 'black';
+                    SpoolRenderer.multiLineText(ctx, `${price}`, SpoolRect(colBox.x, colBox.y, 0, 0), 100, FONT_OFFSETCOEF, 3)
+                }
+            }
+        }
+
+        // SpoolRenderer.setFont(ctx, FONT, 25);
+        // SpoolRenderer.setColor(ctx, 'white');
+
+        // var price = movingPrice(self, client.clientObject.tile);
+
+        // ctx.strokeStyle = 'black';
+        // SpoolRenderer.multiLineText(ctx, `${self.tx} ${self.ty}`, SpoolRect(colBox.x, colBox.y, 0, 0), 100, FONT_OFFSETCOEF, 3)
 
     }
 
     return self;
 }
 
-var NetworkSpriteEntity = (initObject = {}) => {
-    var self = SpriteEntity(initObject);
+var StandableEntity = (initObject) => {
+    var self = RectangleEntity({
+        ...initObject
+    })
 
-    self.render = (ctx, camera) => {
-        var tid = 0;
+    self.render = () => {};
 
-        if (self.active) {
-            tid = 1
+    self.renderOnTile = (ctx, camera, tilex, tiley) => {
+        SpoolRenderer.setColor(ctx, 'red');
+        var textureOffsetY = self.textureOffsetY ? self.textureOffsetY : 0;
+        if (self.sprite) {
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(self.sprite, tilex - self.width / 2, tiley - self.height + textureOffsetY, self.width, self.height);
+        } else {
+            SpoolRenderer.fillRect(ctx, tilex - self.width / 2, tiley - self.height, self.width, self.height);
         }
-        self.renderSprite(ctx, camera, sprite = self.texture.sprites[tid]);
+    }
 
+    return self;
+}
+
+var Player = (initObject) => {
+    var self = MovementAnimationEntity({
+        ...initObject,
+        currentX: null,
+        currentY: null,
+    })
+
+    var superSelf = {
+        render: self.render
+    }
+
+    self.render = () => {};
+
+    self.renderOnTile = (ctx, camera, tilex, tiley) => {
+        var index = self.getMovementAnimationSpriteIndex(false, 0);
+        var textureOffsetY = self.textureOffsetY ? self.textureOffsetY : 0;
+        ctx.drawImage(self.texture.sprites[index], tilex - self.width / 2, tiley - self.height + textureOffsetY, self.width, self.height)
+
+        if (client.clientObject) {
+            if (client.clientObject.id != self.id) {
+                var nameY = tiley - self.height - 10;
+                ctx.fillStyle = 'white';
+                ctx.strokeStyle = 'black';
+                SpoolRenderer.setFont(ctx, FONT, 20);
+                SpoolRenderer.simpleText(ctx, `${self.name} ${self.hp}/${self.maxHp}`, tilex, nameY, 3)
+            }
+        }
+        // Counter 
+
+        if (self.animationCounter == self.animationTime) {
+            if (self.texture) {
+                self.animationFrame += 1;
+                if (self.animationFrame == self.texture.columns) {
+                    self.animationFrame = 0;
+                }
+            }
+
+            self.animationCounter = 0;
+        } else {
+            self.animationCounter += 1;
+        }
+    }
+
+    return self;
+}
+
+var Nature = (initObject) => {
+    var self = RectangleEntity({
+        ...initObject
+    })
+
+    self.render = () => {};
+
+    textureManager.resizeSprite(textureManager.getSprite('nature', NATURE_TEXTROWS[self.natureType] * 4 + self.variationId), self.width, self.height, (result) => {
+        self.sprite = result;
+    })
+
+    self.renderOnTile = (ctx, camera, tilex, tiley) => {
+        if (!self.sprite) {
+            var sprite = textureManager.getSprite('nature', NATURE_TEXTROWS[self.natureType] * 4 + self.variationId);
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(sprite, tilex - self.width / 2 + self.xOffset, tiley - self.height + self.yOffset * camera.scaleY);
+        } else {
+            ctx.drawImage(self.sprite, tilex - self.width / 2 + self.xOffset, tiley - self.height + self.yOffset * camera.scaleY)
+        }
     }
 
     return self;
 }
 
 var OBJECTS = {
+    'TILE': {
+        const: Tile
+    },
     'PLAYER': {
-        const: MovementAnimationEntity,
+        const: Player
+    },
+    'BOX': {
+        const: StandableEntity,
         defs: {
-            clientWidth: 45,
-            clientHeight: 78,
+            textureOffsetY: 12,
+            yOffset: 10
+        }
+    },
+    'NATURE': {
+        const: Nature
+    }
+}
 
-            clientOffsetX: 22.5,
-            clientOffsetY: 78,
-        }
+textureManager = TextureManager({
+    'card': {
+        src: './textures/full_stack.png',
+        r: 3,
+        c: 5,
     },
-    'GROUND': {
-        const: SpriteEntity,
-        defs: {
-            bakeIn: true
-        }
+    'tiles': {
+        src: './textures/tiles.png',
+        r: 6,
+        c: 4,
     },
-    'WALL': {
-        const: SpriteEntity,
-        defs: {
-            clientWidth: 64,
-            clientHeight: 128,
-            clientOffsetX: 32,
-            clientOffsetY: 96
-        }
+    'tileselector': {
+        src: './textures/tileselector.png',
+        r: 3,
+        c: 4,
     },
-    'CABLE': {
-        const: NetworkTileEntity,
-        defs: {
-            layer: 8
-        }
+    'boxes': {
+        src: './textures/boxes.png',
+        r: 2,
+        c: 2,
     },
-    'BUTTON': {
-        const: NetworkSpriteEntity,
-        defs: {
-            layer: 9
-        }
+    'ring': {
+        src: './textures/ring.png',
+        r: 1,
+        c: 1,
     },
-    'DOORS': {
-        const: NetworkTileEntity,
-        defs: {
-            clientWidth: 64,
-            clientHeight: 128,
-            clientOffsetX: 32,
-            clientOffsetY: 96
+    'queuegems': {
+        src: './textures/queuegems.png',
+        r: 3,
+        c: 1,
+    },
+    'nature': {
+        src: './textures/nature.png',
+        r: 3,
+        c: 4,
+    },
+    'dice': {
+        src: './textures/dice.png',
+        r: 1,
+        c: 6,
+    },
+    'player': {
+        src: './textures/player.png',
+        r: 9,
+        c: 8
+    },
+    'hotbarbg': {
+        src: './textures/hotbarbg.png',
+        r: 1,
+        c: 1,
+    },
+    'hotbarbg_sq': {
+        src: './textures/hotbarbg_sq.png',
+        r: 1,
+        c: 2,
+    }
+}, {
+    'BOX': {
+        src: 'boxes',
+        x: 0,
+        y: 0,
+        xx: 0,
+        yy: 0,
+    },
+    'PLAYER': {
+        src: 'player'
+    }
+})
+
+client = Client({
+    keyToConstructor: OBJECTS,
+    FPS: 70
+});
+
+client.preHandler = () => {
+    if (Z_SCALINGENABLED) {
+        Z_SCALINGFACTOR = SpoolMath.lerp(Z_SCALINGFACTOR, Z_SCALINGFACTOR_MAX, 0.5)
+    } else {
+        Z_SCALINGFACTOR = SpoolMath.lerp(Z_SCALINGFACTOR, Z_SCALINGFACTOR_MIN, 0.5)
+    }
+    TILE_SELECTOR_FCOUNTER += 1;
+    if (TILE_SELECTOR_FCOUNTER >= TILE_SELECTOR_LENGTH) {
+        TILE_SELECTOR_FCOUNTER = 0;
+        TILE_SELECTOR_INDEX += 1;
+        if (TILE_SELECTOR_INDEX >= 4) {
+            TILE_SELECTOR_INDEX = 0;
         }
     }
 }
 
-//// CLIENT ////
+client.camera.scaleY = 0.8
 
-var client = Client({
-    keyToConstructor: OBJECTS,
-    chunkSize: 500,
-    FPS: 60,
 
-    onFirstLoad: (self) => {
-        self.handler.preBake();
-        self.startGameLoop()
+
+////// UI //////
+
+//// VIAL ////
+
+
+var VialInformation = (initObject) => {
+    var self = SpoolUIElement({
+        ...initObject,
+        active: false,
+        width: 100,
+        height: 100
+    })
+
+    self.render = (ctx) => {
+        if (self.active) {
+            ctx.drawImage(textureManager.getSprite('hotbarbg_sq', 0), self.x, self.y, self.width, self.height)
+
+            SpoolRenderer.setColor(ctx, 'white');
+            SpoolRenderer.multiLineText(ctx, `${self.title}\n${self.value}/${self.maxValue}`, self, self.width, FONT_OFFSETCOEF);
+
+        }
     }
+
+    return self;
+}
+
+var VialButton = (initObject) => {
+    var self = SpoolUIElement({
+
+        value: 0,
+        maxValue: 1,
+        title: 'vial',
+        pulsing: false,
+        pulsingAmplitude: 10,
+
+        ...initObject,
+        id: Math.random(),
+        pulseFrame: 0,
+    });
+
+    self.onMouseEnter = (event, self) => {
+        client.vialInformation.x = event.clientX;
+        client.vialInformation.y = event.clientY;
+        client.vialInformation.title = self.title;
+        client.vialInformation.value = self.value;
+        client.vialInformation.maxValue = self.maxValue;
+        client.vialInformation.active = true;
+        client.vialInformation.id = self.id;
+    }
+
+    self.onMouseLeave = (event, self) => {
+        if (client.vialInformation.id == self.id) {
+            client.vialInformation.active = false;
+            client.vialInformation.id = null;
+        }
+    }
+
+    self.render = (ctx) => {
+
+        if (self.pulsing && self.maxValue != 0) {
+            var pulseAnimationCoef = (Math.sin(self.pulseFrame) + 1) / 2;
+            var pulseCoef = (self.maxValue - self.value) / self.maxValue;
+            var pulseRadius = pulseAnimationCoef * pulseCoef * self.pulsingAmplitude;
+
+            renderVialValue(ctx, self.color, self.value, self.maxValue, SpoolRect(self.x - pulseRadius, self.y - pulseRadius, self.width + pulseRadius * 2, self.height + pulseRadius * 2), self.overrideText);
+            self.pulseFrame += Math.sin(pulseCoef * Math.PI / 2) * 0.2;
+
+            if (self.pulseFrame > Math.PI * 2) {
+                self.pulseFrame -= Math.PI * 2
+            }
+        } else {
+            renderVialValue(ctx, self.color, self.value, self.maxValue, SpoolRect(self.x, self.y, self.width, self.height), self.overrideText);
+        }
+    }
+
+    return self;
+}
+
+//// MINIMAP UI ////
+
+var MinimapUI = (initObject) => {
+    var self = SpoolUIElement({
+        tiles: {},
+        active: true,
+        keys: null,
+        ...initObject
+    });
+
+    self.tileKey = (x, y) => {
+        return `[${x},${y}]`
+    }
+
+    self.setTiles = (data) => {
+        self.tiles = data;
+        self.keys = Object.keys(self.tiles);
+    }
+
+    self.render = (ctx) => {
+
+
+
+        if (self.active) {
+            ctx.drawImage(textureManager.getSprite('hotbarbg_sq', 0), self.x, self.y, self.width, self.height);
+
+            self.keys.forEach(key => {
+                var tile = self.tiles[key];
+                ctx.fillStyle = BIOME_COLORS[tile.biome];
+
+                var pixelSize = 5;
+
+                ctx.fillRect(self.x + 100 + tile.tx * pixelSize, self.y + 100 + tile.ty * pixelSize, pixelSize, pixelSize);
+            })
+        }
+    }
+
+    return self;
+}
+var minimapUi = MinimapUI({
+    x: client.gameArea.width - 220,
+    y: 20,
+    width: 200,
+    height: 200
+});
+client.minimapUi = minimapUi;
+
+//// DICE ////
+
+var DiceUI = (initObject) => {
+    var self = SpoolUIElement({
+        visible: true,
+
+        diceSize: 50,
+
+        rolling: false,
+
+        diceA: 1,
+        diceB: 1,
+
+        currentX: 0,
+        currentY: 0,
+        currentDiceSize: 50,
+
+        ...initObject
+    })
+
+    self.renderNumberPair = (ctx, a, b) => {
+        ctx.imageSmoothingEnabled = false;
+
+        var diceMargin = self.diceSize / 5;
+
+        ctx.drawImage(textureManager.getSprite('dice', a - 1), self.currentX - self.currentDiceSize - diceMargin / 2, self.currentY - self.currentDiceSize, self.currentDiceSize, self.currentDiceSize);
+        ctx.drawImage(textureManager.getSprite('dice', b - 1), self.currentX + diceMargin / 2, self.currentY - self.currentDiceSize, self.currentDiceSize, self.currentDiceSize);
+
+    }
+
+    self.render = (ctx) => {
+        if (self.rolling) {
+            self.renderNumberPair(ctx, `${SpoolMath.randomInt(1, 6)}`, `${SpoolMath.randomInt(1, 6)}`);
+        } else {
+            self.renderNumberPair(ctx, `${self.diceA}`, `${self.diceB}`);
+        }
+
+        var targetX = self.x
+        var targetY = self.y
+        var targetSize = self.diceSize
+
+        if (client.queueUi.currentPlayerId != undefined) {
+            if (client.queueUi.currentPlayerId == client.clientId && (Date.now() - self.rollTime < 1000 || self.rolling)) {
+                targetX = client.gameArea.width / 2;
+                targetY = client.gameArea.height / 2;
+                targetSize = self.diceSize * 2;
+            }
+        }
+        self.currentX = SpoolMath.lerp(self.currentX, targetX, 0.2)
+        self.currentY = SpoolMath.lerp(self.currentY, targetY, 0.2)
+        self.currentDiceSize = SpoolMath.lerp(self.currentDiceSize, targetSize, 0.2);
+    }
+
+    return self;
+}
+
+var diceUi = DiceUI({
+    x: minimapUi.x + minimapUi.width / 2,
+    y: minimapUi.y + minimapUi.height + 75
+})
+client.diceUi = diceUi;
+
+//// QUEUE ////
+
+var QueueUI = (initObject) => {
+    var self = SpoolUIElement({
+        visible: true,
+
+        queue: [],
+        timeOnTimer: 0,
+        currentRound: 0,
+        roundsPerDrop: 3,
+
+        ...initObject
+    })
+
+    var superSelf = {
+        render: self.render
+    }
+
+    self.renderGem = (ctx, text, box, type) => {
+        ctx.fillStyle = 'white';
+        ctx.drawImage(textureManager.getSprite('queuegems', type), box.x, box.y, box.width, box.height);
+        SpoolRenderer.multiLineText(ctx, text, box, box.width, FONT_OFFSETCOEF);
+    }
+
+    var timerMargin = 20;
+    var timerBox = SpoolRect(self.x + timerMargin, self.y + timerMargin, 100 - timerMargin * 2, self.height - timerMargin * 2);
+
+    var timer = VialButton({
+        title: 'Timer',
+        color: 'green',
+        ...timerBox
+    })
+    timer.bindedMouseEvent = (event) => {
+        client.emit('SKIP_ROUND', '');
+    }
+
+    self.add(timer);
+
+    self.render = (ctx) => {
+
+        if (!client.clientObject) {
+            return null;
+        }
+
+        SpoolRenderer.setColor(ctx, 'black');
+        SpoolRenderer.setFont(ctx, FONT, 20)
+
+        var timerValue = 0;
+        var timerMaxValue = 0;
+
+        if (self.endTime) {
+            timerValue = Math.ceil((self.endTime - Date.now()) / 1000)
+            timerMaxValue = Math.ceil((self.timeOnTimer ? self.timeOnTimer : 1) / 1000)
+        }
+
+
+        timer.value = timerValue
+        timer.maxValue = timerMaxValue;
+
+
+        if (timerBox.contains(self.mx, self.my)) {
+            timer.overrideText = 'skip'
+        } else {
+            timer.overrideText = null
+        }
+
+
+        x = 100;
+
+        var queueHeight = 64;
+        var queueY = self.height / 2 - queueHeight / 2
+
+
+        if (self.currentRound % self.roundsPerDrop == 0) {
+            SpoolRenderer.setColor(ctx, '#222222')
+        } else {
+            SpoolRenderer.setColor(ctx, 'white')
+        }
+        SpoolRenderer.setFont(ctx, FONT, 25);
+        SpoolRenderer.multiLineText(ctx, self.currentRound.toString(), SpoolRect(self.x + x, queueY, 20, queueHeight), 20, FONT_OFFSETCOEF, 3)
+
+        x += 20;
+
+        if (self.queue.thisRound) {
+            self.queue.thisRound.forEach(value => {
+                self.renderGem(ctx, value.name, SpoolRect(self.x + x, queueY, queueHeight * 2, queueHeight), value.id == client.clientObject.id ? 0 : 2);
+                x += queueHeight * 2 + 10;
+            })
+        }
+
+        if ((self.currentRound + 1) % self.roundsPerDrop == 0) {
+            SpoolRenderer.setColor(ctx, '#222222')
+        } else {
+            SpoolRenderer.setColor(ctx, 'white')
+        }
+        SpoolRenderer.multiLineText(ctx, (self.currentRound + 1).toString(), SpoolRect(self.x + x, queueY, 20, queueHeight), 20, FONT_OFFSETCOEF, 3)
+
+        x += 20;
+
+        if (self.queue.nextRound) {
+            self.queue.nextRound.forEach(value => {
+                self.renderGem(ctx, value.name, SpoolRect(self.x + x, queueY, queueHeight * 2, queueHeight), value.id == client.clientObject.id ? 0 : 2);
+                x += queueHeight * 2 + 10;
+            })
+        }
+
+        superSelf.render(ctx);
+    }
+
+    return self;
+}
+
+var queueUi = QueueUI({
+    x: 0,
+    y: 0,
+    width: client.gameArea.width,
+    height: 100
 })
 
+client.queueUi = queueUi;
 
-////// TEXTURE MANAGER //////
+//// ALERT UI ////
 
-textureManager = TextureManager({
-    'ground': {
-        src: './textures/ground.png',
-        r: 4,
-        c: 4
-    },
-    'player': {
-        src: './textures/player.png',
-        c: 8,
-        r: 9
-    },
-    'cables_spritesheet': {
-        src: './textures/cables.png',
-        c: 4,
-        r: 8,
-    },
-    'ioelements_spritesheet': {
-        src: './textures/ioelements.png',
-        c: 4,
-        r: 4
-    },
-    'wall': {
-        src: './textures/walls.png',
-        r: 4,
-        c: 4
-    },
-    'doors': {
-        src: './textures/doors.png',
-        c: 4,
-        r: 8
+var AlertUi = (initObject) => {
+    var self = SpoolUIElement({
+        alerts: [],
+        ...initObject
+    });
+
+    self.pushAlert = (msg) => {
+        self.alerts.push(msg);
+        if (self.alerts.length > 5) {
+            self.alerts.splice(0, 1);
+        }
+        self.awake = true;
+        self.endTime = Date.now() + 2000;
     }
-}, {
-    'GROUND': {
-        src: 'ground',
-        x: 0,
-        y: 0,
-        xx: 3,
-        yy: 3
-    },
-    'PLAYER': {
-        src: 'player',
-        x: 0,
-        y: 0,
-        xx: 7,
-        yy: 8
-    },
-    'CABLE': {
-        src: 'cables_spritesheet',
-        x: 0,
-        y: 0,
-        xx: 3,
-        yy: 7
-    },
-    'BUTTON': {
-        src: 'ioelements_spritesheet',
-        x: 0,
-        y: 0,
-        xx: 0,
-        yy: 1
-    },
-    'WALL': {
-        src: 'wall',
-        x: 0,
-        y: 0,
-        xx: 3,
-        yy: 3
-    },
-    'DOORS': {
-        src: 'doors',
-        x: 0,
-        y: 0,
-        xx: 3,
-        yy: 7
-    },
+
+    self.render = (ctx) => {
+
+        if (self.awake) {
+
+            self.alerts.forEach((value, index) => {
+
+                var invertedIndex = self.alerts.length - (index);
+
+                var rect = SpoolRect(
+                    self.x - self.width / 2,
+                    self.y - self.height * (invertedIndex),
+                    self.width,
+                    self.height)
+                invertedIndex++;
+                SpoolRenderer.setColor(ctx, `#${invertedIndex}${invertedIndex}${invertedIndex}${invertedIndex}${invertedIndex}${invertedIndex}`)
+                SpoolRenderer.fillSplRect(ctx, rect);
+                SpoolRenderer.setColor(ctx, 'white')
+                SpoolRenderer.setFont(ctx, FONT, 20);
+                SpoolRenderer.multiLineText(ctx, value, rect, rect.width, FONT_OFFSETCOEF);
+            })
+            if (Date.now() > self.endTime) {
+                self.awake = false;
+            }
+        }
+    }
+
+    return self;
+}
+
+var alertUi = AlertUi({
+    x: client.gameArea.width / 4 * 3,
+    y: client.gameArea.height,
+    width: 300,
+    height: 50
+});
+client.alertUi = alertUi;
+client.uiHandler.add(alertUi);
+
+//// HAND ////
+
+var HandUI = (initObject) => {
+    var self = SpoolUIElement({
+        visible: true,
+
+        cardsPar: [],
+
+        cardsCol: [],
+
+        lastCol: undefined,
+
+        limit: 6,
+
+        handType: 'card',
+        playable: true,
+
+        animTop: 100,
+        animStart: 0,
+
+        activatedCard: null,
+        activatedIndex: null,
+
+        yOffsetMax: 200,
+        yOffsetMin: -50,
+        yOffset: -100,
+
+        cardWidth: 154,
+        hardHeight: 285,
+
+        hidden: false,
+
+        delayedMx: 0,
+        delayedMy: 0,
+
+        openedWidth: 600,
+        closedWidth: 300,
+        handWidth: 600,
+
+        ...initObject
+    })
+
+    self.render = (ctx) => {
+
+        if (!client.clientObject) {
+            console.warn('@HandUI no clientObject');
+            return null;
+        }
+
+        if (!client.clientObject.alive) {
+            return null;
+        }
+
+        self.delayedMx = SpoolMath.lerp(self.delayedMx, self.mx, 0.15);
+        self.delayedMy = SpoolMath.lerp(self.delayedMy, self.my, 0.15);
+        if (self.handType == 'card') {
+            self.cards = client.clientObject.hand;
+        } else if (self.handType == 'weapon') {
+            self.cards = client.clientObject.equip.weapon ? [client.clientObject.equip.weapon.cardID] : []
+        } else if (self.handType == 'equip') {
+            self.cards = client.clientObject.equip.trinkets ? client.clientObject.equip.trinkets.map(value => value.cardID) : []
+        } else {
+            return;
+        }
+        if (self.cards.length == 0) {
+            return;
+        }
+
+        if (!self.hidden) {
+            if (self.my < client.gameArea.height / 2) {
+                self.hidden = true;
+            }
+
+        } else {
+            if (self.my > client.gameArea.height / 4 * 3) {
+                self.hidden = false;
+            }
+        }
+
+        if (self.activatedCard || self.hidden) {
+            self.yOffset = SpoolMath.lerp(self.yOffset, self.yOffsetMax, 0.2);
+            self.handWidth = SpoolMath.lerp(self.handWidth, self.closedWidth, 0.2);
+        } else {
+            self.yOffset = SpoolMath.lerp(self.yOffset, self.yOffsetMin, 0.2);
+            self.handWidth = SpoolMath.lerp(self.handWidth, self.openedWidth, 0.2);
+        }
+
+        var handbounds = {
+            width: self.handWidth,
+        }
+        var point = {
+            x: self.x,
+            y: self.y + self.yOffset,
+        }
+        var bounds = {
+            x: -self.cardWidth / 2,
+            y: -self.hardHeight,
+            width: self.cardWidth,
+            height: self.hardHeight
+        }
+        var circle = {
+            radius: 800,
+            x: point.x,
+            start: 0 - ((handbounds.width / (self.limit - 1)) * (self.cards.length - 1)) / 2
+        }
+        circle.y = point.y + circle.radius
+        if (self.cards.length <= self.limit) {
+            for (i = 0; i < self.cards.length; i++) {
+                var pos = SpoolMath.getYFromMovedCircle(circle.x, circle.y, circle.start, circle.radius)
+                var angle = SpoolMath.getAngleFromCircle(circle.radius, circle.start)
+                self.cardsPar.push(pos[0])
+                self.cardsPar.push(pos[1])
+                self.cardsPar.push(angle)
+                circle.start += handbounds.width / (self.limit - 1)
+            }
+        } else {
+            circle.start = 0 - handbounds.width / 2
+            for (i = 0; i < self.cards.length; i++) {
+                var pos = SpoolMath.getYFromMovedCircle(circle.x, circle.y, circle.start, circle.radius)
+                var angle = SpoolMath.getAngleFromCircle(circle.radius, circle.start)
+                self.cardsPar.push(pos[0])
+                self.cardsPar.push(pos[1])
+                self.cardsPar.push(angle)
+                circle.start += handbounds.width / (self.cards.length - 1)
+            }
+        }
+        for (i = 0; i < self.cards.length; i++) {
+
+            var rotatedP = SpoolMath.rotatePoint(self.cardsPar[i * 3], self.cardsPar[1 + i * 3], self.mx, self.my, self.cardsPar[2 + i * 3])
+            if (SpoolMath.rectangleMouseCollision(self.cardsPar[i * 3] - bounds.width / 2, self.cardsPar[1 + i * 3], bounds.width, bounds.height, rotatedP[0], rotatedP[1])) {
+                self.cardsCol.push(true)
+            } else {
+                self.cardsCol.push(false)
+            }
+        }
+
+        for (i = 0; i < self.cards.length; i++) {
+            if (self.cardsCol[self.cards.length - i - 1] == true) {
+                var colOn = self.cards.length - i - 1
+                break
+            }
+        }
+        if (colOn != self.lastCol) {
+            self.animStart = 0
+        }
+        if (colOn != undefined) {
+            self.animStart = SpoolMath.lerp(self.animStart, 1, 0.2)
+        } else {
+            self.animStart = 0
+        }
+
+        ctx.imageSmoothingEnabled = true;
+
+        for (i = 0; i < self.cards.length; i++) {
 
 
+            var cardid = self.cards[i];
+            var card = client.clientObject.cardInfo[cardid];
+
+            var sprite = textureManager.getSprite('card', card.cardTileIndex);
+
+            var angle = (self.mx - self.delayedMx) / 100;
+            angle = angle > Math.PI / 2 ? Math.PI / 2 : angle < -Math.PI / 2 ? -Math.PI / 2 : angle;
+
+
+            if (i == self.activatedIndex) {
+                SpoolRenderer.renderRotatedSprite(ctx, sprite, angle, self.mx, self.my - 10, {
+                    x: bounds.x / 2,
+                    y: bounds.y / 2,
+                    width: bounds.width / 2,
+                    height: bounds.height / 2
+                });
+            } else {
+                if (colOn != undefined && i == colOn) {
+                    var lerpX = Math.sin(self.cardsPar[2 + i * 3]) * bounds.height / 1.2
+                    var lerpY = Math.cos(self.cardsPar[2 + i * 3]) * bounds.height / 1.2
+                    SpoolRenderer.renderRotatedSprite(ctx, sprite, self.cardsPar[2 + i * 3], self.cardsPar[0 + i * 3] - self.animStart * lerpX, self.cardsPar[1 + i * 3] - self.animStart * lerpY, bounds)
+                } else {
+                    SpoolRenderer.renderRotatedSprite(ctx, sprite, self.cardsPar[2 + i * 3], self.cardsPar[0 + i * 3], self.cardsPar[1 + i * 3], bounds)
+                }
+            }
+        }
+        self.lastCol = colOn
+        self.cardsPar = []
+        self.cardsCol = []
+
+
+    }
+
+    self.mouseEvent = (event) => {
+        if (self.cards.length == 0) {
+            return false;
+        }
+
+        if (!client.clientObject) {
+            return false;
+        }
+
+        if (!client.clientObject.alive) {
+            return false;
+        }
+
+
+        if (self.playable) {
+            if (event.type == 'mousedown') {
+                if (event.button == 0) {
+                    if (!self.activatedCard) {
+                        if (self.lastCol != undefined) {
+                            var cardid = self.cards[self.lastCol];
+                            var card = client.clientObject.cardInfo[cardid]
+                            self.activatedCard = card;
+                            self.activatedIndex = self.lastCol;
+                            SELECTOR.activatedCard = card;
+                            console.log(self.handType, self.lastCol);
+                            return true;
+                        }
+                    } else {
+                        var res = getTileInPoint(event.x, event.y);
+                        client.emit('CARD_ACTION', {
+                            type: self.handType,
+                            tx: res.tx,
+                            ty: res.ty,
+                            cardid: self.activatedCard.cardID
+                        })
+                        self.activatedCard = null;
+                        self.activatedIndex = null;
+                        SELECTOR.activatedCard = null;
+                        console.log(self.handType);
+                        return true;
+                    }
+                } else if (event.button == 2) {
+                    self.activatedCard = null;
+                    self.activatedIndex = null;
+                    SELECTOR.activatedCard = null;
+                    console.log(self.handType);
+                    return true;
+                }
+            }
+        }
+    }
+
+    self.mouseMove = (event) => {
+        self.mx = event.clientX;
+        self.my = event.clientY;
+        var selection = false;
+
+        if (self.activatedCard) {
+            var res = null;
+            Object.keys(colBoxes).forEach(key => {
+                var box = colBoxes[key];
+                if (SpoolMath.distance(event.x, event.y, box.x, box.y) <= box.radius) {
+                    res = box.tile;
+                }
+            })
+
+            if (res) {
+                self.selectedTx = res.tx;
+                self.selectedTy = res.ty;
+                SELECTOR.selectedTx = self.selectedTx;
+                SELECTOR.selectedTy = self.selectedTy;
+                selection = true;
+            }
+        }
+
+        if (self.selectedTx && !selection) {
+            self.selectedTx = null;
+            self.selectedTy = null;
+            SELECTOR.selectedTx = self.selectedTx;
+            SELECTOR.selectedTy = self.selectedTy;
+        }
+    }
+
+    return self
+}
+var handUi = HandUI({
+    x: client.gameArea.width / 2,
+    y: client.gameArea.height
 })
+client.handUi = handUi
 
-client.handler.textureManager = (textureManager);
+var weaponHandUi = HandUI({
+    x: client.gameArea.width - 200,
+    y: client.gameArea.height,
+    handType: 'weapon',
+})
+client.weaponHandUi = weaponHandUi
+
+var equipHandUi = HandUI({
+    x: client.gameArea.width - 100,
+    y: client.gameArea.height,
+    handType: 'equip',
+    playable: false
+})
+client.equipHandUi = equipHandUi
+
+//// DAMAGE FLOATERS ////
+
+var DamageFloatersUI = (initObject) => {
+    var self = SpoolUIElement(initObject);
+
+    self.damageFloaters = [];
+
+    self.render = (ctx) => {
+        SpoolRenderer.setColor(ctx, 'white');
+
+        var cuttingIndex = -1;
+
+        self.damageFloaters.forEach((floater, index) => {
+            if (!floater.frameCounter) {
+                floater.frameCounter = 0;
+            }
+            var point = client.camera.transformPoint(floater.x, floater.y);
+            point.y -= Z_SCALINGFACTOR * floater.z + floater.frameCounter * 5;
+
+            ctx.globalAlpha = 1 - floater.frameCounter / 30;
+            console.log(ctx.globalAlpha);
+
+            SpoolRenderer.setFont(ctx, FONT, 25);
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 4;
+            ctx.strokeText(floater.dmg, point.x, point.y);
+            ctx.fillText(floater.dmg, point.x, point.y);
+            ctx.globalAlpha = 1;
+
+            floater.frameCounter += 1;
+
+            console.log(floater.frameCounter);
+
+            if (floater.frameCounter > 30) {
+                if (index > cuttingIndex) {
+                    cuttingIndex = index;
+                }
+            }
+        })
+
+        if (cuttingIndex > -1) {
+            self.damageFloaters.splice(0, cuttingIndex + 1);
+        }
+    }
+
+    self.add = (data) => {
+        self.damageFloaters = self.damageFloaters.concat(data);
+    }
+
+    return self;
+}
+
+var damageFloatersUI = DamageFloatersUI();
+
+client.damageFloatersUI = damageFloatersUI;
+
+//// PLAYER INFORMATION ////
+
+var vialInformation = VialInformation();
+client.vialInformation = vialInformation;
+
+var PlayerInformationUI = (initObject) => {
+    var self = SpoolUIElement({
+        ...initObject,
+    });
+
+    var superSelf = {
+        render: self.render
+    }
+
+    var vialSize = 70;
+    var margin = 20;
+    var vialX = 39 / 106 * self.width - vialSize / 2 + self.x;
+
+
+    var nameBox = SpoolRect(self.x, self.y + 186 / 228 * self.height, self.width, 42 / 228 * self.height);
+
+    var textX = 53 / 106 * self.width + self.x;
+    var textY = 207 / 228 * self.height + self.y;
+
+    var hpVial = VialButton({
+        title: 'Health',
+        color: 'red',
+        pulsing: true,
+        ...SpoolRect(vialX, self.y + margin, vialSize, vialSize)
+    })
+    self.add(hpVial);
+    var energyVial = VialButton({
+        title: 'Energy',
+        color: 'yellow',
+        ...SpoolRect(vialX, self.y + vialSize + margin * 2, vialSize, vialSize)
+    })
+    self.add(energyVial);
+    var ammoVial = VialButton({
+        title: 'Ammo',
+        color: 'gray',
+        ...SpoolRect(vialX, self.y + vialSize * 2 + margin * 3, vialSize, vialSize)
+    })
+    self.add(ammoVial);
+
+    ``
+    self.render = (ctx) => {
+        if (client.clientObject) {
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(textureManager.getSprite('hotbarbg', 0), self.x, self.y, self.width, self.height);
+
+            SpoolRenderer.setFont(ctx, "'dpcomic'", 30);
+            SpoolRenderer.setColor(ctx, 'white');
+            SpoolRenderer.multiLineText(
+                ctx,
+                `${client.clientObject.name}`,
+                nameBox,
+                self.width,
+                FONT_OFFSETCOEF);
+
+            ctx.lineWidth = 2;
+
+            // Vials
+
+            hpVial.value = client.clientObject.hp
+            hpVial.maxValue = client.clientObject.maxHp
+
+            energyVial.value = client.clientObject.energy
+            energyVial.maxValue = client.clientObject.maxEnergy
+
+            ammoVial.value = client.clientObject.ammo
+            ammoVial.maxValue = client.clientObject.maxAmmo
+
+            superSelf.render(ctx);
+
+            if (nameBox.contains(self.mx, self.my)) {
+                var infoBoxSize = 150;
+                var infoBox = SpoolRect(nameBox.cx - infoBoxSize / 2, nameBox.y - infoBoxSize, infoBoxSize, infoBoxSize);
+                ctx.drawImage(textureManager.getSprite('hotbarbg_sq', 0), infoBox.x, infoBox.y, infoBox.width, infoBox.height);
+
+                var text = ''
+
+                Object.keys(client.clientObject.stats).forEach((key, index) => {
+                    text += `${key}: ${client.clientObject.stats[key]}`
+                    if (index < client.clientObject.stats.length - 1) {
+                        text += '\n'
+                    }
+                });
+
+                SpoolRenderer.setFont(ctx, FONT, 20);
+                SpoolRenderer.multiLineText(ctx, text, infoBox, infoBox.width, FONT_OFFSETCOEF, 3);
+            }
+        }
+    }
+
+    return self;
+}
+
+var playerInformation = PlayerInformationUI({
+    x: 10,
+    y: client.gameArea.height - 466,
+    width: 212,
+    height: 456
+})
 
 ////// CAMERA //////
 
 client.camera.lerp = true;
-
+client.camera.followSpeed = 0.2;
 client.camera.onUpdate = (self) => {
     if (client.clientObject) {
         self.followObject = client.clientObject;
     }
 }
 
-////// TEXTURE MANAGER //////
-
-var init = () => {
+client.handler.textureManager = textureManager;
+textureManager.onLoad = () => {
     client.socketInit()
 
-    keyListener = KeyboardListener(client.socket)
-    keyListener.initListener()
+    // LISTENERS //
+
+    var keyListener = KeyboardListener(client.socket);
+    keyListener.initListener();
+    keyListener.onKeyDown = (event) => {
+        if (event.keyCode == 70) {
+            Z_SCALINGENABLED = !Z_SCALINGENABLED;
+        }
+    }
+
+    var mouseListener = MouseListener(client);
+    mouseListener.initListener();
+
+
+
+    client.onMouseEvent = (event) => {
+        if (client.clientObject) {
+
+            if (client.clientObject.alive) {
+
+                if (event.type == 'mousedown') {
+                    var res = null;
+
+                    Object.keys(colBoxes).forEach(key => {
+                        var box = colBoxes[key];
+                        if (SpoolMath.distance(event.x, event.y, box.x, box.y) <= box.radius) {
+                            res = box.tile;
+                        }
+                    })
+
+                    if (res) {
+                        if (event.button == 0) {
+                            client.emit("MOVE_TO", {
+                                tx: res.tx,
+                                ty: res.ty
+                            });
+                        }
+                    }
+                }
+            } else {
+                client.alertUi.pushAlert('You are dead');
+            }
+        }
+
+    }
+
+    //// UI LISTENERS ////
+
+    client.socket.on('DAMAGE_FLOATERS', data => {
+        client.damageFloatersUI.add(data);
+    })
+
+    client.socket.on('DICE', (data) => {
+        if (data.rolling) {
+            client.diceUi.rolling = true;
+        } else {
+            client.diceUi.rolling = false;
+            client.diceUi.diceA = data.diceA;
+            client.diceUi.diceB = data.diceB;
+            client.diceUi.rollTime = Date.now();
+        }
+    })
+
+    client.socket.on('SET_QUEUE', (data) => {
+        client.queueUi.currentRound = data.currentRound;
+        client.queueUi.roundsPerDrop = data.roundsPerDrop;
+        client.queueUi.queue = data.queue;
+        client.queueUi.currentPlayerId = data.currentPlayerId;
+    })
+
+    client.socket.on('SET_TIMER', (data) => {
+        client.queueUi.endTime = data.endTime;
+        client.queueUi.timeOnTimer = data.endTime - Date.now();
+    })
+
+    client.socket.on('ALERT', (data) => {
+        client.alertUi.pushAlert(data.msg);
+    });
+
+    client.socket.on('SET_MINIMAP_TILES', (data) => {
+        client.minimapUi.setTiles(data);
+    })
+
+    client.uiHandler.add(diceUi);
+    client.uiHandler.add(queueUi);
+    client.uiHandler.add(damageFloatersUI);
+    client.uiHandler.add(handUi);
+    client.uiHandler.add(weaponHandUi);
+    client.uiHandler.add(equipHandUi);
+    client.uiHandler.add(playerInformation);
+    client.uiHandler.add(vialInformation);
+    client.uiHandler.add(minimapUi);
+
+    client.background = (ctx, camera) => {
+        ctx.fillStyle = '#87cefa';
+        ctx.fillRect(0, 0, client.gameArea.width, client.gameArea.height);
+    }
+
+    client.startGameLoop()
 }
 
-textureManager.onLoad = init;
-
-textureManager.load();
+textureManager.load()
