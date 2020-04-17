@@ -408,8 +408,6 @@ var Player = (initObject = {}) => {
             }
 
             if (weapon.dmg) {
-                console.log(weapon.ammoConsuption)
-
                 var ammoDelta = null;
                 var energyDelta = null;
 
@@ -642,8 +640,6 @@ var Tile = (initObject) => {
                 if (temp.objectType == objectType) {
                     return true;
                 }
-            } else {
-                console.log(obj);
             }
         })
         return false;
@@ -1452,8 +1448,6 @@ var GameStep = (playerQueue, deck) => {
             var box = Box({
                 cards: temp
             })
-
-            console.log(box.cards);
             server.handler.add(box);
             tiles[i].add(box.id);
         }
