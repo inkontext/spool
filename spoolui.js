@@ -3,7 +3,7 @@ console.log('loaded');
 var SpoolUIElement = (initObject) => {
     var self = {
         elements: {},
-        keys: [],
+        layerKeys: [],
 
         x: 0,
         y: 0,
@@ -48,7 +48,7 @@ var SpoolUIElement = (initObject) => {
         self.renderSprite(ctx);
         self.renderText(ctx);
 
-        self.keys.forEach(layer => {
+        self.layerKeys.forEach(layer => {
             layer.ids.forEach(id => {
                 self.elements[layer.key][id].update();
                 if (self.elements[layer.key][id].visible) {
@@ -168,8 +168,7 @@ var SpoolUIElement = (initObject) => {
             return false;
         }
 
-
-        self.keys.forEach(layer => {
+        self.layerKeys.forEach(layer => {
             layer.ids.forEach(id => {
                 if (self.elements[layer.key][id].visible) {
                     res |= self.elements[layer.key][id].mouseEvent(event);
@@ -204,7 +203,7 @@ var SpoolUIElement = (initObject) => {
 
         var childrenRes = false;
 
-        self.keys.forEach(layer => {
+        self.layerKeys.forEach(layer => {
             layer.ids.forEach(id => {
                 if (self.elements[layer.key][id].visible) {
                     childrenRes |= self.elements[layer.key][id].mouseMove(event);
@@ -262,7 +261,7 @@ var SpoolUIElement = (initObject) => {
     }
 
     self.forEachElement = func => {
-        self.keys.forEach(layer => {
+        self.layerKeys.forEach(layer => {
             layer.ids.forEach(id => {
                 func(self.elements[layer.key][id]);
             });
@@ -271,16 +270,16 @@ var SpoolUIElement = (initObject) => {
 
     self.removeAll = () => {
         self.elements = {};
-        self.keys = []
+        self.layerKeys = []
     }
 
     self.refreshKeys = () => {
         var layers = Object.keys(self.elements).sort((a, b) => {
             return parseInt(a) - parseInt(b);
         })
-        self.keys = [];
+        self.layerKeys = [];
         layers.forEach(layer => {
-            self.keys.push({
+            self.layerKeys.push({
                 key: layer,
                 ids: Object.keys(self.elements[layer])
             })
@@ -296,7 +295,7 @@ var SpoolUIElement = (initObject) => {
         var minY = null;
         var maxY = null;
 
-        self.keys.forEach(layer => {
+        self.layerKeys.forEach(layer => {
             layer.ids.forEach(id => {
                 var temp = self.elements[layer.key][id];
 
@@ -320,7 +319,7 @@ var SpoolUIElement = (initObject) => {
 
         console.log(dx, dy);
 
-        self.keys.forEach(layer => {
+        self.layerKeys.forEach(layer => {
             layer.ids.forEach(id => {
                 self.elements[layer.key][id].x += dx;
                 self.elements[layer.key][id].y += dy;
@@ -335,7 +334,7 @@ var SpoolUIElement = (initObject) => {
         var minY = null;
         var maxY = null;
 
-        self.keys.forEach(layer => {
+        self.layerKeys.forEach(layer => {
             layer.ids.forEach(id => {
                 var temp = self.elements[layer.key][id];
 

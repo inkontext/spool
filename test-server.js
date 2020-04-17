@@ -924,7 +924,11 @@ var Map = () => {
             tile.addAsyncUpdatePackage(pack);
         })
 
-        server.emit('SET_MINIMAP_TILES', self.getMinimap());
+        self.sendMinimap()
+    }
+
+    self.sendMinimap = (channel = server) => {
+        channel.emit('SET_MINIMAP_TILES', self.getMinimap());
     }
 
     self.getMinimap = () => {
@@ -1233,8 +1237,8 @@ var PlayerQueue = () => {
 
     }
 
-    self.sendQue = () => {
-        server.emit('SET_QUEUE', {
+    self.sendQue = (channel = server) => {
+        channel.emit('SET_QUEUE', {
             currentRound: gameStep.roundNumber,
             roundsPerDrop: ROUNDS_PER_DROP,
             queue: self.getNextPlayers(),
@@ -1355,9 +1359,7 @@ var GameStep = (playerQueue, deck) => {
                         self.currentTimer = SpoolTimer(60000, () => {
                             self.finishStep(self.currentPlayer.id);
                         })
-                        server.emit('SET_TIMER', {
-                            endTime: self.currentTimer.startTime + self.currentTimer.duration
-                        })
+                        self.sendTimer()
 
                     }, self)
                 }
@@ -1369,6 +1371,13 @@ var GameStep = (playerQueue, deck) => {
                 self.currentTimer.update();
             }
         }
+    }
+
+    self.sendTimer = (channel = server) => {
+        channel.emit('SET_TIMER', {
+            endTime: self.currentTimer.startTime + self.currentTimer.duration,
+            duration: self.currentTimer.duration
+        })
     }
 
     self.removePlayer = (player) => {
@@ -1578,6 +1587,12 @@ server.onSocketCreated = (server, socket, player) => {
             gameStep.skip(player.id);
         }
     })
+
+    if (gameStep.active) {
+        MAP.sendMinimap(socket);
+        gameStep.sendTimer(socket);
+        playerQueue.sendQue(socket);
+    }
 }
 
 server.updateCallback = () => {
