@@ -630,7 +630,7 @@ var MinimapUI = (initObject) => {
 
 
 
-        if (self.active) {
+        if (self.active && self.keys) {
             ctx.drawImage(textureManager.getSprite('hotbarbg_sq', 0), self.x, self.y, self.width, self.height);
 
             self.keys.forEach(key => {
@@ -1082,6 +1082,9 @@ var HandUI = (initObject) => {
     }
 
     self.mouseEvent = (event) => {
+        if (!self.cards) {
+            return false;
+        }
         if (self.cards.length == 0) {
             return false;
         }
@@ -1297,7 +1300,7 @@ var PlayerInformationUI = (initObject) => {
             SpoolRenderer.setColor(ctx, 'white');
             SpoolRenderer.multiLineText(
                 ctx,
-                `${client.clientObject.name}`,
+                `${client.clientObject.name ? client.clientObject.name : 'Spectator'}`,
                 nameBox,
                 self.width,
                 FONT_OFFSETCOEF);
@@ -1433,7 +1436,7 @@ textureManager.onLoad = () => {
 
     client.socket.on('SET_TIMER', (data) => {
         client.queueUi.endTime = data.endTime;
-        client.queueUi.timeOnTimer = data.endTime - Date.now();
+        client.queueUi.timeOnTimer = data.duration
     })
 
     client.socket.on('ALERT', (data) => {
