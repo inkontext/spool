@@ -50,7 +50,7 @@ var CHARACTERS = [
 
 ////// FUNCTIONS //////
 
-//// TILES ////
+//// SERVER - CLIENT ////
 
 function tileDistance(ax, ay, bx, by) {
     return (Math.abs(bx - ax) + Math.abs(by - ay) + Math.abs(bx + by - ax - ay)) / 2
@@ -58,13 +58,6 @@ function tileDistance(ax, ay, bx, by) {
 
 function tileDistance2T(a, b) {
     return tileDistance(a.tx, a.ty, b.tx, b.ty);
-}
-
-function transformTileCoordToRealCord(x, y) {
-    return {
-        x: x * TILE_WIDTH * 3 / 2,
-        y: y * TILE_WIDTH * 2 * Math.sin(Math.PI / 3) + x * TILE_WIDTH * Math.sin(Math.PI / 3)
-    }
 }
 
 function movingPrice(tilea, tileb) {
@@ -80,6 +73,23 @@ function movingPrice(tilea, tileb) {
         }
 
         return null;
+    }
+}
+
+function getStat(player, name, delta = 0) {
+    if (['range'].includes(name)) {
+        return player.stats[name] ? player.stats[name] + delta : delta;
+    } else {
+        return 0;
+    }
+}
+
+//// SERVER ////
+
+function transformTileCoordToRealCord(x, y) {
+    return {
+        x: x * TILE_WIDTH * 3 / 2,
+        y: y * TILE_WIDTH * 2 * Math.sin(Math.PI / 3) + x * TILE_WIDTH * Math.sin(Math.PI / 3)
     }
 }
 
@@ -299,7 +309,7 @@ var Player = (initObject = {}) => {
                 if (self.energy >= card.cost) {
                     var deltaEnergy = -card.cost;
 
-                    if (tileDistance2T(self, tile) <= card.range) {
+                    if (tileDistance2T(self, tile) <= getStat(self, 'range', card.range)) {
                         // WEAPONS 
                         if (card.type == 'weapon') {
 
@@ -1456,7 +1466,7 @@ var GameStep = (playerQueue, deck) => {
                 self.playerQueue.queue.forEach((player, index) => {
                     var pos = self.startingPOsitions[index]
                     player.startPosition(pos[0], pos[1], {});
-                    player.give(['bullets'])
+                    player.give(['bullets', 'slingshot', 'telescope'])
                     player.onDeath = () => {
                         self.removePlayer(player);
                     }

@@ -148,7 +148,7 @@
       "range": 0,
       "cost": 2,
       "stats": {
-        "baseRange": 1
+        "range": 1
       },
       "action": null,
       "description": "See your enemies sooner than they see you",

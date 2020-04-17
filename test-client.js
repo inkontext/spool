@@ -1,6 +1,6 @@
 ////// FUNCTIONS //////
 
-
+//// SERVER - CLIENT ////
 
 function tileDistance(ax, ay, bx, by) {
     return (Math.abs(bx - ax) + Math.abs(by - ay) + Math.abs(bx + by - ax - ay)) / 2
@@ -25,6 +25,16 @@ function movingPrice(tilea, tileb) {
         return null;
     }
 }
+
+function getStat(player, name, delta = 0) {
+    if (['range'].includes(name)) {
+        return player.stats[name] ? player.stats[name] + delta : delta;
+    } else {
+        return 0;
+    }
+}
+
+////// CLIENT //////
 
 function renderVialValue(ctx, color, value, maxValue, box, text = null) {
     SpoolRenderer.setColor(ctx, '#333333');
@@ -277,7 +287,7 @@ var Tile = (initObject) => {
 
                 var selectorId = null;
 
-                if (distanceFromPlayer <= SELECTOR.activatedCard.range) {
+                if (distanceFromPlayer <= getStat(client.clientObject, 'range', SELECTOR.activatedCard.range)) {
                     selectorId = 0;
                 }
 
