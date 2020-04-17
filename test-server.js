@@ -77,7 +77,7 @@ function movingPrice(tilea, tileb) {
 }
 
 function getStat(player, name, delta = 0) {
-    if (['range'].includes(name)) {
+    if (['range', 'sight'].includes(name)) {
         return player.stats[name] ? player.stats[name] + delta : delta;
     } else {
         return 0;
@@ -105,7 +105,7 @@ function alertClient(socket, message) {
 
 var server = Server({
     port: 4000,
-    TPS: 55,
+    TPS: 64,
     chunkSize: 300
 }, ['/', '/textures'])
 
@@ -307,7 +307,10 @@ var Player = (initObject = {}) => {
 
             if (index != -1) {
                 if (self.energy >= card.cost) {
+
                     var deltaEnergy = -card.cost;
+                    var removeFromHand = true;
+                    var addToDeck = true;
 
                     if (tileDistance2T(self, tile) <= getStat(self, 'range', card.range)) {
                         // WEAPONS 
@@ -319,10 +322,12 @@ var Player = (initObject = {}) => {
 
                             self.equip.weapon = card;
                             self.recalcEquip();
+                            addToDeck = false;
                         }
                         if (card.type == 'trinket') {
                             self.equip.trinkets.push(card);
                             self.recalcEquip();
+                            addToDeck = false;
                         }
 
                         // SPELLS 
@@ -364,14 +369,20 @@ var Player = (initObject = {}) => {
                                     }
                                 }
                             } else {
-                                console.log('Every spell card needs an action');
+                                console.error('Every spell card needs an action');
                                 return "Error while playing card"
                             }
                         }
 
-                        self.hand.splice(index, 1);
+                        if (removeFromHand) {
+                            self.hand.splice(index, 1);
+                        }
+
                         self.deltaValue('energy', deltaEnergy);
-                        DECK.addCard(cardid);
+
+                        if (addToDeck) {
+                            DECK.addCard(cardid);
+                        }
                     } else {
                         return "That tile is not in the range of the card"
                     }
@@ -392,6 +403,10 @@ var Player = (initObject = {}) => {
 
         var weapon = self.equip.weapon;
         if (weapon) {
+            if (tileDistance2T(self, tile) > getStat(self, 'range', weapon.range)) {
+                return "That tile is too far away"
+            }
+
             if (weapon.dmg) {
                 console.log(weapon.ammoConsuption)
 
@@ -1603,6 +1618,9 @@ server.onSocketCreated = (server, socket, player) => {
         gameStep.sendTimer(socket);
         playerQueue.sendQue(socket);
     }
+
+    player.deltaValue('energy', 30);
+    player.give(['shovel', 'bullets', 'slingshot', 'telescope', 'magician_wand']);
 }
 
 server.updateCallback = () => {
