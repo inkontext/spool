@@ -1475,7 +1475,6 @@ var GameStep = (playerQueue, deck) => {
                 self.playerQueue.queue.forEach((player, index) => {
                     var pos = self.startingPOsitions[index]
                     player.startPosition(pos[0], pos[1], {});
-                    player.give(['bullets', 'slingshot', 'telescope'])
                     player.onDeath = () => {
                         self.removePlayer(player);
                     }
@@ -1612,9 +1611,6 @@ server.onSocketCreated = (server, socket, player) => {
         gameStep.sendTimer(socket);
         playerQueue.sendQue(socket);
     }
-
-    player.deltaValue('energy', 30);
-    player.give(['shovel', 'bullets', 'slingshot', 'telescope', 'magician_wand']);
 }
 
 server.updateCallback = () => {
