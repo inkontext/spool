@@ -307,12 +307,10 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
         var keys = Object.keys(self.spriteSheetInitObject);
 
         self.targetLoad = keys.length;
-
+        ``
 
 
         keys.forEach(key => {
-
-
             var image = new Image();
             image.onload = () => {
                 var canvas = document.createElement('canvas');
@@ -1944,6 +1942,9 @@ var MouseListener = (client) => {
         }
 
         document.onmousemove = event => {
+            if (self.client.onMouseMove) {
+                self.client.onMouseMove(event);
+            }
             self.client.uiHandler.mouseMove(event);
         }
 

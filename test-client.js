@@ -1,6 +1,6 @@
 ////// FUNCTIONS //////
 
-
+//// SERVER - CLIENT ////
 
 function tileDistance(ax, ay, bx, by) {
     return (Math.abs(bx - ax) + Math.abs(by - ay) + Math.abs(bx + by - ax - ay)) / 2
@@ -26,6 +26,16 @@ function movingPrice(tilea, tileb) {
     }
 }
 
+function getStat(player, name, delta = 0) {
+    if (['range', 'sight'].includes(name) && player) {
+        return player.stats[name] ? player.stats[name] + delta : delta;
+    } else {
+        return 0;
+    }
+}
+
+////// CLIENT //////
+
 function renderVialValue(ctx, color, value, maxValue, box, text = null) {
     SpoolRenderer.setColor(ctx, '#333333');
     var newBox = SpoolRect(box.x + 5, box.y + 5, box.width - 10, box.height - 10);
@@ -43,10 +53,10 @@ function renderVialValue(ctx, color, value, maxValue, box, text = null) {
     SpoolRenderer.multiLineText(ctx, text ? text : value.toString(), box, box.width, FONT_OFFSETCOEF, 3);
 }
 
-function getTileInPoint(x, y) {
+function getTileInPoint(x, y, cb = colBoxes) {
     var res = null;
-    Object.keys(colBoxes).forEach(key => {
-        var box = colBoxes[key];
+    Object.keys(cb).forEach(key => {
+        var box = cb[key];
         if (SpoolMath.distance(x, y, box.x, box.y) <= box.radius) {
             res = box.tile;
         }
@@ -57,11 +67,12 @@ function getTileInPoint(x, y) {
 ////// CLIENT //////
 
 var Z_SCALINGFACTOR_MAX = 10;
-var Z_SCALINGFACTOR_MIN = 3;
+var Z_SCALINGFACTOR_MIN = 2;
 var Z_SCALINGFACTOR = Z_SCALINGFACTOR_MAX;
 var Z_SCALINGENABLED = true;
 
 var colBoxes = {};
+var movingColBoxes = {};
 
 var client = null;
 
@@ -133,20 +144,19 @@ var Tile = (initObject) => {
         Object.assign(self, data);
     }
 
-
-
     self.render = (ctx, camera) => {
         // Calculating the distance from the player 
-
-
         var distanceFromPlayer = client.clientObject ? client.clientObject.tile ? tileDistance2T(client.clientObject.tile, self) : null : null;
 
         delete colBoxes[self.id];
+        delete movingColBoxes[self.id];
 
         // Not rendering tile if not in sight (not secure)
 
+        var sight = getStat(client.clientObject, 'sight', 3)
+
         if (distanceFromPlayer) {
-            if (distanceFromPlayer > 4) {
+            if (distanceFromPlayer > sight) {
                 self.renderR = SpoolMath.lerp(self.renderR, self.hexRadius, 0)
                 return;
             }
@@ -165,12 +175,14 @@ var Tile = (initObject) => {
             }
         }
 
+
+
         // Calculating tile radius (small if on the border of sight)
 
         var r = self.hexRadius;
 
         if (distanceFromPlayer) {
-            if (distanceFromPlayer > 3) {
+            if (distanceFromPlayer > sight - 1) {
                 self.renderR = SpoolMath.lerp(self.renderR, self.hexRadius / 2, 0.2)
             } else {
                 self.renderR = SpoolMath.lerp(self.renderR, self.hexRadius, 0.2)
@@ -240,7 +252,7 @@ var Tile = (initObject) => {
         if ((self.biome != self.lastBiome && !self.dead) || (self.lastBiome != 'dead' && self.dead)) {
             self.sprite = textureManager.getSprite('tiles', BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4)
             self.resizedSprite = null;
-            textureManager.resizeSprite(self.sprite, self.hexRfadius * 2, self.hexRadius * 2 / self.sprite.width * self.sprite.height, (result) => {
+            textureManager.resizeSprite(self.sprite, self.hexRadius * 2, self.hexRadius * 2 / self.sprite.width * self.sprite.height, (result) => {
                 self.resizedSprite = result;
             })
             if (self.dead) {
@@ -258,8 +270,9 @@ var Tile = (initObject) => {
             var t_height = t_width / sprite.width * sprite.height;
             ctx.drawImage(sprite, colBox.x - t_width / 2, colBox.y - t_height / 2, t_width, t_height);
         }
+
         if (distanceFromPlayer) {
-            if (distanceFromPlayer > 3) {
+            if (distanceFromPlayer > sight - 1) {
                 return;
             }
         }
@@ -276,16 +289,30 @@ var Tile = (initObject) => {
             if (SELECTOR.activatedCard) {
 
                 var selectorId = null;
+                var selectorZOffset = 0;
 
-                if (distanceFromPlayer <= SELECTOR.activatedCard.range) {
+                if (distanceFromPlayer <= getStat(client.clientObject, 'range', SELECTOR.activatedCard.range)) {
                     selectorId = 0;
                 }
 
-                if (SELECTOR.selectedTx == self.tx && SELECTOR.selectedTy == self.ty) {
-                    if (selectorId != null) {
-                        selectorId = 1;
+
+                if (SELECTOR.selectedTx != null && SELECTOR.selectedTy != null) {
+                    var distanceFromAction = tileDistance(SELECTOR.selectedTx, SELECTOR.selectedTy, self.tx, self.ty)
+                }
+
+                if (distanceFromAction !== undefined) {
+
+                    if (SELECTOR.activatedCard.effectArea) {
+                        var area = SELECTOR.activatedCard.effectArea;
+                        if (area.type == 'radius') {
+                            if ((area.value.max !== undefined ? distanceFromAction <= area.value.max : true) && (area.value.min !== undefined ? distanceFromAction >= area.value.min : true)) {
+                                selectorId = SELECTOR.validPosition ? 1 : 2;
+                            }
+                        }
                     } else {
-                        selectorId = 2;
+                        if (distanceFromAction === 0) {
+                            selectorId = SELECTOR.validPosition ? 1 : 2;
+                        }
                     }
                 }
 
@@ -293,7 +320,7 @@ var Tile = (initObject) => {
                     var selectorWidth = t_width * 1 / 2;
                     var selectorHeight = t_height * 1 / 2;
                     var selectorZ = 10;
-                    ctx.drawImage(textureManager.getSprite('tileselector', selectorId * 4 + TILE_SELECTOR_INDEX), colBox.x - selectorWidth / 2, colBox.y - selectorHeight / 2 - selectorZ, selectorWidth, selectorHeight);
+                    ctx.drawImage(textureManager.getSprite('tileselector', selectorId * 4 + TILE_SELECTOR_INDEX), colBox.x - selectorWidth / 2, colBox.y - selectorHeight / 2 - selectorZ - selectorZOffset, selectorWidth, selectorHeight);
                 }
             }
         }
@@ -308,6 +335,7 @@ var Tile = (initObject) => {
 
                     ctx.strokeStyle = 'black';
                     SpoolRenderer.multiLineText(ctx, `${price}`, SpoolRect(colBox.x, colBox.y, 0, 0), 100, FONT_OFFSETCOEF, 3)
+                    movingColBoxes[self.id] = colBox;
                 }
             }
         }
@@ -448,7 +476,7 @@ textureManager = TextureManager({
     },
     'tileselector': {
         src: './textures/tileselector.png',
-        r: 3,
+        r: 4,
         c: 4,
     },
     'boxes': {
@@ -488,6 +516,16 @@ textureManager = TextureManager({
     },
     'hotbarbg_sq': {
         src: './textures/hotbarbg_sq.png',
+        r: 1,
+        c: 2,
+    },
+    'cursors': {
+        src: './textures/cursors.png',
+        r: 1,
+        c: 3,
+    },
+    'pictograms': {
+        src: './textures/pictograms.png',
         r: 1,
         c: 2,
     }
@@ -931,6 +969,8 @@ var HandUI = (initObject) => {
         closedWidth: 300,
         handWidth: 600,
 
+        handActive: true,
+
         ...initObject
     })
 
@@ -947,6 +987,7 @@ var HandUI = (initObject) => {
 
         self.delayedMx = SpoolMath.lerp(self.delayedMx, self.mx, 0.15);
         self.delayedMy = SpoolMath.lerp(self.delayedMy, self.my, 0.15);
+
         if (self.handType == 'card') {
             self.cards = client.clientObject.hand;
         } else if (self.handType == 'weapon') {
@@ -971,10 +1012,12 @@ var HandUI = (initObject) => {
             }
         }
 
-        if (self.activatedCard || self.hidden) {
+        if (SELECTOR.activatedCard || self.hidden) {
+            self.handActive = false;
             self.yOffset = SpoolMath.lerp(self.yOffset, self.yOffsetMax, 0.2);
             self.handWidth = SpoolMath.lerp(self.handWidth, self.closedWidth, 0.2);
         } else {
+            self.handActive = true;
             self.yOffset = SpoolMath.lerp(self.yOffset, self.yOffsetMin, 0.2);
             self.handWidth = SpoolMath.lerp(self.handWidth, self.openedWidth, 0.2);
         }
@@ -1053,11 +1096,13 @@ var HandUI = (initObject) => {
 
             var sprite = textureManager.getSprite('card', card.cardTileIndex);
 
-            var angle = (self.mx - self.delayedMx) / 100;
-            angle = angle > Math.PI / 2 ? Math.PI / 2 : angle < -Math.PI / 2 ? -Math.PI / 2 : angle;
+
 
 
             if (i == self.activatedIndex) {
+                var angle = (self.mx - self.delayedMx) / 100;
+                angle = angle > Math.PI / 2 ? (Math.PI / 2) : (angle < -Math.PI / 2 ? -Math.PI / 2 : angle);
+
                 SpoolRenderer.renderRotatedSprite(ctx, sprite, angle, self.mx, self.my - 10, {
                     x: bounds.x / 2,
                     y: bounds.y / 2,
@@ -1065,7 +1110,7 @@ var HandUI = (initObject) => {
                     height: bounds.height / 2
                 });
             } else {
-                if (colOn != undefined && i == colOn) {
+                if (colOn != undefined && i == colOn && self.handActive) {
                     var lerpX = Math.sin(self.cardsPar[2 + i * 3]) * bounds.height / 1.2
                     var lerpY = Math.cos(self.cardsPar[2 + i * 3]) * bounds.height / 1.2
                     SpoolRenderer.renderRotatedSprite(ctx, sprite, self.cardsPar[2 + i * 3], self.cardsPar[0 + i * 3] - self.animStart * lerpX, self.cardsPar[1 + i * 3] - self.animStart * lerpY, bounds)
@@ -1155,6 +1200,7 @@ var HandUI = (initObject) => {
                 self.selectedTy = res.ty;
                 SELECTOR.selectedTx = self.selectedTx;
                 SELECTOR.selectedTy = self.selectedTy;
+                SELECTOR.validPosition = tileDistance(self.selectedTx, self.selectedTy, client.clientObject.tile.tx, client.clientObject.tile.ty) <= getStat(client.clientObject, 'range', self.activatedCard.range);
                 selection = true;
             }
         }
@@ -1164,6 +1210,7 @@ var HandUI = (initObject) => {
             self.selectedTy = null;
             SELECTOR.selectedTx = self.selectedTx;
             SELECTOR.selectedTy = self.selectedTy;
+            SELECTOR.validPosition = false;
         }
     }
 
@@ -1171,12 +1218,14 @@ var HandUI = (initObject) => {
 }
 var handUi = HandUI({
     x: client.gameArea.width / 2,
-    y: client.gameArea.height
+    y: client.gameArea.height,
+    openedWidth: 500,
+    closedWidth: 300,
 })
 client.handUi = handUi
 
 var weaponHandUi = HandUI({
-    x: client.gameArea.width - 200,
+    x: client.gameArea.width - 300,
     y: client.gameArea.height,
     handType: 'weapon',
 })
@@ -1210,7 +1259,6 @@ var DamageFloatersUI = (initObject) => {
             point.y -= Z_SCALINGFACTOR * floater.z + floater.frameCounter * 5;
 
             ctx.globalAlpha = 1 - floater.frameCounter / 30;
-            console.log(ctx.globalAlpha);
 
             SpoolRenderer.setFont(ctx, FONT, 25);
             ctx.strokeStyle = 'black';
@@ -1220,8 +1268,6 @@ var DamageFloatersUI = (initObject) => {
             ctx.globalAlpha = 1;
 
             floater.frameCounter += 1;
-
-            console.log(floater.frameCounter);
 
             if (floater.frameCounter > 30) {
                 if (index > cuttingIndex) {
@@ -1328,7 +1374,7 @@ var PlayerInformationUI = (initObject) => {
                 var text = ''
 
                 Object.keys(client.clientObject.stats).forEach((key, index) => {
-                    text += `${key}: ${client.clientObject.stats[key]}`
+                    text += `${key}: ${client.clientObject.stats[key] > 0 ? '+' : '-'}${client.clientObject.stats[key]}`
                     if (index < client.clientObject.stats.length - 1) {
                         text += '\n'
                     }
@@ -1464,5 +1510,49 @@ textureManager.onLoad = () => {
 
     client.startGameLoop()
 }
+
+var g_cursorId = 0;
+
+client.onMouseMove = (event) => {
+    client.mx = event.clientX;
+    client.my = event.clientY;
+
+    if (!SELECTOR.activatedCard) {
+        var tile = getTileInPoint(client.mx, client.my, movingColBoxes);
+        if (tile && g_cursorId != 1) {
+            client.gameArea.canvas.style.cursor = 'url("./textures/cursor_moving.png") 0 0, auto';
+            g_cursorId = 1;
+        } else if (!tile && g_cursorId != 0) {
+            client.gameArea.canvas.style.cursor = 'url("./textures/cursor.png") 0 0, auto';
+            g_cursorId = 0;
+        }
+    } else if (g_cursorId != 2) {
+        client.gameArea.canvas.style.cursor = 'url("./textures/cursor_attack.png") 0 0, auto';
+        g_cursorId = 2;
+
+    }
+}
+
+var F_PRESSED = false;
+
+client.postUi = (ctx, camera) => {
+
+    var pictX = minimapUi.x - 100
+    var pictY = minimapUi.y;
+    ctx.drawImage(textureManager.getSprite('pictograms', Z_SCALINGENABLED ? 0 : 1), pictX, pictY, 48, 48);
+    if (!F_PRESSED) {
+        SpoolRenderer.setFont(ctx, FONT, 20);
+        SpoolRenderer.setColor(ctx, 'black');
+        ctx.textAlign = 'center';
+        SpoolRenderer.simpleText(ctx, 'press F', pictX + 24, pictY + 64, 0);
+
+        if (!Z_SCALINGENABLED) {
+            F_PRESSED = true;
+        }
+    }
+
+}
+
+client.gameArea.canvas.style.cursor = 'url("./textures/cursor.png") 0 0, auto';
 
 textureManager.load()
