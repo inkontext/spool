@@ -136,7 +136,7 @@ var Tile = (initObject) => {
 
 
     self.render = (ctx, camera) => {
-        // Calculating the distance from the player 
+        // Calculating the distance from the player
 
 
         var distanceFromPlayer = client.clientObject ? client.clientObject.tile ? tileDistance2T(client.clientObject.tile, self) : null : null;
@@ -181,7 +181,7 @@ var Tile = (initObject) => {
 
         var r = self.renderR;
 
-        // Calculating the hexagons points 
+        // Calculating the hexagons points
 
         var startAngle = 0;
         var n = 6;
@@ -222,7 +222,7 @@ var Tile = (initObject) => {
         ctx.fillStyle = self.baseDark[2];
         ctx.fillRect(points[2].x, points[0].y, points[3].x - points[2].x, rectHeight)
 
-        // Calculating the upper centerp point 
+        // Calculating the upper centerp point
 
         colPoint = camera.transformPoint(self.x, self.y);
         colBox = {
@@ -373,7 +373,7 @@ var Player = (initObject) => {
                 SpoolRenderer.simpleText(ctx, `${self.name} ${self.hp}/${self.maxHp}`, tilex, nameY, 3)
             }
         }
-        // Counter 
+        // Counter
 
         if (self.animationCounter == self.animationTime) {
             if (self.texture) {
@@ -633,13 +633,70 @@ var MinimapUI = (initObject) => {
         if (self.active && self.keys) {
             ctx.drawImage(textureManager.getSprite('hotbarbg_sq', 0), self.x, self.y, self.width, self.height);
 
+            var middleX = self.x + 0.5 * self.width;
+            var middleY = self.y + 0.5 * self.height;
+
+            var horOverhang = 4;
+            var verOverhang = 3.5;
+
+            var tileWidth = horOverhang * 4;
+            var tileHeight = verOverhang * 4;
+            var xDif = horOverhang * 3;
+
+            var clientColor = "#00FFFF";
+            var enemyColor = "#FF0000";
+
             self.keys.forEach(key => {
                 var tile = self.tiles[key];
-                ctx.fillStyle = BIOME_COLORS[tile.biome];
+                var color;
+                var isPlayer = false;
+                var isClient = false;
 
-                var pixelSize = 5;
+                // Decide if enemy or client is on tile
+                for (player in client.handler.objects['PLAYER']) {
+                    var boy = client.handler.objects['PLAYER'][player];
 
-                ctx.fillRect(self.x + 100 + tile.tx * pixelSize, self.y + 100 + tile.ty * pixelSize, pixelSize, pixelSize);
+                    if (tile.tx == boy.tile.tx && tile.ty == boy.tile.ty) {
+                        isPlayer = true;
+
+                        if (tile.tx == client.clientObject.tile.tx && tile.ty == client.clientObject.tile.ty) {
+                            isClient = true;
+                        }
+                    }
+                }
+
+                // Choose color of tile based on its inhabitant/s
+                if (isPlayer) {
+                    if (isClient) {
+                        ctx.fillStyle = clientColor;
+                    } else {
+                        ctx.fillStyle = enemyColor;
+                    }
+                } else {
+                    ctx.fillStyle = BIOME_COLORS[tile.biome];
+                }
+
+                /*
+                var pixelSize = 15;
+
+                var x = middleX + tile.tx * pixelSize - 0.5 * pixelSize
+                var y = middleY + (-tile.ty) * pixelSize - 0.5*pixelSize*tile.tx - 0.5 * pixelSize
+
+                ctx.fillRect(x, y, pixelSize, pixelSize);
+                */
+
+                var x = middleX + tile.tx * xDif;
+                var y = middleY + (-tile.ty) * tileHeight - 0.5*tileHeight*tile.tx;
+
+                var verRectX = x - (horOverhang);
+                var verRectY = y - (verOverhang * 2);
+                var horRectX = x - (horOverhang * 2);
+                var horRectY = y - (verOverhang);
+
+                // Draw the cross
+                ctx.fillRect(verRectX, verRectY, horOverhang * 2, tileHeight);
+                ctx.fillRect(horRectX, horRectY, tileWidth, verOverhang * 2);
+
             })
         }
     }
