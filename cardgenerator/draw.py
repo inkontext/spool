@@ -1,11 +1,10 @@
 import pygame
-import lorem
-import random
 from PIL import Image
 import numpy as np
 import colorsys
 import json
 import os
+import math
 
 def event_handle():
     for event in pygame.event.get():
@@ -229,7 +228,11 @@ def get_subsurface(surface, coors, size):
 
 
 def render_stack_of_cards(json, items_tiles, multiplier):
-    surface = pygame.Surface([1500*multiplier, 1000*multiplier], pygame.SRCALPHA, 32)
+    number_of_cards = len(json["cards"])
+    items_tiles_width = 5
+    width = 102 * items_tiles_width * multiplier
+    height = 190 * (math.ceil(float(number_of_cards) / float(items_tiles_width))) * multiplier
+    surface = pygame.Surface([width, height], pygame.SRCALPHA, 32)
     surface = surface.convert_alpha()
 
     weapon_card_border_img = pygame.image.load("card_border.png")
@@ -257,9 +260,9 @@ def render_stack_of_cards(json, items_tiles, multiplier):
     """crystal_font = pygame.font.SysFont("Perfect DOS VGA 437", 25)
     title_font_name = "Perfect DOS VGA 437"
     description_font_name = "04B_03_" """
-    
+
     crystal_font = pygame.font.Font("./../fonts/dpcomic.ttf", 30)
-    
+
     title_font_name = "./../fonts/dpcomic.ttf"
     description_font_name = "./../fonts/dpcomic.ttf"
     #description_font_name = "Arial"
@@ -276,14 +279,13 @@ def render_stack_of_cards(json, items_tiles, multiplier):
     middle_right_crystal_coors = (right_crystal_coors[0] + crystal_size[0]/2, right_crystal_coors[1] + crystal_size[1]/2)
     item_tile_size = (32, 32)
     rendered_item_size = [i*multiplier for i in (32, 32)]
-    items_tiles_width = 5
     left_crystal_img = pygame.image.load("crystals/crystals/classic/crystal75.png")
     top_crystal_img = pygame.image.load("crystals/crystals/classic/crystal215.png")
     right_crystal_img = pygame.image.load("crystals/crystals/classic/crystal335.png")
     crystal_number_offset = (1, 0)
     for card in json["cards"]:
 
-	
+
         x, y = ((card["cardTileIndex"] % items_tiles_width) * total_card_size[0], (card["cardTileIndex"] // items_tiles_width) * total_card_size[1])
 
         draw_image(surface, top_background_img, (top_hexagon_middle_coors[0] + x, top_hexagon_middle_coors[1] + y), background_size, centered = True)
@@ -347,12 +349,10 @@ def render_stack_of_cards(json, items_tiles, multiplier):
         renderText(surface, str(card["name"]), (title_middle_coors[0] + x, title_middle_coors[1] + y), title_font, centered=True, color=font_color)
         render_text_into_box(surface, card["description"], description_optimal_font_ascent, (bottom_hexagon_middle_coors[0] + x, bottom_hexagon_middle_coors[1] + y), bottom_size, description_font_name, font_color, 0, centered = True, center_align = True)
 
-        #pygame.draw.rect(surface, (255, 0, 0), [bottom_hexagon_middle_coors[0], bottom_hexagon_middle_coors[1], 1, 1])
 
+        export_surface_area(surface, (x, y), total_card_size, "cards/" +  card["cardID"] + ".png")
 
-        export_surface_area(surface, coors, total_card_size, "cards/" +  card["cardID"] + ".png")
-
-    export_surface_area(surface, (0, 0), (204*5, 380*3), "./../textures/full_stack.png")
+    export_surface_area(surface, (0, 0), (width, height), "./../textures/full_stack.png")
 
 
 
