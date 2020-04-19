@@ -79,6 +79,20 @@ var client = null;
 var FONT = "'dpcomic'"
 var FONT_OFFSETCOEF = 0.2;
 
+var BUFFS = {
+    'freezing': {
+        textureId: 0,
+        tooltip: 'makes moving harder'
+    },
+    'burning': {
+        textureId: 1,
+        tooltip: 'deals 1 damage on the start of every turn'
+    },
+    'silence': {
+        textureId: 2,
+        tooltip: "You can't play cards (you can use your weapon)"
+    }
+}
 
 BIOME_COLORS = {
     'grass': '#a0d964',
@@ -464,10 +478,15 @@ var OBJECTS = {
 }
 
 textureManager = TextureManager({
-    'card': {
+    'cards': {
         src: './textures/full_stack.png',
         r: 5,
         c: 5,
+    },
+    'buffs': {
+        src: './textures/buffs.png',
+        r: 1,
+        c: 3,
     },
     'tiles': {
         src: './textures/tiles.png',
@@ -792,8 +811,8 @@ var DiceUI = (initObject) => {
 
         if (client.queueUi.currentPlayerId != undefined) {
             if (client.queueUi.currentPlayerId == client.clientId && (Date.now() - self.rollTime < 1000 || self.rolling)) {
-                targetX = client.gameArea.width / 2;
-                targetY = client.gameArea.height / 2;
+                targetX = self.focusX;
+                targetY = self.focusY;
                 targetSize = self.diceSize * 2;
             }
         }
@@ -807,7 +826,9 @@ var DiceUI = (initObject) => {
 
 var diceUi = DiceUI({
     x: minimapUi.x + minimapUi.width / 2,
-    y: minimapUi.y + minimapUi.height + 75
+    y: minimapUi.y + minimapUi.height + 75,
+    focusX: client.gameArea.width / 2,
+    focusY: client.gameArea.height / 2 + 300
 })
 client.diceUi = diceUi;
 
@@ -937,8 +958,15 @@ client.queueUi = queueUi;
 var AlertUi = (initObject) => {
     var self = SpoolUIElement({
         alerts: [],
+        bigAlert: '',
+        bigAlertTime: null,
         ...initObject
     });
+
+    self.setBigAlert = (msg) => {
+        self.bigAlertTime = Date.now();
+        self.bigAlert = msg;
+    }
 
     self.pushAlert = (msg) => {
         self.alerts.push(msg);
@@ -948,6 +976,8 @@ var AlertUi = (initObject) => {
         self.awake = true;
         self.endTime = Date.now() + 2000;
     }
+
+    self.bigAlertRect = SpoolRect(0, client.gameArea.height / 2 - 200, client.gameArea.width, 150);
 
     self.render = (ctx) => {
 
@@ -969,8 +999,25 @@ var AlertUi = (initObject) => {
                 SpoolRenderer.setFont(ctx, FONT, 20);
                 SpoolRenderer.multiLineText(ctx, value, rect, rect.width, FONT_OFFSETCOEF);
             })
+
+
             if (Date.now() > self.endTime) {
                 self.awake = false;
+            }
+        }
+
+        if (self.bigAlertTime != null) {
+            if (Date.now() - self.bigAlertTime < 2000) {
+                ctx.globalAlpha = 0.8;
+                SpoolRenderer.setColor(ctx, 'black');
+                SpoolRenderer.fillSplRect(ctx, self.bigAlertRect);
+                ctx.globalAlpha = 1;
+
+                SpoolRenderer.setFont(ctx, FONT, 75);
+                SpoolRenderer.setColor(ctx, '#963427');
+                SpoolRenderer.multiLineText(ctx, self.bigAlert, self.bigAlertRect, client.gameArea.width / 2, FONT_OFFSETCOEF, 5)
+            } else {
+                self.bigAlertTime = null;
             }
         }
     }
@@ -1014,8 +1061,8 @@ var HandUI = (initObject) => {
         yOffsetMin: -50,
         yOffset: -100,
 
-        cardWidth: 154,
-        hardHeight: 285,
+        cardWidth: 204 * initObject.cardFactor,
+        hardHeight: 380 * initObject.cardFactor,
 
         hidden: false,
 
@@ -1151,7 +1198,11 @@ var HandUI = (initObject) => {
             var cardid = self.cards[i];
             var card = client.clientObject.cardInfo[cardid];
 
-            var sprite = textureManager.getSprite('card', card.cardTileIndex);
+            if (!card) {
+                console.log('@handUI problem with card: ' + cardid);
+            }
+
+            var sprite = textureManager.getSprite('cards', card.cardTileIndex);
 
 
 
@@ -1273,11 +1324,15 @@ var HandUI = (initObject) => {
 
     return self
 }
+
+CARD_FACTOR = 0.7;
+
 var handUi = HandUI({
     x: client.gameArea.width / 2,
     y: client.gameArea.height,
     openedWidth: 500,
     closedWidth: 300,
+    cardFactor: CARD_FACTOR,
 })
 client.handUi = handUi
 
@@ -1285,6 +1340,7 @@ var weaponHandUi = HandUI({
     x: client.gameArea.width - 300,
     y: client.gameArea.height,
     handType: 'weapon',
+    cardFactor: CARD_FACTOR,
 })
 client.weaponHandUi = weaponHandUi
 
@@ -1292,7 +1348,8 @@ var equipHandUi = HandUI({
     x: client.gameArea.width - 100,
     y: client.gameArea.height,
     handType: 'equip',
-    playable: false
+    playable: false,
+    cardFactor: CARD_FACTOR,
 })
 client.equipHandUi = equipHandUi
 
@@ -1388,6 +1445,11 @@ var PlayerInformationUI = (initObject) => {
     var textX = 53 / 106 * self.width + self.x;
     var textY = 207 / 228 * self.height + self.y;
 
+    var buffsWidth = 34 / 106 * self.width / 4 * 3
+
+    var buffsX = 84 / 106 * self.width + self.x;
+    var buffsY = 184 / 228 * self.height + self.y;
+
     var hpVial = VialButton({
         title: 'Health',
         color: 'red',
@@ -1408,7 +1470,6 @@ var PlayerInformationUI = (initObject) => {
     })
     self.add(ammoVial);
 
-    ``
     self.render = (ctx) => {
         if (client.clientObject) {
             ctx.imageSmoothingEnabled = false;
@@ -1457,8 +1518,18 @@ var PlayerInformationUI = (initObject) => {
             }
 
             client.clientObject.buffs.forEach((buff, index) => {
-                console.log(`${buff.name} ${buff.duration}`)
-                SpoolRenderer.simpleText(ctx, `${buff.name} ${buff.duration}`, 100, 200 + index * 50, 3)
+
+                var buffJson = BUFFS[buff.name];
+                var buffRect = SpoolRect(buffsX - buffsWidth / 2, buffsY - (buffsWidth + 10) * (index + 1), buffsWidth, buffsWidth);
+
+
+                ctx.drawImage(textureManager.getSprite('buffs', buffJson.textureId), buffRect.x, buffRect.y, buffRect.width, buffRect.height);
+                SpoolRenderer.simpleText(ctx, buff.duration, buffRect.x + buffRect.width, buffRect.y + buffRect.height, 5)
+
+                if (buffRect.contains(self.mx, self.my)) {
+                    SpoolRenderer.multiLineText(ctx, buffJson.tooltip, SpoolRect(self.mx + 100, self.my, 0, 0), 200, FONT_OFFSETCOEF, 10);
+                }
+
             })
         }
     }
@@ -1563,7 +1634,11 @@ textureManager.onLoad = () => {
     })
 
     client.socket.on('ALERT', (data) => {
-        client.alertUi.pushAlert(data.msg);
+        if (data.bigAlert) {
+            client.alertUi.setBigAlert(data.msg);
+        } else {
+            client.alertUi.pushAlert(data.msg);
+        }
     });
 
     client.socket.on('SET_MINIMAP_TILES', (data) => {
