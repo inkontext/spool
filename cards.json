@@ -137,7 +137,13 @@
       },
       "description": "Bad for casting, good for *1 dmg throw*",
       "textureTileIndex": 7,
-      "cardTileIndex": 7
+      "cardTileIndex": 7,
+      "effectArea": {
+        "type": "radius",
+        "value": {
+          "max": 1
+        }
+      }
     },
     {
       "cardID": "telescope",
@@ -148,7 +154,8 @@
       "range": 0,
       "cost": 2,
       "stats": {
-        "baseRange": 1
+        "range": 1,
+        "sight": 1
       },
       "action": null,
       "description": "See your enemies sooner than they see you",
@@ -186,7 +193,14 @@
       },
       "description": "Elevate yourself above your neighbours",
       "textureTileIndex": 9,
-      "cardTileIndex": 10
+      "cardTileIndex": 10,
+      "effectArea": {
+        "type": "radius",
+        "value": {
+          "max": 2,
+          "min": 1
+        }
+      }
     },
     {
       "cardID": "building_clay",
@@ -204,7 +218,14 @@
       },
       "description": "Build a barricade from your surroundings",
       "textureTileIndex": 10,
-      "cardTileIndex": 11
+      "cardTileIndex": 11,
+      "effectArea": {
+        "type": "radius",
+        "value": {
+          "max": 1,
+          "min": 1
+        }
+      }
     }
   ]
 }
