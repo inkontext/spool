@@ -97,9 +97,10 @@ function transformTileCoordToRealCord(x, y) {
 
 //// ALERTING ////
 
-function alertClient(socket, message) {
+function alertClient(socket, message, bigAlert = false) {
     socket.emit('ALERT', {
-        msg: message
+        msg: message,
+        bigAlert: bigAlert
     })
 }
 
@@ -321,12 +322,14 @@ var Player = (initObject = {}) => {
         if (self.onDeath) {
             self.onDeath();
         }
+
+        alertClient(server.socketList[self.id], "You died", true);
     }
 
     //// CARDS ////
 
     self.give = (cards) => {
-        self.hand = self.hand.concat(cards);
+        self.hand = self.hand.concat(cards).sort();
     }
 
     self.recalcEquip = () => {
@@ -634,17 +637,16 @@ var Player = (initObject = {}) => {
     //// ROUNDS ////
 
     self.yourRound = () => {
-        console.log('start');
         self.playing = true;
         self.buffs.forEach(buff => {
             buff.onActive(self);
             buff.duration -= 1;
         })
         self.setAsyncUpdateValue('buffs', self.buffs);
+        alertClient(server.socketList[self.id], "Your round", true);
     }
 
     self.yourRoundEnd = () => {
-        console.log('end');
         self.buffs = self.buffs.filter(value => !value.end(self));
         self.setAsyncUpdateValue('buffs', self.buffs);
         self.playing = false;
@@ -1602,10 +1604,7 @@ var GameStep = (playerQueue, deck) => {
         if (playerQueue.players.length == 1) {
             console.log('There is only one player thus he won?')
 
-            server.emit('ALERT', {
-                msg: 'Player ' +
-                    playerQueue.players[0].name + ' remained last'
-            });
+            alertClient(server, `Player ${playerQueue.players[0].name} remained last`, true)
 
             setTimeout(() => {
                 self.end();
@@ -1633,6 +1632,7 @@ var GameStep = (playerQueue, deck) => {
 
     self.addBoxes = () => {
         var n = Math.floor((self.deck.stock.length - (self.deck.deckSize - MAX_CARDS_IN_FIELD)) / BOX_SIZE);
+        console.log(n);
         if (n <= 0) {
             return;
         }
@@ -1682,7 +1682,9 @@ var GameStep = (playerQueue, deck) => {
                 self.onNewRound();
                 self.waitingForPlayers = false;
                 self.active = true;
+                alertClient(server, "Game started", true);
             }
+
         }
     }
 
@@ -1806,7 +1808,7 @@ server.onSocketCreated = (server, socket, player) => {
         gameStep.sendTimer(socket);
         playerQueue.sendQue(socket);
     } else {
-        player.give(['bullets', 'freezing_potion', 'handcuffs', 'bam', 'box', 'dice_one', 'dice_two', 'dice_three', 'crossbow', 'ladder', 'rope'])
+        player.give(Object.keys(CARDS))
         player.deltaValue('energy', 30);
     }
 }
