@@ -291,11 +291,11 @@ def render_stack_of_cards(json, items_tiles, multiplier):
     item_tile_size = (32, 32)
     rendered_item_size = [i*multiplier for i in (32, 32)]
     left_crystal_img = pygame.image.load(
-        "crystals/crystals/classic/crystal75.png")
+        "crystals/crystals/classic/crystal335.png")
     top_crystal_img = pygame.image.load(
         "crystals/crystals/classic/crystal215.png")
     right_crystal_img = pygame.image.load(
-        "crystals/crystals/classic/crystal335.png")
+        "crystals/crystals/classic/crystal75.png")
     crystal_number_offset = (1, 0)
     for card in json["cards"]:
         x, y = ((card["cardTileIndex"] % items_tiles_width) * total_card_size[0],
@@ -402,7 +402,6 @@ def render_stack_of_cards(json, items_tiles, multiplier):
 
     export_surface_area(surface, (0, 0), (width, height),
                         "./../textures/full_stack.png")
-
 
 
 rgb_to_hsv = np.vectorize(colorsys.rgb_to_hsv)

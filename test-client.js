@@ -263,7 +263,7 @@ var Tile = (initObject) => {
 
 
         // Changing sprites if biome changed
-        if ((self.biome != self.lastBiome && !self.dead) || (self.lastBiome != 'dead' && self.dead)) {
+        if (((self.biome != self.lastBiome && !self.dead) || (self.lastBiome != 'dead' && self.dead)) && false) {
             self.sprite = textureManager.getSprite('tiles', BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4)
             self.resizedSprite = null;
             textureManager.resizeSprite(self.sprite, self.hexRadius * 2, self.hexRadius * 2 / self.sprite.width * self.sprite.height, (result) => {
@@ -276,7 +276,7 @@ var Tile = (initObject) => {
             }
         }
 
-        if (self.resizedSprite && Math.abs(self.renderR - self.hexRadius) < 2 && self.animationFrame == 0) {
+        if ((self.resizedSprite && Math.abs(self.renderR - self.hexRadius) < 2 && self.animationFrame == 0) && false) {
             var t_height = self.resizedSprite.height;
             ctx.drawImage(self.resizedSprite, colBox.x - self.resizedSprite.width / 2, colBox.y - self.resizedSprite.height / 2);
         } else {
@@ -693,8 +693,8 @@ var MinimapUI = (initObject) => {
             var middleX = self.x + 0.5 * self.width;
             var middleY = self.y + 0.5 * self.height;
 
-            var horOverhang = 4;
-            var verOverhang = 4;
+            var horOverhang = 2;
+            var verOverhang = 2;
 
             var tileWidth = horOverhang * 4;
             var tileHeight = verOverhang * 4;
@@ -713,11 +713,15 @@ var MinimapUI = (initObject) => {
                 for (player in client.handler.objects['PLAYER']) {
                     var boy = client.handler.objects['PLAYER'][player];
 
-                    if (tile.tx == boy.tile.tx && tile.ty == boy.tile.ty) {
-                        isPlayer = true;
+                    if (boy && tile && client.clientObject) {
+                        if (boy.tile) {
+                            if (tile.tx == boy.tile.tx && tile.ty == boy.tile.ty) {
+                                isPlayer = true;
 
-                        if (tile.tx == client.clientObject.tile.tx && tile.ty == client.clientObject.tile.ty) {
-                            isClient = true;
+                                if (tile.tx == client.clientObject.tile.tx && tile.ty == client.clientObject.tile.ty) {
+                                    isClient = true;
+                                }
+                            }
                         }
                     }
                 }

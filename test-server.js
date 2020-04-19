@@ -32,14 +32,14 @@ cards.forEach(card => {
 ////// GLOBAL CONSTANTS //////
 
 var TILE_WIDTH = 60;
-var WORLD_LAYERS = 5;
+var WORLD_LAYERS = 8;
 var BOX_SIZE = 2;
 
 var ROUNDS_PER_DROP = 3;
 
 var WORLD_CLIFFSNUMBER = 1;
 
-var MAX_CARDS_IN_FIELD = 24;
+var MAX_CARDS_IN_FIELD = 48;
 
 var CHARACTERS = [
     'Bob',
@@ -209,6 +209,7 @@ var Player = (initObject = {}) => {
             },
             movingPrice: 0,
             stats: {},
+            buffs: [],
             playing: false,
             ...defs
         })
@@ -463,7 +464,7 @@ var Player = (initObject = {}) => {
                                                     }
                                                 }
 
-                                                self.deltaValue('energy', res - deltaEnergy);
+                                                self.deltaValue('energy', res + deltaEnergy);
                                                 removeEnergy = false;
                                                 alertClient(server, `${self.name} rolled: ${rolls}`);
                                                 break;
@@ -1571,7 +1572,7 @@ var GameStep = (playerQueue, deck) => {
 
                         self.currentPlayer.yourRound();
 
-                        self.currentTimer = SpoolTimer(60000, () => {
+                        self.currentTimer = SpoolTimer(20000 + 5000 * self.roundNumber, () => {
                             self.finishStep(self.currentPlayer.id);
                         })
                         self.sendTimer()
@@ -1643,6 +1644,9 @@ var GameStep = (playerQueue, deck) => {
             var box = Box({
                 cards: temp
             })
+
+            console.log(tiles[i].tx, tiles[i].ty, tiles[i].dead)
+
             server.handler.add(box);
             tiles[i].add(box.id);
         }
