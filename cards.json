@@ -86,7 +86,7 @@
         "actionString": null
       },
       "description": "Full of bullets",
-      "textureTileIndex": 3,
+      "textureTileIndex": 15,
       "cardTileIndex": 4
     },
     {
@@ -226,6 +226,196 @@
           "min": 1
         }
       }
+    },
+    {
+      "cardID": "freezing_potion",
+      "name": "Freezing potion",
+      "description": "It's marked with snowflake, freezing potion?",
+      "type": "special",
+      "value": "medium rare",
+      "range": 2,
+      "cost": 5,
+      "stats": null,
+      "action": {
+        "add": null,
+        "removes": null,
+        "actionString": "buff freezing 2 0 1"
+      },
+      "textureTileIndex": 11,
+      "cardTileIndex": 12,
+      "effectArea": {
+        "type": "radius",
+        "value": {
+          "max": 1,
+          "min": 0
+        }
+      }
+    },
+    {
+      "cardID": "handcuffs",
+      "name": "Handcuffs",
+      "description": "Tie up your enemy",
+      "type": "special",
+      "value": "medium rare",
+      "range": 2,
+      "cost": 5,
+      "stats": null,
+      "action": {
+        "add": null,
+        "removes": null,
+        "actionString": "buff silence 2 0 0"
+      },
+      "textureTileIndex": 12,
+      "cardTileIndex": 13,
+      "effectArea": null
+    },
+    {
+      "cardID": "bam",
+      "name": "Bam",
+      "description": "Bom and a match, perfect couple",
+      "type": "special",
+      "value": "medium rare",
+      "range": 3,
+      "cost": 10,
+      "stats": null,
+      "action": {
+        "add": null,
+        "removes": null,
+        "actionString": "rise -2 0 1;splashdmg 6 0 0;splashdmg 4 1 1;buff burning 2 0 1"
+      },
+      "textureTileIndex": 13,
+      "cardTileIndex": 14,
+      "effectArea": {
+        "type": "radius",
+        "value": {
+          "max": 2,
+          "min": 0
+        }
+      }
+    },
+    {
+      "cardID": "box",
+      "name": "Box",
+      "description": "A box inside a box? **chuckle**",
+      "type": "special",
+      "value": "medium rare",
+      "range": 2,
+      "cost": 3,
+      "stats": null,
+      "action": {
+        "add": null,
+        "removes": null,
+        "actionString": "cards 3"
+      },
+      "textureTileIndex": 14,
+      "cardTileIndex": 15,
+      "effectArea": null
+    },
+    {
+      "cardID": "dice_one",
+      "name": "One die",
+      "description": "Throw again",
+      "type": "special",
+      "value": "medium rare",
+      "range": 0,
+      "cost": 3,
+      "stats": null,
+      "action": {
+        "add": null,
+        "removes": null,
+        "actionString": "dice 1"
+      },
+      "textureTileIndex": 16,
+      "cardTileIndex": 16,
+      "effectArea": null
+    },
+    {
+      "cardID": "dice_two",
+      "name": "Two dice",
+      "description": "Throw again and again",
+      "type": "special",
+      "value": "medium rare",
+      "range": 0,
+      "cost": 4,
+      "stats": null,
+      "action": {
+        "add": null,
+        "removes": null,
+        "actionString": "dice 2"
+      },
+      "textureTileIndex": 17,
+      "cardTileIndex": 17,
+      "effectArea": null
+    },
+    {
+      "cardID": "dice_three",
+      "name": "Three dice?",
+      "description": "Throw again and again and again",
+      "type": "special",
+      "value": "rare",
+      "range": 0,
+      "cost": 6,
+      "stats": null,
+      "action": {
+        "add": null,
+        "removes": null,
+        "actionString": "dice 3"
+      },
+      "textureTileIndex": 18,
+      "cardTileIndex": 18,
+      "effectArea": null
+    },
+    {
+      "cardID": "crossbow",
+      "name": "Crossbow",
+      "description": "Almost a gun",
+      "type": "weapon",
+      "value": "medium rare",
+      "range": 3,
+      "cost": 4,
+      "ammoConsuption": 1,
+      "dmg": 5,
+      "stats": null,
+      "action": null,
+      "textureTileIndex": 19,
+      "cardTileIndex": 19,
+      "effectArea": null
+    },
+    {
+      "cardID": "ladder",
+      "name": "Ladder",
+      "description": "Move to a higher place for free (almost)",
+      "type": "special",
+      "value": "medium rare",
+      "range": 1,
+      "cost": 1,
+      "stats": null,
+      "action": {
+        "add": null,
+        "removes": null,
+        "actionString": "ladder"
+      },
+      "textureTileIndex": 20,
+      "cardTileIndex": 20,
+      "effectArea": null
+    },
+    {
+      "cardID": "rope",
+      "name": "Pile of rope",
+      "description": "Move to a lower place for free (almost)",
+      "type": "special",
+      "value": "medium rare",
+      "range": 1,
+      "cost": 1,
+      "stats": null,
+      "action": {
+        "add": null,
+        "removes": null,
+        "actionString": "rope"
+      },
+      "textureTileIndex": 21,
+      "cardTileIndex": 21,
+      "effectArea": null
     }
   ]
 }

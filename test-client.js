@@ -10,9 +10,9 @@ function tileDistance2T(a, b) {
     return tileDistance(a.tx, a.ty, b.tx, b.ty);
 }
 
-function movingPrice(tilea, tileb) {
+function movingPrice(tilea, tileb, playerMovingPrice = 0) {
     if (tilea.z !== undefined && tilea.leavingPrice !== undefined && tileb.z !== undefined && tileb.enteringPrice !== undefined) {
-        var res = Math.abs(tilea.z - tileb.z) + tilea.leavingPrice + tileb.enteringPrice;
+        var res = Math.abs(tilea.z - tileb.z) + tilea.leavingPrice + tileb.enteringPrice + playerMovingPrice;
         return res;
     } else {
         if (tilea.z === undefined || tilea.leavingPrice === undefined) {
@@ -331,7 +331,7 @@ var Tile = (initObject) => {
                     SpoolRenderer.setFont(ctx, FONT, 25);
                     SpoolRenderer.setColor(ctx, 'white');
 
-                    var price = movingPrice(client.clientObject.tile, self);
+                    var price = movingPrice(client.clientObject.tile, self, client.clientObject.movingPrice);
 
                     ctx.strokeStyle = 'black';
                     SpoolRenderer.multiLineText(ctx, `${price}`, SpoolRect(colBox.x, colBox.y, 0, 0), 100, FONT_OFFSETCOEF, 3)
@@ -466,7 +466,7 @@ var OBJECTS = {
 textureManager = TextureManager({
     'card': {
         src: './textures/full_stack.png',
-        r: 3,
+        r: 5,
         c: 5,
     },
     'tiles': {
@@ -675,7 +675,7 @@ var MinimapUI = (initObject) => {
             var middleY = self.y + 0.5 * self.height;
 
             var horOverhang = 4;
-            var verOverhang = 3.5;
+            var verOverhang = 4;
 
             var tileWidth = horOverhang * 4;
             var tileHeight = verOverhang * 4;
@@ -724,7 +724,7 @@ var MinimapUI = (initObject) => {
                 */
 
                 var x = middleX + tile.tx * xDif;
-                var y = middleY + (-tile.ty) * tileHeight - 0.5*tileHeight*tile.tx;
+                var y = middleY + (-tile.ty) * tileHeight - 0.5 * tileHeight * tile.tx;
 
                 var verRectX = x - (horOverhang);
                 var verRectY = y - (verOverhang * 2);
@@ -1321,6 +1321,21 @@ var DamageFloatersUI = (initObject) => {
             ctx.strokeStyle = 'black';
             ctx.lineWidth = 4;
             ctx.strokeText(floater.dmg, point.x, point.y);
+
+            if (floater.type == 'hp') {
+                if (floater.dmg < 0) {
+                    ctx.fillStyle = 'red';
+                } else {
+                    ctx.fillStyle = 'green';
+                }
+            } else if (floater.type == 'energy') {
+                if (floater.dmg < 0) {
+                    ctx.fillStyle = 'blue';
+                }
+            } else {
+                ctx.fillStyle = 'white';
+            }
+
             ctx.fillText(floater.dmg, point.x, point.y);
             ctx.globalAlpha = 1;
 
@@ -1440,6 +1455,11 @@ var PlayerInformationUI = (initObject) => {
                 SpoolRenderer.setFont(ctx, FONT, 20);
                 SpoolRenderer.multiLineText(ctx, text, infoBox, infoBox.width, FONT_OFFSETCOEF, 3);
             }
+
+            client.clientObject.buffs.forEach((buff, index) => {
+                console.log(`${buff.name} ${buff.duration}`)
+                SpoolRenderer.simpleText(ctx, `${buff.name} ${buff.duration}`, 100, 200 + index * 50, 3)
+            })
         }
     }
 
