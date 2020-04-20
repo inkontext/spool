@@ -671,6 +671,7 @@ var MinimapUI = (initObject) => {
         tiles: {},
         active: true,
         keys: null,
+        layers: null,
         ...initObject
     });
 
@@ -678,9 +679,10 @@ var MinimapUI = (initObject) => {
         return `[${x},${y}]`
     }
 
-    self.setTiles = (data) => {
-        self.tiles = data;
+    self.setMinimap = (data) => {
+        self.tiles = data.minimap;
         self.keys = Object.keys(self.tiles);
+        self.layers = data.layers;
     }
 
     self.render = (ctx) => {
@@ -688,13 +690,16 @@ var MinimapUI = (initObject) => {
 
 
         if (self.active && self.keys) {
+            // Draw background
             ctx.drawImage(textureManager.getSprite('hotbarbg_sq', 0), self.x, self.y, self.width, self.height);
 
             var middleX = self.x + 0.5 * self.width;
             var middleY = self.y + 0.5 * self.height;
 
-            var horOverhang = 2;
-            var verOverhang = 2;
+            var padding = 20;
+
+            var verOverhang = (self.height - 2*padding) / (2*self.layers - 1) / 4;
+            var horOverhang = verOverhang;
 
             var tileWidth = horOverhang * 4;
             var tileHeight = verOverhang * 4;
@@ -709,24 +714,31 @@ var MinimapUI = (initObject) => {
                 var isPlayer = false;
                 var isClient = false;
 
-                // Decide if enemy or client is on tile
-                for (player in client.handler.objects['PLAYER']) {
-                    var boy = client.handler.objects['PLAYER'][player];
 
-                    if (boy && tile && client.clientObject) {
-                        if (boy.tile) {
-                            if (tile.tx == boy.tile.tx && tile.ty == boy.tile.ty) {
-                                isPlayer = true;
+                try {
+                    // Decide if enemy or client is on tile
+                    for (playerKey in client.handler.objects['PLAYER']) {
+                        var player = client.handler.objects['PLAYER'][playerKey];
 
-                                if (tile.tx == client.clientObject.tile.tx && tile.ty == client.clientObject.tile.ty) {
-                                    isClient = true;
+                        if (player && tile && client.clientObject) {
+                            console.log(tile.dead)
+                            if (player.alive) {
+                                if (player.tile) {
+                                    if (tile.tx == player.tile.tx && tile.ty == player.tile.ty) {
+                                        isPlayer = true;
+
+                                        if (tile.tx == client.clientObject.tile.tx && tile.ty == client.clientObject.tile.ty) {
+                                            isClient = true;
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
+                } catch (err) {
+                    // pass
                 }
-
-                // Choose color of tile based on its inhabitant/s
+                // Choose color of tile based on its inhabitant/s and deadness
                 if (isPlayer) {
                     if (isClient) {
                         ctx.fillStyle = clientColor;
@@ -734,18 +746,13 @@ var MinimapUI = (initObject) => {
                         ctx.fillStyle = enemyColor;
                     }
                 } else {
-                    ctx.fillStyle = BIOME_COLORS[tile.biome];
+                    if (!tile.dead) {
+                        ctx.fillStyle = BIOME_COLORS[tile.biome];
+                    } else {
+                        ctx.fillStyle = BIOME_COLORS['dead'];
+                    }
                 }
-
-                /*
-                var pixelSize = 15;
-
-                var x = middleX + tile.tx * pixelSize - 0.5 * pixelSize
-                var y = middleY + (-tile.ty) * pixelSize - 0.5*pixelSize*tile.tx - 0.5 * pixelSize
-
-                ctx.fillRect(x, y, pixelSize, pixelSize);
-                */
-
+                // Calculate coors
                 var x = middleX + tile.tx * xDif;
                 var y = middleY + (-tile.ty) * tileHeight - 0.5 * tileHeight * tile.tx;
 
@@ -1646,7 +1653,7 @@ textureManager.onLoad = () => {
     });
 
     client.socket.on('SET_MINIMAP_TILES', (data) => {
-        client.minimapUi.setTiles(data);
+        client.minimapUi.setMinimap(data);
     })
 
     client.uiHandler.add(diceUi);

@@ -98,10 +98,14 @@ function transformTileCoordToRealCord(x, y) {
 //// ALERTING ////
 
 function alertClient(socket, message, bigAlert = false) {
-    socket.emit('ALERT', {
-        msg: message,
-        bigAlert: bigAlert
-    })
+    if (socket) {
+        socket.emit('ALERT', {
+            msg: message,
+            bigAlert: bigAlert
+        })
+    } else {
+        console.error("@alertClient: invalid socket", socket)
+    }
 }
 
 ////// SETTING UP SERVER //////
@@ -382,7 +386,7 @@ var Player = (initObject = {}) => {
                     var removeEnergy = true;
 
                     if (tileDistance2T(self, tile) <= getStat(self, 'range', card.range)) {
-                        // WEAPONS 
+                        // WEAPONS
                         if (card.type == 'weapon') {
 
                             if (self.equip.weapon) {
@@ -399,18 +403,18 @@ var Player = (initObject = {}) => {
                             addToDeck = false;
                         }
 
-                        // SPELLS 
-                        // SPECIAL 
+                        // SPELLS
+                        // SPECIAL
 
                         if (card.type == 'spell' || card.type == 'special') {
                             if (card.action) {
-                                // Add 
+                                // Add
                                 if (card.action.add) {
                                     Object.keys(card.action.add).forEach(element => {
                                         self.deltaValue(element, card.action.add[element]);
                                     });
                                 }
-                                // Remove 
+                                // Remove
                                 if (card.action.removes) {
                                     Object.keys(card.action.removes).forEach(element => {
                                         self.deltaValue(element, card.action.removes[element]);
@@ -1001,7 +1005,7 @@ var Map = () => {
      * Get's all the tiles in said radius from said tile and returns it as a array
      * @param {int} tx
      * @param {int} ty
-     * @returns returns array of all the tiles in said radius 
+     * @returns returns array of all the tiles in said radius
      */
     self.getTilesInRadius = (tx, ty, r, minR = null) => {
         r += 1;
@@ -1140,7 +1144,7 @@ var Map = () => {
     }
 
     self.sendMinimap = (channel = server) => {
-        channel.emit('SET_MINIMAP_TILES', self.getMinimap());
+        channel.emit('SET_MINIMAP_TILES',  {minimap: self.getMinimap(), layers: self.layers});
     }
 
     self.getMinimap = () => {
@@ -1151,7 +1155,8 @@ var Map = () => {
                 biome: self.tiles[key].biome,
                 z: self.tiles[key].z,
                 tx: self.tiles[key].tx,
-                ty: self.tiles[key].ty
+                ty: self.tiles[key].ty,
+                dead: self.tiles[key].dead
             };
         })
 
@@ -1194,7 +1199,7 @@ var Map = () => {
         })
     }
 
-    //// SPAWNING FEATURES //// 
+    //// SPAWNING FEATURES ////
 
     self.getNRandomTiles = (n) => {
         var temp = [...self.possibleCoords.map(value => getTile(value[0], value[1]))];
@@ -1317,6 +1322,7 @@ var Map = () => {
             }
         })
         self.currentRadius -= 1;
+        self.sendMinimap()
     }
 
     //// STARTING POSITIONS ////
