@@ -432,6 +432,15 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
         }
     }
 
+    self.getSprites = (key) => {
+        if (!self.spriteSheets[key]) {
+            console.error(`@TextureManager: ${key} is not in spritesheets`);
+            return null;
+        } else {
+            return self.spriteSheets[key].sprites;
+        }
+    }
+
     self.prepareChunkImage = () => {
         var canvas = document.createElement('canvas');
         var context = canvas.getContext('2d');
@@ -528,6 +537,31 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
         sprite.onload = () => {
             callback(sprite);
         }
+    }
+
+    self.resizeSprites = (spritelist, width, height, callback) => {
+        var i = -1
+        sprites = []
+        var size = spritelist.length
+        while (size--) {
+            sprites.push(1)
+        }
+        spritelist.forEach(orgsprite => {
+            i += 1
+            var canvas = document.createElement('canvas');
+            var context = canvas.getContext('2d');
+            canvas.width = width;
+            canvas.height = height;
+
+            context.imageSmoothingEnabled = false;
+            context.drawImage(orgsprite, 0, 0, width, height);
+
+            var sprite = new Image();
+            sprite.src = canvas.toDataURL('image/png')
+            sprite.onload = () => {
+                callback(sprite);
+            }
+        })
     }
 
     self.bakeIn = (originalTexture, bakedTexture, dBounds, callback, attributes = null) => {

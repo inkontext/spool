@@ -133,11 +133,14 @@ var Tile = (initObject) => {
         Object.assign(self, data);
     }
 
-
+    self.sprites = textureManager.getSprites('tiles')
+    ///self.resizedSprites = []
+    //textureManager.resizeSprites(self.sprites, self.hexRfadius * 2, self.hexRadius * 2 / self.sprites[0].width * self.sprites[0].height, (result) => {
+    //  self.resizedSprites.push(result);
+    //})
 
     self.render = (ctx, camera) => {
         // Calculating the distance from the player 
-
 
         var distanceFromPlayer = client.clientObject ? client.clientObject.tile ? tileDistance2T(client.clientObject.tile, self) : null : null;
 
@@ -238,7 +241,7 @@ var Tile = (initObject) => {
 
         // Changing sprites if biome changed
         if ((self.biome != self.lastBiome && !self.dead) || (self.lastBiome != 'dead' && self.dead)) {
-            self.sprite = textureManager.getSprite('tiles', BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4)
+            self.sprite = self.sprites[BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4]
             self.resizedSprite = null;
             textureManager.resizeSprite(self.sprite, self.hexRfadius * 2, self.hexRadius * 2 / self.sprite.width * self.sprite.height, (result) => {
                 self.resizedSprite = result;
@@ -251,10 +254,11 @@ var Tile = (initObject) => {
         }
 
         if (self.resizedSprite && Math.abs(self.renderR - self.hexRadius) < 2 && self.animationFrame == 0) {
+            var resizedsprite = self.resizedSprites[BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4]
             var t_height = self.resizedSprite.height;
-            ctx.drawImage(self.resizedSprite, colBox.x - self.resizedSprite.width / 2, colBox.y - self.resizedSprite.height / 2);
+            ctx.drawImage(resizedsprite, colBox.x - self.resizedSprite.width / 2, colBox.y - self.resizedSprite.height / 2);
         } else {
-            var sprite = textureManager.getSprite('tiles', BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4)
+            var sprite = self.sprites[BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4]
             var t_height = t_width / sprite.width * sprite.height;
             ctx.drawImage(sprite, colBox.x - t_width / 2, colBox.y - t_height / 2, t_width, t_height);
         }
@@ -891,7 +895,6 @@ var alertUi = AlertUi({
 });
 client.alertUi = alertUi;
 client.uiHandler.add(alertUi);
-
 //// HAND ////
 
 var HandUI = (initObject) => {
