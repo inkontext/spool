@@ -266,14 +266,14 @@ var Tile = (initObject) => {
 
 
         // Changing sprites if biome changed
-        if (RESIZED_SPRITES && (self.biome != self.lastBiome && !self.dead) || (self.lastBiome != 'dead' && self.dead)) {
-            self.resizedSprite = RESIZED_SPRITES[BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4]
-            if (self.dead) {
-                self.lastBiome = 'dead';
-            } else {
-                self.lastBiome = self.biome;
-            }
-        }
+        // if (RESIZED_SPRITES && ((self.biome != self.lastBiome && !self.dead) || (self.lastBiome != 'dead' && self.dead))) {
+        //     self.resizedSprite = RESIZED_SPRITES[BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4]
+        //     if (self.dead) {
+        //         self.lastBiome = 'dead';
+        //     } else {
+        //         self.lastBiome = self.biome;
+        //     }
+        // }
 
         if ((self.resizedSprite && Math.abs(self.renderR - self.hexRadius) < 2 && self.animationFrame == 0) && false) {
             var t_height = self.resizedSprite.height;
