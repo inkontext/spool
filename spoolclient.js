@@ -430,6 +430,15 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
         }
     }
 
+    self.getSprites = (key) => {
+        if (!self.spriteSheets[key]) {
+            console.error(`@TextureManager: ${key} is not in spritesheets`);
+            return null;
+        } else {
+            return self.spriteSheets[key].sprites;
+        }
+    }
+
     self.prepareChunkImage = () => {
         var canvas = document.createElement('canvas');
         var context = canvas.getContext('2d');
@@ -526,6 +535,41 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
         sprite.onload = () => {
             callback(sprite);
         }
+    }
+
+    self.resizeSprites = (spriteList, width, height, callback) => {
+        if (!width || !height) {
+            console.warn("@textureManager resizedSprite: Width and height error")
+        }
+        var i = 0
+        var sprites = []
+        var size = spriteList.length
+        while (size--) {
+            sprites.push(1)
+        }
+        var counter = 0
+        var canvas = document.createElement('canvas');
+        var context = canvas.getContext('2d');
+        canvas.width = width;
+        canvas.height = height;
+
+        spriteList.forEach(orgsprite => {
+            context.clearRect(0, 0, width, height);
+            context.imageSmoothingEnabled = false;
+            context.drawImage(orgsprite, 0, 0, width, height);
+
+            var sprite = new Image();
+            sprite.posInList = i
+            sprite.src = canvas.toDataURL('image/png')
+            sprite.onload = (e) => {
+                sprites[e.target.posInList] = sprite
+                counter += 1
+                if (counter == spriteList.length) {
+                    callback(sprites)
+                }
+            }
+            i++
+        })
     }
 
     self.bakeIn = (originalTexture, bakedTexture, dBounds, callback, attributes = null) => {

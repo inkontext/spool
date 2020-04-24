@@ -121,6 +121,8 @@ NATURE_TEXTROWS = {
 TILE_SELECTOR_FCOUNTER = 0;
 TILE_SELECTOR_INDEX = 0;
 TILE_SELECTOR_LENGTH = 5;
+var FIRST_TILE_INIT = true
+var RESIZED_SPRITES = null
 
 var SELECTOR = {
     activatedCard: null,
@@ -159,7 +161,8 @@ var Tile = (initObject) => {
     }
 
     self.render = (ctx, camera) => {
-        // Calculating the distance from the player
+        // Calculating the distance from the player 
+
         var distanceFromPlayer = client.clientObject ? client.clientObject.tile ? tileDistance2T(client.clientObject.tile, self) : null : null;
 
         delete colBoxes[self.id];
@@ -263,12 +266,8 @@ var Tile = (initObject) => {
 
 
         // Changing sprites if biome changed
-        if (((self.biome != self.lastBiome && !self.dead) || (self.lastBiome != 'dead' && self.dead)) && false) {
-            self.sprite = textureManager.getSprite('tiles', BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4)
-            self.resizedSprite = null;
-            textureManager.resizeSprite(self.sprite, self.hexRadius * 2, self.hexRadius * 2 / self.sprite.width * self.sprite.height, (result) => {
-                self.resizedSprite = result;
-            })
+        if (RESIZED_SPRITES && (self.biome != self.lastBiome && !self.dead) || (self.lastBiome != 'dead' && self.dead)) {
+            self.resizedSprite = RESIZED_SPRITES[BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4]
             if (self.dead) {
                 self.lastBiome = 'dead';
             } else {
@@ -1044,7 +1043,6 @@ var alertUi = AlertUi({
 });
 client.alertUi = alertUi;
 client.uiHandler.add(alertUi);
-
 //// HAND ////
 
 var HandUI = (initObject) => {
