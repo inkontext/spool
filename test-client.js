@@ -697,7 +697,7 @@ var MinimapUI = (initObject) => {
 
             var padding = 20;
 
-            var verOverhang = (self.height - 2*padding) / (2*self.layers - 1) / 4;
+            var verOverhang = (self.height - 2 * padding) / (2 * self.layers - 1) / 4;
             var horOverhang = verOverhang;
 
             var tileWidth = horOverhang * 4;
@@ -720,7 +720,6 @@ var MinimapUI = (initObject) => {
                         var player = client.handler.objects['PLAYER'][playerKey];
 
                         if (player && tile && client.clientObject) {
-                            console.log(tile.dead)
                             if (player.alive) {
                                 if (player.tile) {
                                     if (tile.tx == player.tile.tx && tile.ty == player.tile.ty) {

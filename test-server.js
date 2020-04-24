@@ -32,7 +32,7 @@ cards.forEach(card => {
 ////// GLOBAL CONSTANTS //////
 
 var TILE_WIDTH = 60;
-var WORLD_LAYERS = 8;
+var WORLD_LAYERS = 5;
 var BOX_SIZE = 2;
 
 var ROUNDS_PER_DROP = 3;
@@ -1144,7 +1144,10 @@ var Map = () => {
     }
 
     self.sendMinimap = (channel = server) => {
-        channel.emit('SET_MINIMAP_TILES',  {minimap: self.getMinimap(), layers: self.layers});
+        channel.emit('SET_MINIMAP_TILES', {
+            minimap: self.getMinimap(),
+            layers: self.layers
+        });
     }
 
     self.getMinimap = () => {
