@@ -1,9 +1,9 @@
 {
     "basic": {
         "stick": 2,
-        "slingshot": 2,
-        "stone": 10,
-        "nuts": 10,
+        "slingshot": 4,
+        "stone": 8,
+        "nuts": 8,
         "bullets": 10,
         "kitchen_knife": 2,
         "boomerang": 2,
@@ -11,6 +11,15 @@
         "telescope": 2,
         "rusty_blade": 2,
         "shovel": 4,
-        "building_clay": 4
+        "building_clay": 4,
+        "freezing_potion": 2,
+        "bam": 2,
+        "box": 5,
+        "dice_one": 8,
+        "dice_two": 2,
+        "dice_three": 1,
+        "crossbow": 2,
+        "ladder": 6,
+        "rope": 6
     }
 }

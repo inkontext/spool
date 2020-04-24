@@ -1,6 +1,6 @@
 ////// FUNCTIONS //////
 
-
+//// SERVER - CLIENT ////
 
 function tileDistance(ax, ay, bx, by) {
     return (Math.abs(bx - ax) + Math.abs(by - ay) + Math.abs(bx + by - ax - ay)) / 2
@@ -10,9 +10,9 @@ function tileDistance2T(a, b) {
     return tileDistance(a.tx, a.ty, b.tx, b.ty);
 }
 
-function movingPrice(tilea, tileb) {
+function movingPrice(tilea, tileb, playerMovingPrice = 0) {
     if (tilea.z !== undefined && tilea.leavingPrice !== undefined && tileb.z !== undefined && tileb.enteringPrice !== undefined) {
-        var res = Math.abs(tilea.z - tileb.z) + tilea.leavingPrice + tileb.enteringPrice;
+        var res = Math.abs(tilea.z - tileb.z) + tilea.leavingPrice + tileb.enteringPrice + playerMovingPrice;
         return res;
     } else {
         if (tilea.z === undefined || tilea.leavingPrice === undefined) {
@@ -25,6 +25,16 @@ function movingPrice(tilea, tileb) {
         return null;
     }
 }
+
+function getStat(player, name, delta = 0) {
+    if (['range', 'sight'].includes(name) && player) {
+        return player.stats[name] ? player.stats[name] + delta : delta;
+    } else {
+        return 0;
+    }
+}
+
+////// CLIENT //////
 
 function renderVialValue(ctx, color, value, maxValue, box, text = null) {
     SpoolRenderer.setColor(ctx, '#333333');
@@ -43,10 +53,10 @@ function renderVialValue(ctx, color, value, maxValue, box, text = null) {
     SpoolRenderer.multiLineText(ctx, text ? text : value.toString(), box, box.width, FONT_OFFSETCOEF, 3);
 }
 
-function getTileInPoint(x, y) {
+function getTileInPoint(x, y, cb = colBoxes) {
     var res = null;
-    Object.keys(colBoxes).forEach(key => {
-        var box = colBoxes[key];
+    Object.keys(cb).forEach(key => {
+        var box = cb[key];
         if (SpoolMath.distance(x, y, box.x, box.y) <= box.radius) {
             res = box.tile;
         }
@@ -57,17 +67,32 @@ function getTileInPoint(x, y) {
 ////// CLIENT //////
 
 var Z_SCALINGFACTOR_MAX = 10;
-var Z_SCALINGFACTOR_MIN = 3;
+var Z_SCALINGFACTOR_MIN = 2;
 var Z_SCALINGFACTOR = Z_SCALINGFACTOR_MAX;
 var Z_SCALINGENABLED = true;
 
 var colBoxes = {};
+var movingColBoxes = {};
 
 var client = null;
 
 var FONT = "'dpcomic'"
 var FONT_OFFSETCOEF = 0.2;
 
+var BUFFS = {
+    'freezing': {
+        textureId: 0,
+        tooltip: 'makes moving harder'
+    },
+    'burning': {
+        textureId: 1,
+        tooltip: 'deals 1 damage on the start of every turn'
+    },
+    'silence': {
+        textureId: 2,
+        tooltip: "You can't play cards (you can use your weapon)"
+    }
+}
 
 BIOME_COLORS = {
     'grass': '#a0d964',
@@ -134,14 +159,6 @@ var Tile = (initObject) => {
     self.update = (data) => {
         Object.assign(self, data);
     }
-    if (FIRST_TILE_INIT == true) {
-        var sprites = textureManager.getSprites('tiles')
-        textureManager.resizeSprites(sprites, self.hexRadius * 2, self.hexRadius * 2 / sprites[0].width * sprites[0].height, (sprites) => {
-            RESIZED_SPRITES = sprites;
-        })
-        FIRST_TILE_INIT = false
-    }
-
 
     self.render = (ctx, camera) => {
         // Calculating the distance from the player 
@@ -149,11 +166,14 @@ var Tile = (initObject) => {
         var distanceFromPlayer = client.clientObject ? client.clientObject.tile ? tileDistance2T(client.clientObject.tile, self) : null : null;
 
         delete colBoxes[self.id];
+        delete movingColBoxes[self.id];
 
         // Not rendering tile if not in sight (not secure)
 
+        var sight = getStat(client.clientObject, 'sight', 3)
+
         if (distanceFromPlayer) {
-            if (distanceFromPlayer > 4) {
+            if (distanceFromPlayer > sight) {
                 self.renderR = SpoolMath.lerp(self.renderR, self.hexRadius, 0)
                 return;
             }
@@ -172,12 +192,14 @@ var Tile = (initObject) => {
             }
         }
 
+
+
         // Calculating tile radius (small if on the border of sight)
 
         var r = self.hexRadius;
 
         if (distanceFromPlayer) {
-            if (distanceFromPlayer > 3) {
+            if (distanceFromPlayer > sight - 1) {
                 self.renderR = SpoolMath.lerp(self.renderR, self.hexRadius / 2, 0.2)
             } else {
                 self.renderR = SpoolMath.lerp(self.renderR, self.hexRadius, 0.2)
@@ -188,7 +210,7 @@ var Tile = (initObject) => {
 
         var r = self.renderR;
 
-        // Calculating the hexagons points 
+        // Calculating the hexagons points
 
         var startAngle = 0;
         var n = 6;
@@ -229,7 +251,7 @@ var Tile = (initObject) => {
         ctx.fillStyle = self.baseDark[2];
         ctx.fillRect(points[2].x, points[0].y, points[3].x - points[2].x, rectHeight)
 
-        // Calculating the upper centerp point 
+        // Calculating the upper centerp point
 
         colPoint = camera.transformPoint(self.x, self.y);
         colBox = {
@@ -253,7 +275,7 @@ var Tile = (initObject) => {
             }
         }
 
-        if (self.resizedSprite && Math.abs(self.renderR - self.hexRadius) < 2 && self.animationFrame == 0) {
+        if ((self.resizedSprite && Math.abs(self.renderR - self.hexRadius) < 2 && self.animationFrame == 0) && false) {
             var t_height = self.resizedSprite.height;
             ctx.drawImage(self.resizedSprite, colBox.x - self.resizedSprite.width / 2, colBox.y - self.resizedSprite.height / 2);
         } else {
@@ -261,8 +283,9 @@ var Tile = (initObject) => {
             var t_height = t_width / sprite.width * sprite.height;
             ctx.drawImage(sprite, colBox.x - t_width / 2, colBox.y - t_height / 2, t_width, t_height);
         }
+
         if (distanceFromPlayer) {
-            if (distanceFromPlayer > 3) {
+            if (distanceFromPlayer > sight - 1) {
                 return;
             }
         }
@@ -279,16 +302,30 @@ var Tile = (initObject) => {
             if (SELECTOR.activatedCard) {
 
                 var selectorId = null;
+                var selectorZOffset = 0;
 
-                if (distanceFromPlayer <= SELECTOR.activatedCard.range) {
+                if (distanceFromPlayer <= getStat(client.clientObject, 'range', SELECTOR.activatedCard.range)) {
                     selectorId = 0;
                 }
 
-                if (SELECTOR.selectedTx == self.tx && SELECTOR.selectedTy == self.ty) {
-                    if (selectorId != null) {
-                        selectorId = 1;
+
+                if (SELECTOR.selectedTx != null && SELECTOR.selectedTy != null) {
+                    var distanceFromAction = tileDistance(SELECTOR.selectedTx, SELECTOR.selectedTy, self.tx, self.ty)
+                }
+
+                if (distanceFromAction !== undefined) {
+
+                    if (SELECTOR.activatedCard.effectArea) {
+                        var area = SELECTOR.activatedCard.effectArea;
+                        if (area.type == 'radius') {
+                            if ((area.value.max !== undefined ? distanceFromAction <= area.value.max : true) && (area.value.min !== undefined ? distanceFromAction >= area.value.min : true)) {
+                                selectorId = SELECTOR.validPosition ? 1 : 2;
+                            }
+                        }
                     } else {
-                        selectorId = 2;
+                        if (distanceFromAction === 0) {
+                            selectorId = SELECTOR.validPosition ? 1 : 2;
+                        }
                     }
                 }
 
@@ -296,7 +333,7 @@ var Tile = (initObject) => {
                     var selectorWidth = t_width * 1 / 2;
                     var selectorHeight = t_height * 1 / 2;
                     var selectorZ = 10;
-                    ctx.drawImage(textureManager.getSprite('tileselector', selectorId * 4 + TILE_SELECTOR_INDEX), colBox.x - selectorWidth / 2, colBox.y - selectorHeight / 2 - selectorZ, selectorWidth, selectorHeight);
+                    ctx.drawImage(textureManager.getSprite('tileselector', selectorId * 4 + TILE_SELECTOR_INDEX), colBox.x - selectorWidth / 2, colBox.y - selectorHeight / 2 - selectorZ - selectorZOffset, selectorWidth, selectorHeight);
                 }
             }
         }
@@ -307,10 +344,11 @@ var Tile = (initObject) => {
                     SpoolRenderer.setFont(ctx, FONT, 25);
                     SpoolRenderer.setColor(ctx, 'white');
 
-                    var price = movingPrice(client.clientObject.tile, self);
+                    var price = movingPrice(client.clientObject.tile, self, client.clientObject.movingPrice);
 
                     ctx.strokeStyle = 'black';
                     SpoolRenderer.multiLineText(ctx, `${price}`, SpoolRect(colBox.x, colBox.y, 0, 0), 100, FONT_OFFSETCOEF, 3)
+                    movingColBoxes[self.id] = colBox;
                 }
             }
         }
@@ -376,7 +414,7 @@ var Player = (initObject) => {
                 SpoolRenderer.simpleText(ctx, `${self.name} ${self.hp}/${self.maxHp}`, tilex, nameY, 3)
             }
         }
-        // Counter 
+        // Counter
 
         if (self.animationCounter == self.animationTime) {
             if (self.texture) {
@@ -439,10 +477,15 @@ var OBJECTS = {
 }
 
 textureManager = TextureManager({
-    'card': {
+    'cards': {
         src: './textures/full_stack.png',
-        r: 3,
+        r: 5,
         c: 5,
+    },
+    'buffs': {
+        src: './textures/buffs.png',
+        r: 1,
+        c: 3,
     },
     'tiles': {
         src: './textures/tiles.png',
@@ -451,7 +494,7 @@ textureManager = TextureManager({
     },
     'tileselector': {
         src: './textures/tileselector.png',
-        r: 3,
+        r: 4,
         c: 4,
     },
     'boxes': {
@@ -491,6 +534,16 @@ textureManager = TextureManager({
     },
     'hotbarbg_sq': {
         src: './textures/hotbarbg_sq.png',
+        r: 1,
+        c: 2,
+    },
+    'cursors': {
+        src: './textures/cursors.png',
+        r: 1,
+        c: 3,
+    },
+    'pictograms': {
+        src: './textures/pictograms.png',
         r: 1,
         c: 2,
     }
@@ -617,6 +670,7 @@ var MinimapUI = (initObject) => {
         tiles: {},
         active: true,
         keys: null,
+        layers: null,
         ...initObject
     });
 
@@ -624,9 +678,10 @@ var MinimapUI = (initObject) => {
         return `[${x},${y}]`
     }
 
-    self.setTiles = (data) => {
-        self.tiles = data;
+    self.setMinimap = (data) => {
+        self.tiles = data.minimap;
         self.keys = Object.keys(self.tiles);
+        self.layers = data.layers;
     }
 
     self.render = (ctx) => {
@@ -634,15 +689,81 @@ var MinimapUI = (initObject) => {
 
 
         if (self.active && self.keys) {
+            // Draw background
             ctx.drawImage(textureManager.getSprite('hotbarbg_sq', 0), self.x, self.y, self.width, self.height);
+
+            var middleX = self.x + 0.5 * self.width;
+            var middleY = self.y + 0.5 * self.height;
+
+            var padding = 20;
+
+            var verOverhang = (self.height - 2*padding) / (2*self.layers - 1) / 4;
+            var horOverhang = verOverhang;
+
+            var tileWidth = horOverhang * 4;
+            var tileHeight = verOverhang * 4;
+            var xDif = horOverhang * 3;
+
+            var clientColor = "#00FFFF";
+            var enemyColor = "#FF0000";
 
             self.keys.forEach(key => {
                 var tile = self.tiles[key];
-                ctx.fillStyle = BIOME_COLORS[tile.biome];
+                var color;
+                var isPlayer = false;
+                var isClient = false;
 
-                var pixelSize = 5;
 
-                ctx.fillRect(self.x + 100 + tile.tx * pixelSize, self.y + 100 + tile.ty * pixelSize, pixelSize, pixelSize);
+                try {
+                    // Decide if enemy or client is on tile
+                    for (playerKey in client.handler.objects['PLAYER']) {
+                        var player = client.handler.objects['PLAYER'][playerKey];
+
+                        if (player && tile && client.clientObject) {
+                            console.log(tile.dead)
+                            if (player.alive) {
+                                if (player.tile) {
+                                    if (tile.tx == player.tile.tx && tile.ty == player.tile.ty) {
+                                        isPlayer = true;
+
+                                        if (tile.tx == client.clientObject.tile.tx && tile.ty == client.clientObject.tile.ty) {
+                                            isClient = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (err) {
+                    // pass
+                }
+                // Choose color of tile based on its inhabitant/s and deadness
+                if (isPlayer) {
+                    if (isClient) {
+                        ctx.fillStyle = clientColor;
+                    } else {
+                        ctx.fillStyle = enemyColor;
+                    }
+                } else {
+                    if (!tile.dead) {
+                        ctx.fillStyle = BIOME_COLORS[tile.biome];
+                    } else {
+                        ctx.fillStyle = BIOME_COLORS['dead'];
+                    }
+                }
+                // Calculate coors
+                var x = middleX + tile.tx * xDif;
+                var y = middleY + (-tile.ty) * tileHeight - 0.5 * tileHeight * tile.tx;
+
+                var verRectX = x - (horOverhang);
+                var verRectY = y - (verOverhang * 2);
+                var horRectX = x - (horOverhang * 2);
+                var horRectY = y - (verOverhang);
+
+                // Draw the cross
+                ctx.fillRect(verRectX, verRectY, horOverhang * 2, tileHeight);
+                ctx.fillRect(horRectX, horRectY, tileWidth, verOverhang * 2);
+
             })
         }
     }
@@ -700,8 +821,8 @@ var DiceUI = (initObject) => {
 
         if (client.queueUi.currentPlayerId != undefined) {
             if (client.queueUi.currentPlayerId == client.clientId && (Date.now() - self.rollTime < 1000 || self.rolling)) {
-                targetX = client.gameArea.width / 2;
-                targetY = client.gameArea.height / 2;
+                targetX = self.focusX;
+                targetY = self.focusY;
                 targetSize = self.diceSize * 2;
             }
         }
@@ -715,7 +836,9 @@ var DiceUI = (initObject) => {
 
 var diceUi = DiceUI({
     x: minimapUi.x + minimapUi.width / 2,
-    y: minimapUi.y + minimapUi.height + 75
+    y: minimapUi.y + minimapUi.height + 75,
+    focusX: client.gameArea.width / 2,
+    focusY: client.gameArea.height / 2 + 300
 })
 client.diceUi = diceUi;
 
@@ -845,8 +968,15 @@ client.queueUi = queueUi;
 var AlertUi = (initObject) => {
     var self = SpoolUIElement({
         alerts: [],
+        bigAlert: '',
+        bigAlertTime: null,
         ...initObject
     });
+
+    self.setBigAlert = (msg) => {
+        self.bigAlertTime = Date.now();
+        self.bigAlert = msg;
+    }
 
     self.pushAlert = (msg) => {
         self.alerts.push(msg);
@@ -856,6 +986,8 @@ var AlertUi = (initObject) => {
         self.awake = true;
         self.endTime = Date.now() + 2000;
     }
+
+    self.bigAlertRect = SpoolRect(0, client.gameArea.height / 2 - 200, client.gameArea.width, 150);
 
     self.render = (ctx) => {
 
@@ -877,8 +1009,25 @@ var AlertUi = (initObject) => {
                 SpoolRenderer.setFont(ctx, FONT, 20);
                 SpoolRenderer.multiLineText(ctx, value, rect, rect.width, FONT_OFFSETCOEF);
             })
+
+
             if (Date.now() > self.endTime) {
                 self.awake = false;
+            }
+        }
+
+        if (self.bigAlertTime != null) {
+            if (Date.now() - self.bigAlertTime < 2000) {
+                ctx.globalAlpha = 0.8;
+                SpoolRenderer.setColor(ctx, 'black');
+                SpoolRenderer.fillSplRect(ctx, self.bigAlertRect);
+                ctx.globalAlpha = 1;
+
+                SpoolRenderer.setFont(ctx, FONT, 75);
+                SpoolRenderer.setColor(ctx, '#963427');
+                SpoolRenderer.multiLineText(ctx, self.bigAlert, self.bigAlertRect, client.gameArea.width / 2, FONT_OFFSETCOEF, 5)
+            } else {
+                self.bigAlertTime = null;
             }
         }
     }
@@ -921,8 +1070,8 @@ var HandUI = (initObject) => {
         yOffsetMin: -50,
         yOffset: -100,
 
-        cardWidth: 154,
-        hardHeight: 285,
+        cardWidth: 204 * initObject.cardFactor,
+        hardHeight: 380 * initObject.cardFactor,
 
         hidden: false,
 
@@ -932,6 +1081,8 @@ var HandUI = (initObject) => {
         openedWidth: 600,
         closedWidth: 300,
         handWidth: 600,
+
+        handActive: true,
 
         ...initObject
     })
@@ -949,6 +1100,7 @@ var HandUI = (initObject) => {
 
         self.delayedMx = SpoolMath.lerp(self.delayedMx, self.mx, 0.15);
         self.delayedMy = SpoolMath.lerp(self.delayedMy, self.my, 0.15);
+
         if (self.handType == 'card') {
             self.cards = client.clientObject.hand;
         } else if (self.handType == 'weapon') {
@@ -973,10 +1125,12 @@ var HandUI = (initObject) => {
             }
         }
 
-        if (self.activatedCard || self.hidden) {
+        if (SELECTOR.activatedCard || self.hidden) {
+            self.handActive = false;
             self.yOffset = SpoolMath.lerp(self.yOffset, self.yOffsetMax, 0.2);
             self.handWidth = SpoolMath.lerp(self.handWidth, self.closedWidth, 0.2);
         } else {
+            self.handActive = true;
             self.yOffset = SpoolMath.lerp(self.yOffset, self.yOffsetMin, 0.2);
             self.handWidth = SpoolMath.lerp(self.handWidth, self.openedWidth, 0.2);
         }
@@ -1053,13 +1207,19 @@ var HandUI = (initObject) => {
             var cardid = self.cards[i];
             var card = client.clientObject.cardInfo[cardid];
 
-            var sprite = textureManager.getSprite('card', card.cardTileIndex);
+            if (!card) {
+                console.log('@handUI problem with card: ' + cardid);
+            }
 
-            var angle = (self.mx - self.delayedMx) / 100;
-            angle = angle > Math.PI / 2 ? Math.PI / 2 : angle < -Math.PI / 2 ? -Math.PI / 2 : angle;
+            var sprite = textureManager.getSprite('cards', card.cardTileIndex);
+
+
 
 
             if (i == self.activatedIndex) {
+                var angle = (self.mx - self.delayedMx) / 100;
+                angle = angle > Math.PI / 2 ? (Math.PI / 2) : (angle < -Math.PI / 2 ? -Math.PI / 2 : angle);
+
                 SpoolRenderer.renderRotatedSprite(ctx, sprite, angle, self.mx, self.my - 10, {
                     x: bounds.x / 2,
                     y: bounds.y / 2,
@@ -1067,7 +1227,7 @@ var HandUI = (initObject) => {
                     height: bounds.height / 2
                 });
             } else {
-                if (colOn != undefined && i == colOn) {
+                if (colOn != undefined && i == colOn && self.handActive) {
                     var lerpX = Math.sin(self.cardsPar[2 + i * 3]) * bounds.height / 1.2
                     var lerpY = Math.cos(self.cardsPar[2 + i * 3]) * bounds.height / 1.2
                     SpoolRenderer.renderRotatedSprite(ctx, sprite, self.cardsPar[2 + i * 3], self.cardsPar[0 + i * 3] - self.animStart * lerpX, self.cardsPar[1 + i * 3] - self.animStart * lerpY, bounds)
@@ -1157,6 +1317,7 @@ var HandUI = (initObject) => {
                 self.selectedTy = res.ty;
                 SELECTOR.selectedTx = self.selectedTx;
                 SELECTOR.selectedTy = self.selectedTy;
+                SELECTOR.validPosition = tileDistance(self.selectedTx, self.selectedTy, client.clientObject.tile.tx, client.clientObject.tile.ty) <= getStat(client.clientObject, 'range', self.activatedCard.range);
                 selection = true;
             }
         }
@@ -1166,21 +1327,29 @@ var HandUI = (initObject) => {
             self.selectedTy = null;
             SELECTOR.selectedTx = self.selectedTx;
             SELECTOR.selectedTy = self.selectedTy;
+            SELECTOR.validPosition = false;
         }
     }
 
     return self
 }
+
+CARD_FACTOR = 0.7;
+
 var handUi = HandUI({
     x: client.gameArea.width / 2,
-    y: client.gameArea.height
+    y: client.gameArea.height,
+    openedWidth: 500,
+    closedWidth: 300,
+    cardFactor: CARD_FACTOR,
 })
 client.handUi = handUi
 
 var weaponHandUi = HandUI({
-    x: client.gameArea.width - 200,
+    x: client.gameArea.width - 300,
     y: client.gameArea.height,
     handType: 'weapon',
+    cardFactor: CARD_FACTOR,
 })
 client.weaponHandUi = weaponHandUi
 
@@ -1188,7 +1357,8 @@ var equipHandUi = HandUI({
     x: client.gameArea.width - 100,
     y: client.gameArea.height,
     handType: 'equip',
-    playable: false
+    playable: false,
+    cardFactor: CARD_FACTOR,
 })
 client.equipHandUi = equipHandUi
 
@@ -1212,18 +1382,30 @@ var DamageFloatersUI = (initObject) => {
             point.y -= Z_SCALINGFACTOR * floater.z + floater.frameCounter * 5;
 
             ctx.globalAlpha = 1 - floater.frameCounter / 30;
-            console.log(ctx.globalAlpha);
 
             SpoolRenderer.setFont(ctx, FONT, 25);
             ctx.strokeStyle = 'black';
             ctx.lineWidth = 4;
             ctx.strokeText(floater.dmg, point.x, point.y);
+
+            if (floater.type == 'hp') {
+                if (floater.dmg < 0) {
+                    ctx.fillStyle = 'red';
+                } else {
+                    ctx.fillStyle = 'green';
+                }
+            } else if (floater.type == 'energy') {
+                if (floater.dmg < 0) {
+                    ctx.fillStyle = 'blue';
+                }
+            } else {
+                ctx.fillStyle = 'white';
+            }
+
             ctx.fillText(floater.dmg, point.x, point.y);
             ctx.globalAlpha = 1;
 
             floater.frameCounter += 1;
-
-            console.log(floater.frameCounter);
 
             if (floater.frameCounter > 30) {
                 if (index > cuttingIndex) {
@@ -1272,6 +1454,11 @@ var PlayerInformationUI = (initObject) => {
     var textX = 53 / 106 * self.width + self.x;
     var textY = 207 / 228 * self.height + self.y;
 
+    var buffsWidth = 34 / 106 * self.width / 4 * 3
+
+    var buffsX = 84 / 106 * self.width + self.x;
+    var buffsY = 184 / 228 * self.height + self.y;
+
     var hpVial = VialButton({
         title: 'Health',
         color: 'red',
@@ -1292,7 +1479,6 @@ var PlayerInformationUI = (initObject) => {
     })
     self.add(ammoVial);
 
-    ``
     self.render = (ctx) => {
         if (client.clientObject) {
             ctx.imageSmoothingEnabled = false;
@@ -1330,7 +1516,7 @@ var PlayerInformationUI = (initObject) => {
                 var text = ''
 
                 Object.keys(client.clientObject.stats).forEach((key, index) => {
-                    text += `${key}: ${client.clientObject.stats[key]}`
+                    text += `${key}: ${client.clientObject.stats[key] > 0 ? '+' : '-'}${client.clientObject.stats[key]}`
                     if (index < client.clientObject.stats.length - 1) {
                         text += '\n'
                     }
@@ -1339,6 +1525,21 @@ var PlayerInformationUI = (initObject) => {
                 SpoolRenderer.setFont(ctx, FONT, 20);
                 SpoolRenderer.multiLineText(ctx, text, infoBox, infoBox.width, FONT_OFFSETCOEF, 3);
             }
+
+            client.clientObject.buffs.forEach((buff, index) => {
+
+                var buffJson = BUFFS[buff.name];
+                var buffRect = SpoolRect(buffsX - buffsWidth / 2, buffsY - (buffsWidth + 10) * (index + 1), buffsWidth, buffsWidth);
+
+
+                ctx.drawImage(textureManager.getSprite('buffs', buffJson.textureId), buffRect.x, buffRect.y, buffRect.width, buffRect.height);
+                SpoolRenderer.simpleText(ctx, buff.duration, buffRect.x + buffRect.width, buffRect.y + buffRect.height, 5)
+
+                if (buffRect.contains(self.mx, self.my)) {
+                    SpoolRenderer.multiLineText(ctx, buffJson.tooltip, SpoolRect(self.mx + 100, self.my, 0, 0), 200, FONT_OFFSETCOEF, 10);
+                }
+
+            })
         }
     }
 
@@ -1442,11 +1643,15 @@ textureManager.onLoad = () => {
     })
 
     client.socket.on('ALERT', (data) => {
-        client.alertUi.pushAlert(data.msg);
+        if (data.bigAlert) {
+            client.alertUi.setBigAlert(data.msg);
+        } else {
+            client.alertUi.pushAlert(data.msg);
+        }
     });
 
     client.socket.on('SET_MINIMAP_TILES', (data) => {
-        client.minimapUi.setTiles(data);
+        client.minimapUi.setMinimap(data);
     })
 
     client.uiHandler.add(diceUi);
@@ -1466,5 +1671,49 @@ textureManager.onLoad = () => {
 
     client.startGameLoop()
 }
+
+var g_cursorId = 0;
+
+client.onMouseMove = (event) => {
+    client.mx = event.clientX;
+    client.my = event.clientY;
+
+    if (!SELECTOR.activatedCard) {
+        var tile = getTileInPoint(client.mx, client.my, movingColBoxes);
+        if (tile && g_cursorId != 1) {
+            client.gameArea.canvas.style.cursor = 'url("./textures/cursor_moving.png") 0 0, auto';
+            g_cursorId = 1;
+        } else if (!tile && g_cursorId != 0) {
+            client.gameArea.canvas.style.cursor = 'url("./textures/cursor.png") 0 0, auto';
+            g_cursorId = 0;
+        }
+    } else if (g_cursorId != 2) {
+        client.gameArea.canvas.style.cursor = 'url("./textures/cursor_attack.png") 0 0, auto';
+        g_cursorId = 2;
+
+    }
+}
+
+var F_PRESSED = false;
+
+client.postUi = (ctx, camera) => {
+
+    var pictX = minimapUi.x - 100
+    var pictY = minimapUi.y;
+    ctx.drawImage(textureManager.getSprite('pictograms', Z_SCALINGENABLED ? 0 : 1), pictX, pictY, 48, 48);
+    if (!F_PRESSED) {
+        SpoolRenderer.setFont(ctx, FONT, 20);
+        SpoolRenderer.setColor(ctx, 'black');
+        ctx.textAlign = 'center';
+        SpoolRenderer.simpleText(ctx, 'press F', pictX + 24, pictY + 64, 0);
+
+        if (!Z_SCALINGENABLED) {
+            F_PRESSED = true;
+        }
+    }
+
+}
+
+client.gameArea.canvas.style.cursor = 'url("./textures/cursor.png") 0 0, auto';
 
 textureManager.load()

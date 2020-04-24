@@ -32,12 +32,14 @@ cards.forEach(card => {
 ////// GLOBAL CONSTANTS //////
 
 var TILE_WIDTH = 60;
-var WORLD_LAYERS = 5;
+var WORLD_LAYERS = 8;
 var BOX_SIZE = 2;
 
 var ROUNDS_PER_DROP = 3;
 
 var WORLD_CLIFFSNUMBER = 1;
+
+var MAX_CARDS_IN_FIELD = 48;
 
 var CHARACTERS = [
     'Bob',
@@ -50,7 +52,7 @@ var CHARACTERS = [
 
 ////// FUNCTIONS //////
 
-//// TILES ////
+//// SERVER - CLIENT ////
 
 function tileDistance(ax, ay, bx, by) {
     return (Math.abs(bx - ax) + Math.abs(by - ay) + Math.abs(bx + by - ax - ay)) / 2
@@ -60,16 +62,9 @@ function tileDistance2T(a, b) {
     return tileDistance(a.tx, a.ty, b.tx, b.ty);
 }
 
-function transformTileCoordToRealCord(x, y) {
-    return {
-        x: x * TILE_WIDTH * 3 / 2,
-        y: y * TILE_WIDTH * 2 * Math.sin(Math.PI / 3) + x * TILE_WIDTH * Math.sin(Math.PI / 3)
-    }
-}
-
-function movingPrice(tilea, tileb) {
+function movingPrice(tilea, tileb, playerMovingPrice = 0) {
     if (tilea.z !== undefined && tilea.leavingPrice !== undefined && tileb.z !== undefined && tileb.enteringPrice !== undefined) {
-        var res = Math.abs(tilea.z - tileb.z) + tilea.leavingPrice + tileb.enteringPrice;
+        var res = Math.abs(tilea.z - tileb.z) + tilea.leavingPrice + tileb.enteringPrice + playerMovingPrice;
         return res;
     } else {
         if (tilea.z === undefined || tilea.leavingPrice === undefined) {
@@ -83,19 +78,41 @@ function movingPrice(tilea, tileb) {
     }
 }
 
+function getStat(player, name, delta = 0) {
+    if (['range', 'sight'].includes(name)) {
+        return player.stats[name] ? player.stats[name] + delta : delta;
+    } else {
+        return 0;
+    }
+}
+
+//// SERVER ////
+
+function transformTileCoordToRealCord(x, y) {
+    return {
+        x: x * TILE_WIDTH * 3 / 2,
+        y: y * TILE_WIDTH * 2 * Math.sin(Math.PI / 3) + x * TILE_WIDTH * Math.sin(Math.PI / 3)
+    }
+}
+
 //// ALERTING ////
 
-function alertClient(socket, message) {
-    socket.emit('ALERT', {
-        msg: message
-    })
+function alertClient(socket, message, bigAlert = false) {
+    if (socket) {
+        socket.emit('ALERT', {
+            msg: message,
+            bigAlert: bigAlert
+        })
+    } else {
+        console.error("@alertClient: invalid socket", socket)
+    }
 }
 
 ////// SETTING UP SERVER //////
 
 var server = Server({
     port: 4000,
-    TPS: 55,
+    TPS: 64,
     chunkSize: 300
 }, ['/', '/textures'])
 
@@ -103,9 +120,60 @@ var DAMAGEFLOATERS = [];
 
 ////// OBJECTS //////
 
+var Buff = (name, duration) => {
+    var self = {
+        name: name,
+        duration: duration,
+        onActive: null,
+        onRemoved: null,
+    }
+
+    switch (name) {
+        case 'freezing':
+            self.onActive = (player) => {
+                player.movingPrice = 5;
+            }
+            self.onRemoved = (player) => {
+                player.movingPrice = 0;
+            }
+            break;
+        case 'burning':
+            self.onActive = (player) => {
+                player.deltaValue('hp', -1);
+            }
+            self.onRemoved = (player) => {}
+            break;
+        case 'silence':
+            self.onActive = (player) => {
+                player.silence = true;
+            }
+            self.onRemoved = (player) => {
+                player.silence = false;
+            }
+            break;
+        default:
+            self.onActive = (player) => {}
+            self.onRemoved = (player) => {}
+            console.error('@Buff: Unknown buff');
+    }
+
+    self.end = (player) => {
+        if (self.duration == 0) {
+            if (self.onRemoved) {
+                self.onRemoved(player);
+            }
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    return self;
+}
+
 var Player = (initObject = {}) => {
     var self = Entity({
-        ...initObject
+        ...initObject,
     });
 
     var superSelf = {
@@ -116,6 +184,8 @@ var Player = (initObject = {}) => {
     self.objectType = 'PLAYER';
     self.width = 42;
     self.height = 78;
+
+    self.buffs = [];
 
     self.sendUpdatePackageAlways = true;
     self.name = 'Anonymous'
@@ -141,8 +211,10 @@ var Player = (initObject = {}) => {
                 weapon: null,
                 trinkets: []
             },
+            movingPrice: 0,
             stats: {},
-
+            buffs: [],
+            playing: false,
             ...defs
         })
     }
@@ -151,10 +223,10 @@ var Player = (initObject = {}) => {
 
     //// MOVING ////
 
-    self.moveTo = (tx, ty, hard = false) => {
+    self.moveTo = (tx, ty, free = false) => {
         var temp = MAP.getTile(tx, ty);
-        var price = movingPrice(self.tile, temp);
-        if (self.energy >= price || hard) {
+        var price = movingPrice(self.tile, temp, self.movingPrice);
+        if (self.energy >= price || free) {
             tile = MAP.move(self, tx, ty);
             tile.objects.forEach(value => {
                 var temp = server.handler.objectsById[value]
@@ -166,7 +238,9 @@ var Player = (initObject = {}) => {
                     console.log('ID', value, 'is in the tile, but not in handler');
                 }
             });
-            self.energy -= price
+            if (!free) {
+                self.energy -= price
+            }
             return null;
         } else {
             return `You don't have enough energy ${self.energy} / ${price}`;
@@ -187,6 +261,7 @@ var Player = (initObject = {}) => {
     self.initPack = () => {
         return {
             ...superSelf.initPack(),
+            buffs: self.buffs,
             cardInfo: CARDS
         }
     }
@@ -205,6 +280,8 @@ var Player = (initObject = {}) => {
 
             equip: self.equip,
             stats: self.stats,
+
+            movingPrice: self.movingPrice,
 
             tile: self.tile ? {
                 tx: self.tile.tx,
@@ -250,12 +327,14 @@ var Player = (initObject = {}) => {
         if (self.onDeath) {
             self.onDeath();
         }
+
+        alertClient(server.socketList[self.id], "You died", true);
     }
 
     //// CARDS ////
 
     self.give = (cards) => {
-        self.hand = self.hand.concat(cards);
+        self.hand = self.hand.concat(cards).sort();
     }
 
     self.recalcEquip = () => {
@@ -286,9 +365,12 @@ var Player = (initObject = {}) => {
     }
 
     self.playCard = (tile, cardid) => {
-
         if (!self.alive) {
             return "You are dead"
+        }
+
+        if (self.silence) {
+            return "You are silenced"
         }
 
         if (self.hand.includes(cardid)) {
@@ -297,10 +379,14 @@ var Player = (initObject = {}) => {
 
             if (index != -1) {
                 if (self.energy >= card.cost) {
-                    var deltaEnergy = -card.cost;
 
-                    if (tileDistance2T(self, tile) <= card.range) {
-                        // WEAPONS 
+                    var deltaEnergy = -card.cost;
+                    var removeFromHand = true;
+                    var addToDeck = true;
+                    var removeEnergy = true;
+
+                    if (tileDistance2T(self, tile) <= getStat(self, 'range', card.range)) {
+                        // WEAPONS
                         if (card.type == 'weapon') {
 
                             if (self.equip.weapon) {
@@ -309,24 +395,26 @@ var Player = (initObject = {}) => {
 
                             self.equip.weapon = card;
                             self.recalcEquip();
+                            addToDeck = false;
                         }
                         if (card.type == 'trinket') {
                             self.equip.trinkets.push(card);
                             self.recalcEquip();
+                            addToDeck = false;
                         }
 
-                        // SPELLS 
-                        // SPECIAL 
+                        // SPELLS
+                        // SPECIAL
 
                         if (card.type == 'spell' || card.type == 'special') {
                             if (card.action) {
-                                // Add 
+                                // Add
                                 if (card.action.add) {
                                     Object.keys(card.action.add).forEach(element => {
                                         self.deltaValue(element, card.action.add[element]);
                                     });
                                 }
-                                // Remove 
+                                // Remove
                                 if (card.action.removes) {
                                     Object.keys(card.action.removes).forEach(element => {
                                         self.deltaValue(element, card.action.removes[element]);
@@ -334,34 +422,103 @@ var Player = (initObject = {}) => {
                                 }
                                 // Special
                                 if (card.action.actionString) {
-                                    var words = card.action.actionString.split(' ');
+                                    var strings = card.action.actionString.split(';');
+                                    strings.forEach(string => {
 
-                                    if (words[0] == 'splashdmg') {
-                                        var dmg = parseInt(words[1]);
-                                        var range = parseInt(words[2]);
-                                        MAP.getTilesInRadius(tile.tx, tile.ty, range).forEach(tile => {
-                                            tile.dealDamage(dmg, self);
-                                        });
-                                    }
-                                    if (words[0] == 'rise') {
-                                        var h = parseInt(words[1]);
-                                        var minRange = parseInt(words[2]);
-                                        var maxRange = parseInt(words[3]);
+                                        var words = string.trim().split(' ');
 
-                                        MAP.getTilesInRadius(tile.tx, tile.ty, maxRange, minRange).forEach(tile => {
-                                            tile.z += h
-                                        });
-                                    }
+                                        switch (words[0]) {
+                                            case 'splashdmg':
+                                                var dmg = parseInt(words[1]);
+                                                var range = parseInt(words[2]);
+                                                MAP.getTilesInRadius(tile.tx, tile.ty, range).forEach(tile => {
+                                                    tile.dealDamage(dmg, self);
+                                                });
+                                                break;
+                                            case 'rise':
+                                                var h = parseInt(words[1]);
+                                                var minRange = parseInt(words[2]);
+                                                var maxRange = parseInt(words[3]);
+
+                                                MAP.getTilesInRadius(tile.tx, tile.ty, maxRange, minRange).forEach(tile => {
+                                                    tile.z += h
+                                                });
+                                                break;
+                                            case 'buff':
+                                                var buff = words[1];
+                                                var duration = parseInt(words[2]);
+                                                var minRange = parseInt(words[3]);
+                                                var maxRange = parseInt(words[4]);
+
+                                                MAP.getTilesInRadius(tile.tx, tile.ty, maxRange, minRange).forEach(tile => {
+                                                    tile.addBuff(Buff(buff, duration));
+                                                });
+                                                break;
+                                            case 'dice':
+                                                var res = 0;
+                                                var rolls = "";
+                                                var number = parseInt(words[1]);
+
+                                                for (var i = 0; i < number; i++) {
+                                                    var val = SpoolMath.randomInt(1, 6);
+                                                    res += val;
+                                                    rolls += val.toString();
+                                                    if (i < number - 1) {
+                                                        rolls += ' ';
+                                                    }
+                                                }
+
+                                                self.deltaValue('energy', res + deltaEnergy);
+                                                removeEnergy = false;
+                                                alertClient(server, `${self.name} rolled: ${rolls}`);
+                                                break;
+                                            case 'cards':
+                                                var amount = parseInt(words[1]);
+                                                if (DECK.stock.length >= amount) {
+                                                    var temp = DECK.getFirstCards(amount);
+                                                    self.give(temp);
+                                                } else {
+                                                    return "There aren't enough cards in the deck."
+                                                }
+                                                break;
+                                            case 'ladder':
+                                                var distance = tileDistance2T(tile, self);
+                                                if (tile.z <= self.tile.z) {
+                                                    return "You can't use ladder to go down"
+                                                }
+                                                if (distance == 1) {
+                                                    self.moveTo(tile.tx, tile.ty, true);
+                                                }
+                                                break;
+                                                f
+                                            case 'rope':
+                                                var distance = tileDistance2T(tile, self);
+                                                if (tile.z >= self.tile.z) {
+                                                    return "You can't use ladder to go up"
+                                                }
+                                                if (distance == 1) {
+                                                    self.moveTo(tile.tx, tile.ty, true);
+                                                }
+                                        }
+                                    })
                                 }
                             } else {
-                                console.log('Every spell card needs an action');
+                                console.error('Every spell card needs an action');
                                 return "Error while playing card"
                             }
                         }
 
-                        self.hand.splice(index, 1);
-                        self.deltaValue('energy', deltaEnergy);
-                        DECK.addCard(cardid);
+                        if (removeFromHand) {
+                            self.hand.splice(index, 1);
+                        }
+
+                        if (removeEnergy) {
+                            self.deltaValue('energy', deltaEnergy);
+                        }
+
+                        if (addToDeck) {
+                            DECK.addCard(cardid);
+                        }
                     } else {
                         return "That tile is not in the range of the card"
                     }
@@ -382,9 +539,11 @@ var Player = (initObject = {}) => {
 
         var weapon = self.equip.weapon;
         if (weapon) {
-            if (weapon.dmg) {
-                console.log(weapon.ammoConsuption)
+            if (tileDistance2T(self, tile) > getStat(self, 'range', weapon.range)) {
+                return "That tile is too far away"
+            }
 
+            if (weapon.dmg) {
                 var ammoDelta = null;
                 var energyDelta = null;
 
@@ -439,11 +598,25 @@ var Player = (initObject = {}) => {
             max = self.maxHp;
             min = 0;
             minAction = self.die
+            DAMAGEFLOATERS.push({
+                x: self.x,
+                y: self.y,
+                z: self.z,
+                dmg: value,
+                type: 'hp'
+            });
         }
 
         if (type == 'energy') {
             max = self.maxEnergy;
             min = 0;
+            DAMAGEFLOATERS.push({
+                x: self.x,
+                y: self.y,
+                z: self.z,
+                dmg: value,
+                type: 'energy'
+            });
         }
 
         if (type == 'ammo') {
@@ -464,6 +637,38 @@ var Player = (initObject = {}) => {
                 minAction();
             }
         }
+    }
+
+    //// ROUNDS ////
+
+    self.yourRound = () => {
+        self.playing = true;
+        self.buffs.forEach(buff => {
+            buff.onActive(self);
+            buff.duration -= 1;
+        })
+        self.setAsyncUpdateValue('buffs', self.buffs);
+        alertClient(server.socketList[self.id], "Your round", true);
+    }
+
+    self.yourRoundEnd = () => {
+        self.buffs = self.buffs.filter(value => !value.end(self));
+        self.setAsyncUpdateValue('buffs', self.buffs);
+        self.playing = false;
+    }
+
+    self.onNewRound = (round) => {
+
+    }
+
+    self.addBuff = (buff) => {
+        if (self.playing) {
+            buff.onActive(self);
+            buff.duration -= 1;
+        }
+
+        self.buffs.push(buff);
+        self.setAsyncUpdateValue('buffs', self.buffs);
     }
 
     return self;
@@ -617,8 +822,6 @@ var Tile = (initObject) => {
                 if (temp.objectType == objectType) {
                     return true;
                 }
-            } else {
-                console.log(obj);
             }
         })
         return false;
@@ -644,6 +847,19 @@ var Tile = (initObject) => {
             z: self.z,
             dmg: damage
         });
+    }
+
+    self.addBuff = (buff, player) => {
+        self.objects.forEach(id => {
+            var temp = server.handler.objectsById[id];
+            if (temp) {
+                if (player ? temp.id != player.id : true) {
+                    if (temp.addBuff) {
+                        temp.addBuff(buff)
+                    }
+                }
+            }
+        })
     }
 
 
@@ -789,7 +1005,7 @@ var Map = () => {
      * Get's all the tiles in said radius from said tile and returns it as a array
      * @param {int} tx
      * @param {int} ty
-     * @returns returns array of all the tiles in said radius 
+     * @returns returns array of all the tiles in said radius
      */
     self.getTilesInRadius = (tx, ty, r, minR = null) => {
         r += 1;
@@ -928,7 +1144,7 @@ var Map = () => {
     }
 
     self.sendMinimap = (channel = server) => {
-        channel.emit('SET_MINIMAP_TILES', self.getMinimap());
+        channel.emit('SET_MINIMAP_TILES',  {minimap: self.getMinimap(), layers: self.layers});
     }
 
     self.getMinimap = () => {
@@ -939,7 +1155,8 @@ var Map = () => {
                 biome: self.tiles[key].biome,
                 z: self.tiles[key].z,
                 tx: self.tiles[key].tx,
-                ty: self.tiles[key].ty
+                ty: self.tiles[key].ty,
+                dead: self.tiles[key].dead
             };
         })
 
@@ -982,7 +1199,7 @@ var Map = () => {
         })
     }
 
-    //// SPAWNING FEATURES //// 
+    //// SPAWNING FEATURES ////
 
     self.getNRandomTiles = (n) => {
         var temp = [...self.possibleCoords.map(value => getTile(value[0], value[1]))];
@@ -1105,6 +1322,7 @@ var Map = () => {
             }
         })
         self.currentRadius -= 1;
+        self.sendMinimap()
     }
 
     //// STARTING POSITIONS ////
@@ -1180,7 +1398,6 @@ var PlayerQueue = () => {
         if (self.position >= self.queue.length) {
             self.position = 0;
             if (self.onNewRound) {
-
                 self.onNewRound()
             }
         }
@@ -1252,6 +1469,7 @@ var PlayerQueue = () => {
 var Deck = () => {
     var self = {
         stock: [],
+        deckSize: 0,
         deckPreset: null,
         playerCards: [],
         onDeckChanged: () => {}
@@ -1274,6 +1492,7 @@ var Deck = () => {
 
         self.deckPreset = preset;
         self.stock = deck;
+        self.deckSize = self.stock.length;
     }
 
     self.addCard = (cardid) => {
@@ -1327,6 +1546,7 @@ var GameStep = (playerQueue, deck) => {
     self.finishStep = (id) => {
         if (id == self.currentPlayer.id && self.partOfStep == 1) {
             delete self.currentTimer;
+            self.currentPlayer.yourRoundEnd();
             self.nextPlayer();
         }
     }
@@ -1356,7 +1576,9 @@ var GameStep = (playerQueue, deck) => {
                         self.partOfStep = 1;
                         delete currentTimer;
 
-                        self.currentTimer = SpoolTimer(60000, () => {
+                        self.currentPlayer.yourRound();
+
+                        self.currentTimer = SpoolTimer(20000 + 5000 * self.roundNumber, () => {
                             self.finishStep(self.currentPlayer.id);
                         })
                         self.sendTimer()
@@ -1389,10 +1611,7 @@ var GameStep = (playerQueue, deck) => {
         if (playerQueue.players.length == 1) {
             console.log('There is only one player thus he won?')
 
-            server.emit('ALERT', {
-                msg: 'Player ' +
-                    playerQueue.players[0].name + ' remained last'
-            });
+            alertClient(server, `Player ${playerQueue.players[0].name} remained last`, true)
 
             setTimeout(() => {
                 self.end();
@@ -1407,6 +1626,10 @@ var GameStep = (playerQueue, deck) => {
     self.onNewRound = () => {
         self.roundNumber += 1;
 
+        playerQueue.players.forEach(player => {
+            player.onNewRound(self.roundNumber);
+        })
+
         playerQueue.sendQue();
 
         if (self.roundNumber % ROUNDS_PER_DROP == 0) {
@@ -1415,11 +1638,11 @@ var GameStep = (playerQueue, deck) => {
     }
 
     self.addBoxes = () => {
-        var n = Math.floor(self.deck.stock.length / BOX_SIZE);
+        var n = Math.floor((self.deck.stock.length - (self.deck.deckSize - MAX_CARDS_IN_FIELD)) / BOX_SIZE);
+        console.log(n);
         if (n <= 0) {
             return;
         }
-
         var tiles = MAP.getNRandomTilesWithoutBox(n);
 
         for (var i = 0; i < tiles.length; i++) {
@@ -1428,7 +1651,8 @@ var GameStep = (playerQueue, deck) => {
                 cards: temp
             })
 
-            console.log(box.cards);
+            console.log(tiles[i].tx, tiles[i].ty, tiles[i].dead)
+
             server.handler.add(box);
             tiles[i].add(box.id);
         }
@@ -1456,10 +1680,10 @@ var GameStep = (playerQueue, deck) => {
                 self.playerQueue.queue.forEach((player, index) => {
                     var pos = self.startingPOsitions[index]
                     player.startPosition(pos[0], pos[1], {});
-                    player.give(['bullets'])
                     player.onDeath = () => {
                         self.removePlayer(player);
                     }
+
                 })
 
                 Object.assign(self, defs);
@@ -1468,7 +1692,9 @@ var GameStep = (playerQueue, deck) => {
                 self.onNewRound();
                 self.waitingForPlayers = false;
                 self.active = true;
+                alertClient(server, "Game started", true);
             }
+
         }
     }
 
@@ -1501,7 +1727,6 @@ MAP.spawnWaitingWorld();
 playerQueue = PlayerQueue();
 DECK = Deck();
 gameStep = GameStep(playerQueue, DECK);
-
 
 server.fullStart(Player)
 
@@ -1592,6 +1817,9 @@ server.onSocketCreated = (server, socket, player) => {
         MAP.sendMinimap(socket);
         gameStep.sendTimer(socket);
         playerQueue.sendQue(socket);
+    } else {
+        player.give(Object.keys(CARDS))
+        player.deltaValue('energy', 30);
     }
 }
 
