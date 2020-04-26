@@ -111,7 +111,7 @@ function alertClient(socket, message, bigAlert = false) {
 ////// SETTING UP SERVER //////
 
 var server = Server({
-    port: 4000,
+    port: 4001,
     TPS: 64,
     chunkSize: 300
 }, ['/', '/textures'])
