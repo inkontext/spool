@@ -156,6 +156,15 @@ var Tile = (initObject) => {
     self.biome;
     self.frameCounter = 0;
 
+    if (FIRST_TILE_INIT == true) {
+        var sprites = textureManager.getSprites('tiles')
+        textureManager.resizeSprites(sprites, self.hexRadius * 2, self.hexRadius * 2 / sprites[0].width * sprites[0].height, (sprites) => {
+            RESIZED_SPRITES = sprites;
+        })
+        FIRST_TILE_INIT = false
+    }
+
+
     self.update = (data) => {
         Object.assign(self, data);
     }
@@ -266,16 +275,20 @@ var Tile = (initObject) => {
 
 
         // Changing sprites if biome changed
-        // if (RESIZED_SPRITES && ((self.biome != self.lastBiome && !self.dead) || (self.lastBiome != 'dead' && self.dead))) {
-        //     self.resizedSprite = RESIZED_SPRITES[BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4]
-        //     if (self.dead) {
-        //         self.lastBiome = 'dead';
-        //     } else {
-        //         self.lastBiome = self.biome;
-        //     }
-        // }
+        if (RESIZED_SPRITES && ((self.biome != self.lastBiome && !self.dead) || (self.lastBiome != 'dead' && self.dead))) {
+            self.resizedSprite = RESIZED_SPRITES[BIOME_TEXTROWS[self.dead ? 'dead' : self.biome] * 4 + (self.textureId + self.animationFrame) % 4]
+            if (self.dead) {
+                self.lastBiome = 'dead';
+            } else {
+                self.lastBiome = self.biome;
+            }
+        } else {
+            if (!RESIZED_SPRITES) {
+                console.warn("Resized sprites are not loaded");
+            }
+        }
 
-        if ((self.resizedSprite && Math.abs(self.renderR - self.hexRadius) < 2 && self.animationFrame == 0) && false) {
+        if (self.resizedSprite && Math.abs(self.renderR - self.hexRadius) < 2 && self.animationFrame == 0) {
             var t_height = self.resizedSprite.height;
             ctx.drawImage(self.resizedSprite, colBox.x - self.resizedSprite.width / 2, colBox.y - self.resizedSprite.height / 2);
         } else {
