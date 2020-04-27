@@ -7,7 +7,11 @@ Spool requires node.js, express, socket.io and more
 
 For installation follow this simple steps:
 1. install node.js 
-2. get git and pull repository 
+2. create your folder and add spool as git submodule in spool directory and move to said directory
+```
+git submodule add https://github.com/sixkey/spool.git spool
+cd spool
+```
 3. run npm install
 ```
 npm install
@@ -16,16 +20,14 @@ npm install
 ```
 npm install -g nodemon
 ```
-5. run project
+5. move to your folder
 ```
-nodemon test-app.js
+cd..
 ```
-6. open localhost:2000 on your browser of choice
-
-## Warning 
-
-Current file system is suitable only for development and needs to be changed for production.
-
-Examples:
-1. spoolclient.js need to be moved to public static folder
-2. spoolmath.js and spoolmessages.js need to be copied to the folder spoolclient.js is in
+6. create your testing server (example: text-server.js)
+7. run it using nodemon
+```
+nodemon test-server.js
+```
+7. check the port in your console 
+8. open localhost:(port from console) on your browser of choice
