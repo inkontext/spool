@@ -14,7 +14,7 @@ const {
 
     OS_GET_OBJ,
     OS_SEND_OBJ
-} = require('./spoolmessagecodes.js')
+} = require('./public/spoolmessagecodes.js')
 
 const {
     FileReader
@@ -24,11 +24,11 @@ var CHUNK_SIZE = 300;
 
 const {
     SpoolMath
-} = require('./spoolmath.js')
+} = require('./public/spoolmath.js')
 
 const {
     SpoolUtils
-} = require('./spoolutils.js')
+} = require('./public/spoolutils.js')
 
 var Perlin = require('perlin-noise');
 
@@ -37,18 +37,25 @@ var Perlin = require('perlin-noise');
 /**
  * Server object wrapper essential for the basic Spool functionality, contains ObjectServer and ServerHandler
  * @param {object} initObject - parameters wrapped in object wrapper 
- * @param {string} clientFolder - static folder 
- * @param {string} htmlFile - name of the index.html file 
+ * @param {object} rootLocation - location of the root directory 
+ * @param {string} publicFolders - static folders first one is used as the location of the html file  
+ * @param {string} spoolPublicFolderLocation - location of the spool public location in the root 
+ * @param {string} htmlFile - name of the root html file 
  */
-var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') => {
+var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublicFolderLocation = '/spool', htmlFile = 'index.html') => {
     var self = {
         port: 2000,
         socketList: [],
         playerList: [],
 
+        publicFolders: publicFolders,
+        rootLocation: rootLocation,
+
         handler: ServerHandler(),
         updateCounter: 0,
         chunkSize: 600,
+        spoolPublicFolderLocation: spoolPublicFolderLocation,
+
         TPS: 65,
         ...initObject
     }
@@ -70,16 +77,24 @@ var Server = (initObject, clientFolders = ['/client'], htmlFile = 'index.html') 
     }
 
     self.start = () => {
+        console.log('\nEXRESS SERVER START')
+
+        console.log(`Express serving "${self.rootLocation}${publicFolders[0]}/${htmlFile}" as the root html file`);
         self.app.get("/", function (req, res) {
-            res.sendFile(__dirname + `${clientFolders[0]}/${htmlFile}`);
+            res.sendFile(`${self.rootLocation}${publicFolders[0]}/${htmlFile}`);
         });
 
-        clientFolders.forEach(clientFolder => {
-            self.app.use(clientFolder, self.express.static(__dirname + `${clientFolder}`));
+        publicFolders.forEach(publicFolder => {
+            console.log('Express static using', `${self.rootLocation}${publicFolder}`, 'as', publicFolder);
+            self.app.use(publicFolder, self.express.static(`${self.rootLocation}${publicFolder}`));
         });
+
+        self.app.use('/spool', self.express.static(`${self.rootLocation}${spoolPublicFolderLocation}/public`))
+
         self.http.listen(self.port, () => {
             console.log("Server started on port: " + self.port);
         });
+        console.log('EXRESS SERVER STARTED\n')
     }
 
     self.startSocket = (playerConstructor) => {
