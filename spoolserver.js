@@ -130,8 +130,9 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
 
             self.playerList[id] = player;
 
-            //// MOVEMENT ////
+            self.onPlayerCountChangedInternal();
 
+            //// MOVEMENT ////
             self.objectServer.init(socket);
 
             socket.on(SM_KEY_PRESS, data => {
@@ -183,7 +184,6 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
             if (self.onSocketCreated) {
                 self.onSocketCreated(self, socket, player);
             }
-            self.onPlayerCountChangedInternal();
         });
     }
 
@@ -211,6 +211,8 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
 
     self.onPlayerCountChangedInternal = () => {
         var playerCount = Object.keys(self.playerList).length;
+
+        console.log(playerCount);
         self.smartSleepingUpdate(playerCount);
 
         if (self.onPlayerCountChanged) {
@@ -611,7 +613,7 @@ var ServerHandler = () => {
 
                     chunk.add(object)
                     object.chunks.push(chunk);
-                    object.color = chunk.color;
+                    object.chunkColor = chunk.color;
                 }
             }
         }

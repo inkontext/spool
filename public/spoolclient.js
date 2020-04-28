@@ -141,6 +141,9 @@ var Client = (initObject) => {
             if (self.clientId && !self.clientObject) {
                 self.clientObject = self.handler.getObject(self.clientObjectFingerprint.objectType, self.clientObjectFingerprint.id)
                 self.camera.followObject = self.clientObject
+                if (self.onClientObjectAssigned) {
+                    self.onClientObjectAssigned(self.clientObject);
+                }
             }
         })
 
@@ -1497,19 +1500,8 @@ var Entity = (initPack) => {
      */
     self.renderOval = (ctx, camera, color = self.color) => {
         ctx.fillStyle = color;
-        ctx.beginPath();
-
-
-        var radius = Math.min(self.width, self.height);
-
-        let {
-            x,
-            y,
-            width
-        } = camera.transformBounds(self.x, self.y, radius, radius);
-
-        ctx.arc(x, y, width, 0, 360);
-        ctx.fill();
+        var bounds = camera.transformBounds(self.x, self.y, self.width, self.height)
+        SpoolRenderer.fillInscribedOval(ctx, SpoolRect(bounds.x - bounds.width / 2, bounds.y - bounds.height / 2, bounds.width, bounds.height));
     }
 
     self.renderNtagon = (ctx, camera, n, radius, startAngle = 0, color = self.color) => {
