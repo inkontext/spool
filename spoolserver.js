@@ -57,8 +57,12 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
         spoolPublicFolderLocation: spoolPublicFolderLocation,
 
         smartSleeping: true,
-        sleepingUpdateTime: 3000,
+        sleepingUpdateTime: 1000,
         sleeping: true,
+
+        upsReport: true,
+        sleepingReport: true,
+
         TPS: 65,
         ...initObject
     }
@@ -212,7 +216,6 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
     self.onPlayerCountChangedInternal = () => {
         var playerCount = Object.keys(self.playerList).length;
 
-        console.log(playerCount);
         self.smartSleepingUpdate(playerCount);
 
         if (self.onPlayerCountChanged) {
@@ -274,8 +277,9 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
     }
 
     self.sleep = () => {
-
-        console.log('Sleeping');
+        if (self.sleepingReport) {
+            console.log('Sleeping');
+        }
         if (self.sleeping) {
             setTimeout(self.sleep, self.sleepingUpdateTime);
         } else {
@@ -291,13 +295,15 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
 
             self.update(delta);
 
-            var delta = Date.now() - self.lastMillisTimer;
-            if (delta >= 1000) {
-                console.log('UPS: ', self.updateCounter);
-                self.updateCounter = 0;
-                self.lastMillisTimer = Date.now()
-            } else {
-                self.updateCounter += 1;
+            if (self.upsReport) {
+                var delta = Date.now() - self.lastMillisTimer;
+                if (delta >= 1000) {
+                    console.log('UPS: ', self.updateCounter);
+                    self.updateCounter = 0;
+                    self.lastMillisTimer = Date.now()
+                } else {
+                    self.updateCounter += 1;
+                }
             }
         }
 
