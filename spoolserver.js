@@ -56,6 +56,9 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
         chunkSize: 600,
         spoolPublicFolderLocation: spoolPublicFolderLocation,
 
+        smartSleeping: true,
+        sleepingUpdateTime: 3000,
+        sleeping: true,
         TPS: 65,
         ...initObject
     }
@@ -69,6 +72,7 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
     self.io = require("socket.io")(self.http);
 
     self.updateTime = 1000 / self.TPS;
+    self.currentUpdateTime = self.updateTime;
 
     self.fullStart = (playerConstructor) => {
         self.start()
@@ -151,14 +155,7 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
                 }
             });
 
-            var initPackage = self.handler.getInitPackage(player.objectType, socket.id);
-            initPackage.resetHandler = true;
-
-            socket.emit(SM_PACK_INIT,
-                initPackage
-            ); // give client the first init package contains all the information about the the state
-
-            console.log('init', initPackage['PLAYER'].map(value => value.id));
+            self.sendInitPackage(socket, true);
 
             socket.emit(ASIGN_CLIENT_ID, {
                 clientId: socket.id,
@@ -179,13 +176,49 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
                 if (self.onPlayerDisconnected) {
                     self.onPlayerDisconnected(self, socket, player);
                 }
+
+                self.onPlayerCountChangedInternal();
             });
 
             if (self.onSocketCreated) {
                 self.onSocketCreated(self, socket, player);
             }
+            self.onPlayerCountChangedInternal();
         });
     }
+
+    self.sendInitPackage = (socket = server, reset = false) => {
+        var initPackage = self.handler.getInitPackage();
+
+        if (reset) {
+            initPackage.resetHandler = true;
+        }
+        // give client the first init package contains all the information about the the state
+        socket.emit(SM_PACK_INIT,
+            initPackage
+        );
+    }
+
+    self.smartSleepingUpdate = (playerCount) => {
+        if (playerCount == 0) {
+            self.sleeping = true;
+            self.currentUpdateTime = self.sleepingUpdateTime
+        } else {
+            self.sleeping = false;
+            self.currentUpdateTime = self.updateTime
+        }
+    }
+
+    self.onPlayerCountChangedInternal = () => {
+        var playerCount = Object.keys(self.playerList).length;
+        self.smartSleepingUpdate(playerCount);
+
+        if (self.onPlayerCountChanged) {
+            self.onPlayerCountChanged(playerCount, self);
+        }
+    }
+
+    self.onPlayerCountChangedInternal();
 
     self.emit = (message, data) => {
         if (self.io) {
@@ -238,6 +271,16 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
         self.loop();
     }
 
+    self.sleep = () => {
+
+        console.log('Sleeping');
+        if (self.sleeping) {
+            setTimeout(self.sleep, self.sleepingUpdateTime);
+        } else {
+            setTimeout(self.loop);
+        }
+    }
+
     self.loop = () => {
         let now = Date.now()
         if (now - self.lastUpdateTime >= self.updateTime) {
@@ -256,10 +299,14 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
             }
         }
 
-        if (Date.now() - self.lastUpdateTime < self.updateTime - 16) {
-            setTimeout(self.loop)
+        if (!self.sleeping) {
+            if (Date.now() - self.lastUpdateTime < self.updateTime - 16) {
+                setTimeout(self.loop)
+            } else {
+                setImmediate(self.loop)
+            }
         } else {
-            setImmediate(self.loop)
+            setTimeout(self.sleep);
         }
     }
 
@@ -275,6 +322,10 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
         } else {
             self.updateCounter += 1;
         }
+    }
+
+    self.getPlayers = () => {
+        return Object.keys(self.playerList).map(key => self.playerList[key]);
     }
 
     return self
@@ -470,6 +521,21 @@ var ServerHandler = () => {
 
         preManagers: [], // Managers that are used before the object.update call
         managers: [] // Managers used after the object.update call
+    }
+
+    //// RESET ////
+
+    self.resetObjects = () => {
+        Object.assign(self, {
+            objectsById: {},
+            objects: {}, // All objects in the game
+            chunks: {}, // All the chunks in the game 
+
+            somethingToAdd: false, // If there was an object added -> true ->
+            initPack: {}, // Package containing all the information about added objects -> in update sent to clients
+            somethingToRemove: false, // If there was an object removed -> true s
+            removePack: {}, // Package containing all the information about removed objects -> in update sent to clients
+        })
     }
 
     //// UPDATING ////
@@ -743,6 +809,7 @@ var ServerHandler = () => {
                 if (objKey == playerId && key == playerType) {
                     initPack["playerFlag"] = true;
                 }
+
                 currPackage.push(initPack);
 
                 // if (key == 'PLAYER') {
@@ -1451,6 +1518,13 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
             [false, false, true, true],
             [true, true, true, false]
         ]
+    }
+
+    self.reset = () => {
+        Object.assign(self, {
+            zones: {},
+            zoneCounters: {}
+        })
     }
 
     self.spawnInRadius = (key, radius, amount, cx = 0, cy = 0) => {
