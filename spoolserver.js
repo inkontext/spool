@@ -59,8 +59,12 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
         spoolPublicFolderLocation: spoolPublicFolderLocation,
 
         smartSleeping: true,
-        sleepingUpdateTime: 3000,
+        sleepingUpdateTime: 1000,
         sleeping: true,
+
+        upsReport: true,
+        sleepingReport: true,
+
         TPS: 65,
 
         gameLoopRunning: false,
@@ -139,8 +143,9 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
 
             self.playerList[id] = player;
 
-            //// MOVEMENT ////
+            self.onPlayerCountChangedInternal();
 
+            //// MOVEMENT ////
             self.objectServer.init(socket);
 
             socket.on(SM_KEY_PRESS, data => {
@@ -192,7 +197,6 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
             if (self.onSocketCreated) {
                 self.onSocketCreated(self, socket, player);
             }
-            self.onPlayerCountChangedInternal();
         });
     }
 
@@ -210,6 +214,7 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
 
     self.onPlayerCountChangedInternal = () => {
         var playerCount = Object.keys(self.playerList).length;
+
         self.smartSleepingUpdate(playerCount);
 
         if (self.onPlayerCountChanged) {
@@ -293,13 +298,15 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
 
             self.update(delta);
 
-            var delta = Date.now() - self.lastMillisTimer;
-            if (delta >= 1000) {
-                console.log('UPS: ', self.updateCounter);
-                self.updateCounter = 0;
-                self.lastMillisTimer = Date.now()
-            } else {
-                self.updateCounter += 1;
+            if (self.upsReport) {
+                var delta = Date.now() - self.lastMillisTimer;
+                if (delta >= 1000) {
+                    console.log('UPS: ', self.updateCounter);
+                    self.updateCounter = 0;
+                    self.lastMillisTimer = Date.now()
+                } else {
+                    self.updateCounter += 1;
+                }
             }
         }
 
@@ -311,7 +318,9 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
             }
         } else {
             self.gameLoopRunning = false;
-            console.log("Sleeping");
+            if (self.sleepingReport) {
+                console.log("Sleeping");
+            }
         }
     }
 
@@ -630,7 +639,7 @@ var ServerHandler = () => {
 
                     chunk.add(object)
                     object.chunks.push(chunk);
-                    object.color = chunk.color;
+                    object.chunkColor = chunk.color;
                 }
             }
         }
