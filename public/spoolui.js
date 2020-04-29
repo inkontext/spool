@@ -435,3 +435,62 @@ var SpoolUIButtonList = (initObject, buttonsInitArray, buttonConst = SpoolUIButt
 
     return self;
 }
+
+//// CUSTOM UI ////
+
+var LoadingUI = (client, initObject) => {
+    var self = SpoolUIElement({
+        client: client,
+
+        x: client.gameArea.width - 60,
+        y: client.gameArea.height - 60,
+        width: 50,
+        height: 50,
+
+        overlay: false,
+        overlayColor: 'white',
+
+
+        ...initObject
+    });
+
+    self.animationFrame = 0;
+
+    self.bounds = SpoolRect(self.x, self.y, self.width, self.height);
+
+    self.render = (ctx) => {
+        self.animationFrame += 1;
+
+        if (self.client.serverSideLoading || self.client.clientSideLoading) {
+
+            if (self.overlay) {
+                SpoolRenderer.setColor(ctx, self.overlayColor);
+                SpoolRenderer.fillRect(ctx, 0, 0, self.client.gameArea.width, self.client.gameArea.height);
+                SpoolRenderer.setColor(ctx, 'black');
+                SpoolRenderer.setFont(ctx, 'Arial', 50);
+
+                if (client.serverSideLoadingData ? client.serverSideLoadingData.message : false) {
+                    ctx.textAlign = 'center';
+                    SpoolRenderer.simpleText(ctx, client.serverSideLoadingData.message, self.client.gameArea.width / 2, self.client.gameArea.height / 2);
+                    ctx.textAlign = 'right';
+                    SpoolRenderer.simpleText(ctx, 'Loading', self.bounds.cx - self.bounds.width * 2, self.bounds.cy);
+                } else {
+                    ctx.textAlign = 'center';
+                    SpoolRenderer.simpleText(ctx, 'Loading', self.client.gameArea.width / 2, self.client.gameArea.height / 2);
+                }
+
+            }
+
+            SpoolRenderer.setColor(ctx, 'black');
+            SpoolRenderer.drawInscribedOval(ctx, 'black');
+            SpoolRenderer.fillInscribedOvalPercentFull(ctx, self.bounds, self.animationFrame / 30)
+
+            if (self.animationFrame > 30) {
+                self.animationFrame = 0;
+            }
+
+        }
+    }
+
+    return self;
+}

@@ -17,7 +17,9 @@ var MessageCodes = {
     KI_MOV_LEFT: 'MOV_LEFT',
     KI_MOV_RIGHT: 'MOV_RIGHT',
     KI_MOV_UP: 'KI_MOV_UP',
-    KI_MOV_DOWN: 'KI_MOV_DOWN'
+    KI_MOV_DOWN: 'KI_MOV_DOWN',
+
+    SERVER_LOADING: 'SERVER_LOADING'
 }
 
 

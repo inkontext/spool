@@ -32,6 +32,9 @@ var Client = (initObject) => {
         chunkSize: 1000,
         FPS: 60,
 
+        serverSideLoading: false,
+        clientSideLoading: false,
+
         ...initObject
     }
 
@@ -75,8 +78,6 @@ var Client = (initObject) => {
                 self.clientObject = undefined;
             }
 
-            console.log(data['PLAYER']);
-
             for (key in data) {
                 if (key == 'resetHandler') {
                     continue;
@@ -115,7 +116,6 @@ var Client = (initObject) => {
                 }
             }
 
-
             if (!self.firstInit) {
                 if (self.onFirstLoad)
                     self.onFirstLoad(self)
@@ -130,6 +130,12 @@ var Client = (initObject) => {
         self.socket.on(MessageCodes.ASIGN_CLIENT_ID, (data) => {
             self.clientId = data.clientId;
             self.clientObjectFingerprint = data.clientObject;
+        })
+
+        self.socket.on(MessageCodes.SERVER_LOADING, (data) => {
+            console.log(data);
+            self.serverSideLoading = data.loading;
+            self.serverSideLoadingData = data;
         })
 
         //// UPDATING THE STATE ////
