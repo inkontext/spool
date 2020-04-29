@@ -13,7 +13,9 @@ const {
     KI_MOV_DOWN,
 
     OS_GET_OBJ,
-    OS_SEND_OBJ
+    OS_SEND_OBJ,
+
+    SERVER_LOADING
 } = require('./public/spoolmessagecodes.js')
 
 const {
@@ -64,6 +66,11 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
         sleepingReport: true,
 
         TPS: 65,
+
+        gameLoopRunning: false,
+
+        running: false,
+
         ...initObject
     }
 
@@ -77,10 +84,12 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
 
     self.updateTime = 1000 / self.TPS;
     self.currentUpdateTime = self.updateTime;
+    self.loading = false;
 
     self.fullStart = (playerConstructor) => {
         self.start()
         self.startSocket(playerConstructor)
+
         self.startGameLoop()
     }
 
@@ -203,16 +212,6 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
         );
     }
 
-    self.smartSleepingUpdate = (playerCount) => {
-        if (playerCount == 0) {
-            self.sleeping = true;
-            self.currentUpdateTime = self.sleepingUpdateTime
-        } else {
-            self.sleeping = false;
-            self.currentUpdateTime = self.updateTime
-        }
-    }
-
     self.onPlayerCountChangedInternal = () => {
         var playerCount = Object.keys(self.playerList).length;
 
@@ -223,7 +222,7 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
         }
     }
 
-    self.onPlayerCountChangedInternal();
+
 
     self.emit = (message, data) => {
         if (self.io) {
@@ -231,9 +230,9 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
         }
     }
 
-    self.update = () => {
+    self.update = (delta) => {
         // Update the game state and get update package
-        var pack = self.handler.update();
+        var pack = self.handler.update(delta);
 
         if (self.updateCallback) {
             self.updateCallback(self)
@@ -266,28 +265,32 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
         self.handler.resetPacks();
     }
 
+    self.smartSleepingUpdate = (playerCount) => {
+        if (playerCount == 0) {
+            self.sleeping = true;
+        } else {
+            self.sleeping = false;
+            if (self.running) {
+                self.startGameLoop();
+            }
+        }
+    }
+
     self.startGameLoop = () => {
         // Start game loop
+        self.running = true;
 
         self.lastMillisTimer = Date.now();
         self.lastMillis = Date.now();
 
         self.lastUpdateTime = Date.now();
-        self.loop();
-    }
-
-    self.sleep = () => {
-        if (self.sleepingReport) {
-            console.log('Sleeping');
-        }
-        if (self.sleeping) {
-            setTimeout(self.sleep, self.sleepingUpdateTime);
-        } else {
-            setTimeout(self.loop);
+        if (!self.gameLoopRunning) {
+            self.loop();
         }
     }
 
     self.loop = () => {
+        self.gameLoopRunning = true;
         let now = Date.now()
         if (now - self.lastUpdateTime >= self.updateTime) {
             var delta = (now - self.lastUpdateTime) / 1000
@@ -307,14 +310,17 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
             }
         }
 
-        if (!self.sleeping) {
+        if (!self.smartSleeping || !self.sleeping) {
             if (Date.now() - self.lastUpdateTime < self.updateTime - 16) {
                 setTimeout(self.loop)
             } else {
                 setImmediate(self.loop)
             }
         } else {
-            setTimeout(self.sleep);
+            self.gameLoopRunning = false;
+            if (self.sleepingReport) {
+                console.log("Sleeping");
+            }
         }
     }
 
@@ -335,6 +341,20 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
     self.getPlayers = () => {
         return Object.keys(self.playerList).map(key => self.playerList[key]);
     }
+
+    self.setLoading = (loading, message = null, percentage = null) => {
+        self.loading = loading;
+
+
+
+        self.emit(SERVER_LOADING, {
+            loading,
+            message,
+            percentage
+        });
+    }
+
+    self.onPlayerCountChangedInternal();
 
     return self
 }
@@ -629,7 +649,7 @@ var ServerHandler = () => {
      * Updates all of the objects
      * Returns update package
      */
-    self.update = () => {
+    self.update = (delta) => {
         var pack = {};
         var authorizedPacks = {};
 
@@ -654,7 +674,7 @@ var ServerHandler = () => {
 
                     var preUpdate = object.lastUpdatePack;
 
-                    object.update();
+                    object.update(delta);
 
                     self.updateObjectsChunk(object);
 
@@ -1996,7 +2016,7 @@ var Entity = (initPack = {}) => {
     /**
      * basic update function -> important return of udpate package (used in server, client communication)
      */
-    self.update = () => {
+    self.update = (delta) => {
         var change = false;
 
         self.updateVel();
