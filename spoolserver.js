@@ -167,7 +167,7 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
                 }
             });
 
-            socket.on(SM_MOUSE_CLICKED, data => {
+            socket.on(SM_MOUSE_INPUT, data => {
                 if (self.mouseEvent) {
                     self.mouseEvent(data, socket, player);
                 }
@@ -190,7 +190,7 @@ var Server = (initObject, rootLocation, publicFolders = ['/public'], spoolPublic
                 delete self.socketList[id];
                 delete self.playerList[id];
                 // Remove player from the handler as a object
-                self.handler.remove(player.objectType, id);
+                self.handler.remove(player);
                 if (self.onPlayerDisconnected) {
                     self.onPlayerDisconnected(self, socket, player);
                 }
@@ -524,24 +524,30 @@ var ServerObject = (initObject) => {
 }
 
 /**
+ * Chunk holds objects only in certain bounds - used in collision, gravity and more.
+ * @param {object} initObject - initObject 
+ * @param {object} handler - ServerHandler
+ */
+var ServerChunk = (initObject, handler) => {
+    return Chunk(initObject, handler)
+}
+
+/**
  * Handler is object that handles all objects in the game (updates them, renders them, sets chunks)
  * Handles chunks, each update objects are assigned to their chunk - used in collision, gravity and more
  */
 var ServerHandler = () => {
-    var self = {
-        objectsById: {},
-        objects: {}, // All objects in the game
-        chunks: {}, // All the chunks in the game 
-
+    var self = Handler({
         somethingToAdd: false, // If there was an object added -> true ->
         initPack: {}, // Package containing all the information about added objects -> in update sent to clients
         somethingToRemove: false, // If there was an object removed -> true s
         removePack: {}, // Package containing all the information about removed objects -> in update sent to clients
+        chunkConstructor: ServerChunk
+    })
 
-        staticKeys: [], // List of objectTypes that are not updated -> for walls, floors, roofs, trees etc.
-
-        preManagers: [], // Managers that are used before the object.update call
-        managers: [] // Managers used after the object.update call
+    var superSelf = {
+        add: self.add,
+        removeSignature: self.removeSignature
     }
 
     //// RESET ////
@@ -560,83 +566,6 @@ var ServerHandler = () => {
     }
 
     //// UPDATING ////
-
-    /**
-     * Updates the chunks in the object - if object travelled from one chunk to another, if changed size, etc.
-     * @param {object} object - object we want to move into the correct chunks
-     */
-    self.updateObjectsChunk = (object) => {
-        var relocating = false;
-
-        // Getting the chunk indexes in the lists 
-        var cx = Math.floor((object.x - object.width / 2) / CHUNK_SIZE);
-        var cy = Math.floor((object.y - object.height / 2) / CHUNK_SIZE);
-        var cxx = Math.floor((object.x + object.width / 2) / CHUNK_SIZE);
-        var cyy = Math.floor((object.y + object.height / 2) / CHUNK_SIZE);
-
-
-        if (!object.chunks) {
-            // If object isn't in any chunk relocate 
-            relocating = true;
-
-        } else if (object.chunks.length == 0) {
-            // If object has chunks but the array is empty relocate
-            relocating = true;
-        } else {
-            if (cx != object.chunksX || cy != object.chunksY || cxx != object.chunksXX || cyy != object.chunksYY) {
-                // If the object has chunks but are incorrect relocate
-                relocating = true;
-                object.chunks.forEach(chunk => {
-                    chunk.removeObj(object);
-                })
-            } else {
-                return;
-            }
-        }
-
-        if (!relocating) {
-            return;
-        }
-
-
-        // Relocating 
-
-        object.chunksX = cx;
-        object.chunksY = cy;
-        object.chunksXX = cxx;
-        object.chunksYY = cyy;
-
-        object.chunks = [];
-
-        if (relocating) {
-            for (var x = cx; x < cxx + 1; x++) {
-                for (var y = cy; y < cyy + 1; y++) {
-                    var key = `[${x};${y}]`
-
-                    var chunk = undefined;
-
-                    if (key in self.chunks) {
-                        chunk = self.chunks[key];
-                    } else {
-                        chunk = ServerChunk({
-                                x: x,
-                                y: y,
-                                width: CHUNK_SIZE,
-                                height: CHUNK_SIZE,
-                                color: SpoolMath.randomHsvColor(0.5, 0.8)
-
-                            },
-                            self)
-                        self.chunks[key] = chunk;
-                    }
-
-                    chunk.add(object)
-                    object.chunks.push(chunk);
-                    object.chunkColor = chunk.color;
-                }
-            }
-        }
-    }
 
     /**
      * Updates all of the objects
@@ -744,13 +673,7 @@ var ServerHandler = () => {
      * @param {object} obj - object we want to add need to contain objecType and idf
      */
     self.add = obj => {
-        // Add to handler
-        if (!(obj.objectType in self.objects)) {
-            self.objects[obj.objectType] = {};
-        }
-        self.objects[obj.objectType][obj.id] = obj;
-        self.objectsById[obj.id] = obj;
-        self.updateObjectsChunk(obj);
+        superSelf.add(obj);
 
         // Add to init pack
         if (!(obj.objectType in self.initPack)) {
@@ -766,20 +689,8 @@ var ServerHandler = () => {
      * @param {string} type - object type
      * @param {double} id - id of the object
      */
-    self.remove = (type, id) => {
-        // Remove object from handler
-        if (type in self.objects) {
-            if (self.objects[type][id]) {
-                if (self.objects[type][id].chunks) {
-                    self.objects[type][id].chunks.forEach(chunk => {
-                        chunk.removeObj(self.objects[type][id]);
-                    })
-                }
-            }
-            delete self.objects[type][id];
-        }
-
-        delete self.objectsById[id];
+    self.removeSignature = (type, id) => {
+        superSelf.removeSignature(type, id);
 
         // Add to remove pack
         if (!(type in self.removePack)) {
@@ -789,14 +700,6 @@ var ServerHandler = () => {
 
         self.somethingToRemove = true;
     };
-
-    /**
-     * Removes object from the handler
-     * @param {object} obj - object fingerprint
-     */
-    self.removeObj = (obj) => {
-        self.remove(obj.objectType, obj.id)
-    }
 
     /**
      * Resets the init and remove packs -> used in update
@@ -833,119 +736,15 @@ var ServerHandler = () => {
 
                 currPackage.push(initPack);
 
-                // if (key == 'PLAYER') {
-                //     console.log(object);
-                //     console.log(objKey);
-                //     console.log(initPack);
-                // }
             }
 
             pack[key] = currPackage;
         }
         return pack;
     };
-
-    /**
-     * Add update manager that is called on object after update 
-     * @param {object} manager - manager (CollisionManager, GravityManager, etc.)
-     */
-    self.addManager = (manager) => {
-        self.managers.push(manager);
-    }
-
-    /**
-     * Add update manager that is called on object before update 
-     * @param {object} manager - manager (CollisionManager, GravityManager, etc.)
-     */
-    self.addPreManager = (preManager) => {
-        self.preManagers.push(preManager);
-    }
-
-    /**
-     * Returns chunks in these intervals 
-     * @param {int} min_x - lower bound of the x coord interval for the chunks, value included
-     * @param {int} min_y - lower bound of the y coord interval for the chunks, value included
-     * @param {int} max_x - upper bound of the x coord interval for the chunks, value included
-     * @param {int} max_y - upper bound of the y coord interval for the chunks, value included
-     */
-    self.getChunks = (min_x, min_y, max_x, max_y) => {
-        result = []
-        for (var x = min_x; x <= max_x; x++) {
-            for (var y = min_y; y <= max_y; y++) {
-                var key = `[${x};${y}]`;
-                if (key in self.chunks) {
-                    result.push(self.chunks[key]);
-                }
-            }
-        }
-        return result;
-    }
-
-    /**
-     * Removes all the object with object type 
-     * @param {string} key - object type that we want to remove from the handler 
-     */
-    self.emptyObjectType = (key) => {
-
-        if (key in self.objects) {
-            var objects = self.objects[key];
-            var ids = Object.keys(objects);
-            ids.forEach(id => {
-                self.remove(key, id);
-            })
-        }
-    }
-
-    /**
-     * Returns the closest object to the coordinates and with attributes
-     * @param {int} x - x-coord of the point 
-     * @param {int} y - y-coord of the point 
-     * @param {object} attributes - attributes we want our object to have 
-     */
-    self.getClosestObject = (x, y, attributes) => {
-        var cx = Math.floor(x / CHUNK_SIZE);
-        var cy = Math.floor(y / CHUNK_SIZE);
-
-        var chunks = self.getChunks(cx, cy, cx, cy);
-
-        var res = null;
-
-        chunks.forEach(chunk => {
-            var temp = chunk.getClosestObject(x, y, attributes);
-            if (temp) {
-                if (res ? temp.distance < res.distance : true) {
-                    res = temp
-                }
-            }
-        })
-
-        if (!res) {
-            for (key in self.chunks) {
-                var chunk = self.chunks[key];
-                var temp = chunk.getClosestObject(x, y, attributes);
-                if (temp) {
-                    if (res ? temp.distance < res.distance : true) {
-                        res = temp
-                    }
-                }
-            }
-        }
-
-        return res;
-    }
-
     // Return 
     return self;
 };
-
-/**
- * Chunk holds objects only in certain bounds - used in collision, gravity and more.
- * @param {object} initObject - initObject 
- * @param {object} handler - ServerHandler
- */
-var ServerChunk = (initObject, handler) => {
-    return Chunk(initObject, handler)
-}
 
 ////// DEFAULT OBJECTS //////
 

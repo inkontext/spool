@@ -28,7 +28,6 @@ const FileReader = {
     }
 }
 
-
 module.exports = {
     FileReader
 }

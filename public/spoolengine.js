@@ -1,22 +1,44 @@
 ////// IMPORTS //////
+console.log(typeof SpoolMath);
+
+if (typeof SpoolMath === 'undefined') {
+    //var SpoolMath;
+    try {
+        SpoolMath = require('./spoolmath.js').SpoolMath
+    } catch (e) {
+        console.warn("SpoolMath require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way");
+    }
+    if (!SpoolMath) {
+        console.error("SpoolMath library not present, make sure it is included")
+    }
+}
+
+if (typeof SpoolUtils === 'undefined') {
+    try {
+        SpoolUtils = require('./spoolutils.js').SpoolUtils
+    } catch (e) {
+        console.warn("SpoolUtils require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way");
+    }
+    if (!SpoolMath) {
+        console.error("SpoolUtils library not present, make sure it is included")
+    }
+}
+
+if (typeof FileReader === 'undefined') {
+    try {
+        FileReader = require('../spoolfilereader.js').SpoolUtils
+    } catch (e) {
+        console.warn("SpoolUtils require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way");
+    }
+    if (!FileReader) {
+        console.error("SpoolUtils library not present, make sure it is included")
+    }
+}
+
 try {
-    const {
-        FileReader
-    } = require('../spoolfilereader.js')
-
-    const {
-        SpoolMath
-    } = require('./spoolmath.js')
-
-    const {
-        SpoolUtils
-    } = require('./spoolutils.js')
-
     var Perlin = require('perlin-noise');
-    client.handler.update = Handler().update;
-
 } catch (e) {
-    console.warn("Require is not present, make sure you include needed files in different way.");
+    console.warn("Perlin noise is not available without require (server side)");
 }
 
 ////// HANDLER //////
@@ -57,7 +79,7 @@ var Chunk = (initObject, handler) => {
      * @param {string} type - objectType of the object
      * @param {string} id - id of the object
      */
-    self.remove = (type, id) => {
+    self.removeSignature = (type, id) => {
         // Remove object from handler
         if (type in self.objects) {
             delete self.objects[type][id];
@@ -68,8 +90,8 @@ var Chunk = (initObject, handler) => {
      * Removes object from the chunk
      * @param {object} obj - object fingerprint
      */
-    self.removeObj = (obj) => {
-        self.remove(obj.objectType, obj.id)
+    self.remove = (obj) => {
+        self.removeSignature(obj.objectType, obj.id)
     }
 
     /**
@@ -167,7 +189,7 @@ var Handler = (initObject = {}) => {
                 // If the object has chunks but are incorrect relocate
                 relocating = true;
                 object.chunks.forEach(chunk => {
-                    chunk.removeObj(object);
+                    chunk.remove(object);
                 })
             } else {
                 return;
@@ -275,13 +297,13 @@ var Handler = (initObject = {}) => {
      * @param {string} type - object type
      * @param {double} id - id of the object
      */
-    self.remove = (type, id) => {
+    self.removeSignature = (type, id) => {
         // Remove object from handler
         if (type in self.objects) {
             if (self.objects[type][id]) {
                 if (self.objects[type][id].chunks) {
                     self.objects[type][id].chunks.forEach(chunk => {
-                        chunk.removeObj(self.objects[type][id]);
+                        chunk.remove(self.objects[type][id]);
                     })
                 }
             }
@@ -295,8 +317,8 @@ var Handler = (initObject = {}) => {
      * Removes object from the handler
      * @param {object} obj - object fingerprint
      */
-    self.removeObj = (obj) => {
-        self.remove(obj.objectType, obj.id)
+    self.remove = (obj) => {
+        self.removeSignature(obj.objectType, obj.id)
     }
 
     /**
@@ -1676,6 +1698,7 @@ try {
         SpoolUtils,
         Perlin
     }
-} catch {
-    console.warn("Module exporting is not present. If you are in client make sure you include files correctly in you index file.");
+} catch (e) {
+    console.warn("Most likely module exporting is not present. If you are in client make sure you include files correctly in you index file.");
+    console.warn(e)
 }

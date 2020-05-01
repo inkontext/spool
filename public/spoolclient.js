@@ -157,6 +157,7 @@ var Client = (initObject) => {
         //// REMOVIGN OBJECTS ////
 
         self.socket.on(MessageCodes.SM_PACK_REMOVE, (data) => {
+            console.log()
             self.handler.removeBulk(data);
         })
 
