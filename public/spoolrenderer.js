@@ -1,74 +1,125 @@
 var SpoolRenderer = {
-    setColor: (ctx, color) => {
-        ctx.fillStyle = color;
+    //// CTX SETTING ////
+    ctx: null,
+    setColor: (color) => {
+        SpoolRenderer.ctx.fillStyle = color;
     },
 
-    setFont: (ctx, fontFace, fontSize) => {
-        ctx.font = `${fontSize}px ${fontFace}`;
+    setFont: (fontFace, fontSize) => {
+        SpoolRenderer.ctx.font = `${fontSize}px ${fontFace}`;
     },
 
-    drawInscribedOval: (ctx, rect) => {
-        ctx.beginPath();
-        ctx.ellipse(rect.cx, rect.cy, rect.width / 2, rect.height / 2, 0, 0, 360);
-        ctx.stroke();
+    //// OVALS ////
+
+    drawInscribedOval: (rect) => {
+        SpoolRenderer.ctx.beginPath();
+        SpoolRenderer.ctx.ellipse(rect.cx, rect.cy, rect.width / 2, rect.height / 2, 0, 0, 360);
+        SpoolRenderer.ctx.stroke();
     },
 
-    fillInscribedOval: (ctx, rect) => {
-        ctx.beginPath();
-        ctx.ellipse(rect.cx, rect.cy, rect.width / 2, rect.height / 2, 0, 0, 360);
-        ctx.fill();
+    fillInscribedOval: (rect) => {
+        SpoolRenderer.ctx.beginPath();
+        SpoolRenderer.ctx.ellipse(rect.cx, rect.cy, rect.width / 2, rect.height / 2, 0, 0, 360);
+        SpoolRenderer.ctx.fill();
     },
 
-    fillInscribedOvalPercentFull: (ctx, rect, p) => {
-        ctx.beginPath();
+    fillInscribedOvalPercentFull: (rect, p) => {
+        SpoolRenderer.ctx.beginPath();
         if (p > 0.5) {
             var temp = p - 0.5;
             var angle = Math.asin(temp * 2)
-            ctx.ellipse(rect.cx, rect.cy, rect.width / 2, rect.height / 2, 0, -angle, Math.PI + angle);
+            SpoolRenderer.ctx.ellipse(rect.cx, rect.cy, rect.width / 2, rect.height / 2, 0, -angle, Math.PI + angle);
         } else {
             var angle = Math.asin((0.5 - p) * 2)
-            ctx.ellipse(rect.cx, rect.cy, rect.width / 2, rect.height / 2, 0, angle, Math.PI - angle);
+            SpoolRenderer.ctx.ellipse(rect.cx, rect.cy, rect.width / 2, rect.height / 2, 0, angle, Math.PI - angle);
         }
-        ctx.fill();
+        SpoolRenderer.ctx.fill();
     },
 
-    drawOval: (ctx, cx, cy, radius) => {
+    drawOval: (cx, cy, radius) => {
+        SpoolRenderer.ctx.beginPath();
+        SpoolRenderer.ctx.arc(cx, cy, radius, 0, 360);
+        SpoolRenderer.ctx.stroke();
+    },
+
+    fillOval: (cx, cy, radius) => {
+        SpoolRenderer.ctx.beginPath();
+        SpoolRenderer.ctx.arc(cx, cy, radius, 0, 360);
+        SpoolRenderer.ctx.fill();
+    },
+
+    //// SPRITES ////
+
+    renderRotatedSprite: (sprite, angle, cx, cy, bounds) => {
+        SpoolRenderer.ctx.save()
+
+        SpoolRenderer.ctx.translate(cx, cy);
+
+        SpoolRenderer.ctx.rotate(-angle)
+        SpoolRenderer.ctx.drawImage(sprite, bounds.x, bounds.y, bounds.width, bounds.height)
+
+        SpoolRenderer.ctx.restore()
+    },
+
+    //// RECT ////
+
+    drawRect: (x, y, width, height) => {
+        SpoolRenderer.ctx.drawRect(x, y, width, height);
+    },
+
+    fillRect: (x, y, width, height) => {
+        SpoolRenderer.ctx.fillRect(x, y, width, height);
+    },
+
+    fillSplRect: (rect) => {
+        SpoolRenderer.ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
+    },
+
+    fillRoundRect(ctx, x, y, width, height, radius = 0, fill = true, stroke = false) {
+        if (typeof radius === 'undefined') {
+            radius = 5;
+        }
+        if (typeof radius === 'number') {
+            radius = {
+                tl: radius,
+                tr: radius,
+                br: radius,
+                bl: radius
+            };
+        } else {
+            var defaultRadius = {
+                tl: 0,
+                tr: 0,
+                br: 0,
+                bl: 0
+            };
+            for (var side in defaultRadius) {
+                radius[side] = radius[side] || defaultRadius[side];
+            }
+        }
         ctx.beginPath();
-        ctx.arc(cx, cy, radius, 0, 360);
-        ctx.stroke();
+        ctx.moveTo(x + radius.tl, y);
+        ctx.lineTo(x + width - radius.tr, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius.tr);
+        ctx.lineTo(x + width, y + height - radius.br);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius.br, y + height);
+        ctx.lineTo(x + radius.bl, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius.bl);
+        ctx.lineTo(x, y + radius.tl);
+        ctx.quadraticCurveTo(x, y, x + radius.tl, y);
+        ctx.closePath();
+
+        if (fill) {
+            ctx.fill();
+        }
+        if (stroke) {
+            ctx.stroke();
+        }
     },
 
-    fillOval: (ctx, cx, cy, radius) => {
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius, 0, 360);
-        ctx.fill();
-    },
+    //// TEXT ////
 
-    renderRotatedSprite: (ctx, sprite, angle, cx, cy, bounds) => {
-        ctx.save()
-
-        ctx.translate(cx, cy);
-
-        ctx.rotate(-angle)
-        ctx.drawImage(sprite, bounds.x, bounds.y, bounds.width, bounds.height)
-
-        ctx.restore()
-    },
-
-
-    drawRect: (ctx, x, y, width, height) => {
-        ctx.drawRect(x, y, width, height);
-    },
-
-    fillRect: (ctx, x, y, width, height) => {
-        ctx.fillRect(x, y, width, height);
-    },
-
-    fillSplRect: (ctx, rect) => {
-        ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
-    },
-
-    multiLineText: (ctx, text, box, maxWidth, fontOffsetCoef = 0.33, strokeWidth = null) => {
+    multiLineText: (text, box, maxWidth, fontOffsetCoef = 0.33, strokeWidth = null) => {
 
         var hardLines = text.split('\n');
         var lines = [];
@@ -77,10 +128,10 @@ var SpoolRenderer = {
             var words = singleHardLine.split(' ');
             var line = '';
 
-            ctx.textAlign = 'center';
+            SpoolRenderer.ctx.textAlign = 'center';
 
             words.forEach((word, index) => {
-                var tempWidth = ctx.measureText(line + word).width;
+                var tempWidth = SpoolRenderer.ctx.measureText(line + word).width;
                 if (tempWidth >= maxWidth) {
                     lines.push(line.trim());
                     line = word;
@@ -94,7 +145,7 @@ var SpoolRenderer = {
             }
         })
 
-        var lineHeight = parseInt(ctx.font) + 3;
+        var lineHeight = parseInt(SpoolRenderer.ctx.font) + 3;
 
         lines.forEach((line, index) => {
 
@@ -102,21 +153,21 @@ var SpoolRenderer = {
             var ty = box.y + box.height / 2 - (lines.length - 1) / 2 * lineHeight + index * lineHeight + lineHeight * fontOffsetCoef;
 
             if (strokeWidth) {
-                ctx.lineWidth = strokeWidth;
-                ctx.strokeText(line, tx, ty);
+                SpoolRenderer.ctx.lineWidth = strokeWidth;
+                SpoolRenderer.ctx.strokeText(line, tx, ty);
             }
-            ctx.fillText(
+            SpoolRenderer.ctx.fillText(
                 line,
                 tx,
                 ty)
         })
     },
 
-    simpleText: (ctx, text, x, y, stroke = null) => {
+    simpleText: (text, x, y, stroke = null) => {
         if (stroke) {
-            ctx.lineWidth = stroke;
-            ctx.strokeText(text, x, y);
+            SpoolRenderer.ctx.lineWidth = stroke;
+            SpoolRenderer.ctx.strokeText(text, x, y);
         }
-        ctx.fillText(text, x, y);
+        SpoolRenderer.ctx.fillText(text, x, y);
     }
 }

@@ -46,9 +46,9 @@ const SpoolMath = {
         return `rgb(${r}, ${g}, ${b})`
     },
 
-    HSVtoRGB: (h, s, v) => {
+    HSVtoRGB: (h, s = null, v = null) => {
         var r, g, b, i, f, p, q, t;
-        if (arguments.length === 1) {
+        if (h && !s && !v) {
             s = h.s, v = h.v, h = h.h;
         }
         i = Math.floor(h * 6);
@@ -195,8 +195,15 @@ var SpoolRect = (x, y, width, height) => {
     }
 }
 
-
-module.exports = {
-    SpoolMath,
-    SpoolRect
+try {
+    module.exports = {
+        SpoolMath,
+        SpoolRect
+    }
+} catch (e) {
+    if (typeof module === 'undefined') {
+        console.log("Modules are not present, you are probably on client, make sure this script is included before the files that require it");
+    } else {
+        console.error(e);
+    }
 }

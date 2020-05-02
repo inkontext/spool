@@ -32,8 +32,13 @@ var Client = (initObject) => {
         chunkSize: 1000,
         FPS: 60,
 
+        pureLocalClient: false,
+
+        updateOnLoop: false,
+
         serverSideLoading: false,
         clientSideLoading: false,
+
 
         ...initObject
     }
@@ -60,7 +65,7 @@ var Client = (initObject) => {
 
     //// HANDLERS AND OBJECT SERVER ////
 
-    self.handler = ClientHandler(self.chunkSize, self);
+    self.handler = ClientHandler(self.chunkSize, self, self.pureLocalClient);
     self.uiHandler = SpoolUIHandler();
     self.objectServer = ClientObjectServer(self);
 
@@ -70,6 +75,11 @@ var Client = (initObject) => {
     //// SOCKETS ////
 
     self.socketInit = () => {
+
+        if (self.pureLocalClient) {
+            console.warn("You've set the pureLocalClient flag to true, but are initializing sockets.")
+        }
+
         self.socket = io();
         self.socket.on(MessageCodes.SM_PACK_INIT, (data) => {
 
@@ -156,6 +166,7 @@ var Client = (initObject) => {
         //// REMOVIGN OBJECTS ////
 
         self.socket.on(MessageCodes.SM_PACK_REMOVE, (data) => {
+            console.log()
             self.handler.removeBulk(data);
         })
 
@@ -184,7 +195,6 @@ var Client = (initObject) => {
         self.gameArea.clear();
 
         try {
-
             if (self.background) {
                 self.background(self.gameArea.ctx, self.camera);
             }
@@ -195,8 +205,6 @@ var Client = (initObject) => {
 
             // Render objects
             self.handler.render(self.gameArea.ctx, self.camera);
-
-
 
             if (self.postHandler) {
                 self.postHandler(self.gameArea.ctx, self.camera);
@@ -220,6 +228,11 @@ var Client = (initObject) => {
         if (now - self.lastFrameTime >= self.frameTime) {
             var delta = (now - self.lastFrameTime) / 1000
             self.lastFrameTime = now;
+
+            if (self.loopUpdateCall) {
+                self.handler.update();
+                self.camera.update();
+            }
 
             self.render();
 
@@ -276,6 +289,7 @@ var GameArea = (width = 500, height = 500) => {
     };
     // Get context
     self.ctx = self.canvas.getContext('2d');
+    SpoolRenderer.ctx = self.ctx;
 
     self.clear = () => {
         self.ctx.clearRect(0, 0, self.canvas.width, self.canvas.height);
@@ -316,7 +330,7 @@ var TextureManager = (spriteSheetInitObject, objectSheetInitObject) => {
         var keys = Object.keys(self.spriteSheetInitObject);
 
         self.targetLoad = keys.length;
-        ``
+
 
 
         keys.forEach(key => {
@@ -840,110 +854,52 @@ var ClientObjectServer = (client, caching = []) => {
 /**
  *  Handler is object that takes cares of drawn elements  
  */
-var ClientHandler = (chunkSize, client) => {
-    var self = {
-        objects: {},
-        objectsById: {},
-        chunks: {},
+var ClientHandler = (chunkSize, client, pureLocal = false) => {
+    var self = Handler({
         client: client,
-        chunkSize: chunkSize
+        chunkSize: chunkSize,
+        chunkConstructor: ClientChunk,
+
+    })
+
+    var superSelf = {
+        add: self.add
     }
 
     //// UPDATING ////
 
-    self.updateObjectsChunk = (object) => {
-
-
-        var relocating = false;
-        var cx = Math.floor((object.x - object.width / 2) / self.chunkSize);
-        var cy = Math.floor((object.y - object.height / 2) / self.chunkSize);
-        var cxx = Math.floor((object.x + object.width / 2) / self.chunkSize);
-        var cyy = Math.floor((object.y + object.height / 2) / self.chunkSize);
-
-
-        if (!object.chunks) {
-            relocating = true;
-        } else if (object.chunks.length == 0) {
-            relocating = true;
-        } else {
-            if (cx != object.chunksX || cy != object.chunksY || cxx != object.chunksXX || cyy != object.chunksYY) {
-                relocating = true;
-                object.chunks.forEach(chunk => {
-                    chunk.removeObj(object);
-                })
-            } else {
-                return;
-            }
-        }
-
-        if (!relocating) {
-            return;
-        }
-
-        object.chunksX = cx;
-        object.chunksY = cy;
-        object.chunksXX = cxx;
-        object.chunksYY = cyy;
-
-        object.chunks = [];
-
-
-
-        if (relocating) {
-            for (var x = cx; x < cxx + 1; x++) {
-                for (var y = cy; y < cyy + 1; y++) {
-                    var key = `[${x};${y}]`
-
-                    var chunk = undefined;
-
-                    if (key in self.chunks) {
-                        chunk = self.chunks[key];
-                    } else {
-                        chunk = ClientChunk({
-                                x: x,
-                                y: y,
-                                width: self.chunkSize,
-                                height: self.chunkSize,
-                                key: key
-                            },
-                            self)
-                        self.chunks[key] = chunk;
-
-                        if (self.textureManager) {
-                            self.textureManager.textureObj(chunk);
+    if (!pureLocal) {
+        /**
+         * @param {object} data   - update package from server ('update' message) 
+         *                          example is {PLAYER: [{x:0, y:10, id: 32}]}  
+         */
+        self.update = (data) => {
+            // Go through all the object types (players, bullets, etc.)
+            for (key in data) {
+                // If there is at least one object of that type 
+                if (self.objects[key]) {
+                    // Go through all the objects with that type 
+                    for (var i = 0; i < data[key].length; i++) {
+                        var obj = data[key][i];
+                        // Check if the object is present 
+                        if (self.objects[key][obj.id]) {
+                            // Run update on the object 
+                            var updatePack = {
+                                ...obj
+                            };
+                            delete updatePack.id;
+                            self.objects[key][obj.id].update(updatePack);
+                            self.updateObjectsChunk(self.objects[key][obj.id]);
                         }
                     }
-                    chunk.add(object)
-                    object.chunks.push(chunk);
                 }
             }
         }
     }
 
-    /**
-     * @param {object} data   - update package from server ('update' message) 
-     *                          example is {PLAYER: [{x:0, y:10, id: 32}]}  
-     */
-    self.update = (data) => {
-        // Go through all the object types (players, bullets, etc.)
-        for (key in data) {
-            // If there is at least one object of that type 
-            if (self.objects[key]) {
-                // Go through all the objects with that type 
-                for (var i = 0; i < data[key].length; i++) {
-                    var obj = data[key][i];
-                    // Check if the object is present 
-                    if (self.objects[key][obj.id]) {
-                        // Run update on the object 
-                        var updatePack = {
-                            ...obj
-                        };
-                        delete updatePack.id;
-                        self.objects[key][obj.id].update(updatePack);
-                        self.updateObjectsChunk(self.objects[key][obj.id]);
-                    }
-                }
-            }
+    self.onChunkCreated = (chunk) => {
+        if (self.textureManager) {
+            self.textureManager.textureObj(chunk);
         }
     }
 
@@ -952,14 +908,13 @@ var ClientHandler = (chunkSize, client) => {
      * @param {canvas context} ctx - context of the game canvas
      */
     self.render = (ctx, camera) => {
-        if (client.camera.followObject) {
+        if (true) {
             var min_x = Math.floor((camera.x - camera.width / 2 - 100) / self.chunkSize);
             var min_y = Math.floor((camera.y - camera.height / 2 - 100) / self.chunkSize);
             var max_x = Math.floor((camera.x + camera.width / 2 + 100) / self.chunkSize);
             var max_y = Math.floor((camera.y + camera.height / 2 + 100) / self.chunkSize);
             var chunks = self.getChunks(min_x, min_y, max_x, max_y)
             // var chunks = client.camera.followObject.chunks;
-
 
             var allObjects = {}
 
@@ -1067,7 +1022,7 @@ var ClientHandler = (chunkSize, client) => {
                         }
                     );
                 } else {
-                    console.warn('invalid chunk added to baking');
+                    console.warn('invalid chunk added to baking:', key);
                 }
             }
 
@@ -1095,13 +1050,9 @@ var ClientHandler = (chunkSize, client) => {
      * @param {canvas context} ctx - context of the game canvas
      */
     self.preBake = () => {
-
         var chunks = self.chunks;
 
         var bakingObjects = {}
-
-
-
         for (chunkKey in chunks) {
             var chunk = chunks[chunkKey];
             var objects = chunk.objects;
@@ -1204,42 +1155,11 @@ var ClientHandler = (chunkSize, client) => {
      * @param {object} obj - object being added 
      */
     self.add = (obj) => {
-        if (!(obj.objectType in self.objects)) {
-            self.objects[obj.objectType] = {};
-        }
-        self.objects[obj.objectType][obj.id] = obj;
-        self.objectsById[obj.id] = obj;
-        self.updateObjectsChunk(obj);
+        superSelf.add(obj);
+
         if (self.textureManager) {
             self.textureManager.textureObj(obj);
         }
-    }
-
-    /**
-     * removes object from the handler
-     * @param {object} obj - object being removed 
-     */
-    self.remove = (obj) => {
-        if (obj.objectType in self.objects) {
-            obj.chunks.forEach(chunk => {
-                chunk.removeObj(obj);
-            })
-            delete self.objects[obj.objectType][obj.id];
-        }
-        delete self.objectsById[obj.id];
-    }
-
-    /**
-     * @param {double} objectid - id of the object
-     * @param {string} objectType - type of the object (PLAYER, ARROW ...)
-     */
-    self.getObject = (objectType, objectId) => {
-        if (self.objects[objectType]) {
-            if (self.objects[objectType][objectId]) {
-                return self.objects[objectType][objectId];
-            }
-        }
-        return null;
     }
 
     /**
@@ -1259,7 +1179,6 @@ var ClientHandler = (chunkSize, client) => {
     }
 
     self.reset = () => {
-
         var defs = {
             objects: {},
             objectsById: {},
@@ -1272,60 +1191,16 @@ var ClientHandler = (chunkSize, client) => {
             delete self.key;
         });
         Object.assign(self, defs);
-
-        console.log(self.objects);
-    }
-
-    self.getChunks = (min_x, min_y, max_x, max_y) => {
-        result = []
-        for (var x = min_x; x <= max_x; x++) {
-            for (var y = min_y; y <= max_y; y++) {
-                var key = `[${x};${y}]`;
-                if (key in self.chunks) {
-                    result.push(self.chunks[key]);
-                }
-            }
-        }
-        return result;
     }
 
     return self;
 }
 
 var ClientChunk = (initObject, handler) => {
-
-    var self = {
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0,
-        handler: handler,
-
-        objectType: 'SPL_CHUNK',
-
-        objects: {},
-
+    var self = Chunk({
+        objectType: "SPL_CHUNK",
         ...initObject
-    }
-
-    self.add = (obj) => {
-        // Add to handler
-        if (!(obj.objectType in self.objects)) {
-            self.objects[obj.objectType] = {};
-        }
-        self.objects[obj.objectType][obj.id] = obj;
-    }
-
-    self.remove = (type, id) => {
-        // Remove object from handler
-        if (type in self.objects) {
-            delete self.objects[type][id];
-        }
-    }
-
-    self.removeObj = (obj) => {
-        self.remove(obj.objectType, obj.id)
-    }
+    }, handler);
 
     return self;
 }
@@ -1470,8 +1345,8 @@ var Camera = (initPack = {}) => {
 /**
  * Entity is client side generalized object that holds many useful methods for game objects
  */
-var Entity = (initPack) => {
-    var self = {
+var ClientEntity = (initPack, extending = null) => {
+    var defs = {
         x: 0, // x pos 
         y: 0, // y pos (inverted from normal - because of trigonometry and other calculations y=10 is rendered as y=-10
         rotation: 0,
@@ -1483,9 +1358,14 @@ var Entity = (initPack) => {
         animationTime: 0,
         animationFrame: 0,
         animationSize: 0,
-        ...initPack // unpacking the init package,
 
+        ...initPack // unpacking the init package,
     };
+    if (extending) {
+        var self = extending(defs);
+    } else {
+        var self = defs;
+    }
 
     /**
      * function that overrides the self state with data from update package
@@ -1506,8 +1386,9 @@ var Entity = (initPack) => {
      */
     self.renderOval = (ctx, camera, color = self.color) => {
         ctx.fillStyle = color;
+
         var bounds = camera.transformBounds(self.x, self.y, self.width, self.height)
-        SpoolRenderer.fillInscribedOval(ctx, SpoolRect(bounds.x - bounds.width / 2, bounds.y - bounds.height / 2, bounds.width, bounds.height));
+        SpoolRenderer.fillInscribedOval(SpoolRect(bounds.x - bounds.width / 2, bounds.y - bounds.height / 2, bounds.width, bounds.height));
     }
 
     self.renderNtagon = (ctx, camera, n, radius, startAngle = 0, color = self.color) => {
@@ -1738,7 +1619,7 @@ var Entity = (initPack) => {
 }
 
 var RectangleEntity = (initObject) => {
-    var self = Entity(initObject);
+    var self = ClientEntity(initObject);
     self.render = (ctx, camera) => {
         self.renderRectangle(ctx, camera);
     }
@@ -1746,7 +1627,7 @@ var RectangleEntity = (initObject) => {
 }
 
 var SpriteEntity = (initObject) => {
-    var self = Entity(initObject);
+    var self = ClientEntity(initObject);
     self.render = (ctx, camera) => {
         self.renderSprite(ctx, camera);
     }
@@ -1754,7 +1635,7 @@ var SpriteEntity = (initObject) => {
 }
 
 var MovementAnimationEntity = (initObject) => {
-    var self = Entity({
+    var self = ClientEntity({
         ...initObject,
         animationTime: 5
     });
@@ -1872,63 +1753,61 @@ var Rectangle = (initObject) => {
 
 /**
  * Listener for keyboard
- * @param {object} socket - socket.io socket instance important for communication 
+ * @param {object} client - socket.io socket instance important for communication 
  */
-var KeyboardListener = (socket) => {
+var KeyboardListener = (client, additionalKeyListeners) => {
     var self = {
-        socket
+        client,
+
+        keyListeners: {
+            65: {
+                inputMessage: MessageCodes.KI_MOV_LEFT,
+                parameter: 'pressedLeft'
+            },
+            87: {
+                inputMessage: MessageCodes.KI_MOV_UP,
+                parameter: 'pressedUp'
+            },
+            68: {
+                inputMessage: MessageCodes.KI_MOV_RIGHT,
+                parameter: 'pressedRight'
+            },
+            83: {
+                inputMessage: MessageCodes.KI_MOV_DOWN,
+                parameter: 'pressedDown'
+            },
+            ...additionalKeyListeners
+        }
     };
+
+    self.onEvent = (event, value) => {
+        if (event.keyCode in self.keyListeners) {
+
+            listener = self.keyListeners[event.keyCode]
+
+            if (self.client.pureLocalClient) {
+                if (self.client.clientObject) {
+                    self.client.clientObject[listener.parameter] = value;
+                }
+            } else {
+                self.client.socket.emit(MessageCodes.SM_KEY_PRESS, {
+                    inputId: listener.inputMessage,
+                    value: value
+                });
+            }
+        }
+    }
 
     self.initListener = () => {
         document.onkeydown = event => {
-            if (event.keyCode === 65) {
-                self.socket.emit(MessageCodes.SM_KEY_PRESS, {
-                    inputId: MessageCodes.KI_MOV_LEFT,
-                    value: true
-                });
-            } else if (event.keyCode === 87) {
-                self.socket.emit(MessageCodes.SM_KEY_PRESS, {
-                    inputId: MessageCodes.KI_MOV_UP,
-                    value: true
-                });
-            } else if (event.keyCode === 68) {
-                self.socket.emit(MessageCodes.SM_KEY_PRESS, {
-                    inputId: MessageCodes.KI_MOV_RIGHT,
-                    value: true
-                });
-            } else if (event.keyCode === 83) {
-                self.socket.emit(MessageCodes.SM_KEY_PRESS, {
-                    inputId: MessageCodes.KI_MOV_DOWN,
-                    value: true
-                });
-            }
+            self.onEvent(event, true);
             if (self.onKeyDown) {
                 self.onKeyDown(event)
             }
         }
 
         document.onkeyup = event => {
-            if (event.keyCode === 65) {
-                self.socket.emit(MessageCodes.SM_KEY_PRESS, {
-                    inputId: MessageCodes.KI_MOV_LEFT,
-                    value: false
-                });
-            } else if (event.keyCode === 87) {
-                self.socket.emit(MessageCodes.SM_KEY_PRESS, {
-                    inputId: MessageCodes.KI_MOV_UP,
-                    value: false
-                });
-            } else if (event.keyCode === 68) {
-                self.socket.emit(MessageCodes.SM_KEY_PRESS, {
-                    inputId: MessageCodes.KI_MOV_RIGHT,
-                    value: false
-                });
-            } else if (event.keyCode === 83) {
-                self.socket.emit(MessageCodes.SM_KEY_PRESS, {
-                    inputId: MessageCodes.KI_MOV_DOWN,
-                    value: false
-                });
-            }
+            self.onEvent(event, false);
             if (self.onKeyUp) {
                 self.onKeyUp(event)
             }
@@ -1940,48 +1819,56 @@ var KeyboardListener = (socket) => {
 
 /**
  * Listener for mouse clicks
- * @param {object} socket - socket.io socket instance important for communication 
+ * @param {object} client - socket.io socket instance important for communication 
  */
 var MouseListener = (client) => {
     var self = {
-        client
+        client,
+        mouseCoordTransformation: null
     };
 
-    self.mouseEvent = (event, self = self) => {
-        if (event.button === 0) {
-            self.client.socket.emit(MessageCodes.SM_MOUSE_CLICKED, {
-                clickedX: event.clientX,
-                clickedY: event.clientY,
-                type: event.type
-            })
+    self.onMouseButtonEvent = (event) => {
+
+
+        if (!self.client.uiHandler.mouseEvent(event)) {
+            self.gamePlaneMouseButtonEvent(event);
+            self.client.onMouseEvent(event, client);
         }
     }
 
-    self.cameraMouseEvent = (event, self = self) => {
+    self.gamePlaneMouseButtonEvent = (event) => {
+
         if (event.button === 0) {
-            var point = self.client.camera.inverseTransformPoint(event.clientX, event.clientY);
-            self.client.socket.emit(MessageCodes.SM_MOUSE_CLICKED, {
-                clickedX: point.x,
-                clickedY: point.y,
-                type: event.type
-            })
+            var mousePoint = null;
+
+            if (self.mouseCoordTransformation) {
+                mousePoint = self.mouseCoordTransformation(event.clientX, event.clientY);
+            } else {
+                mousePoint = {
+                    x: event.clientX,
+                    y: event.clientY
+                };
+            }
+
+
+
+            if (!self.client.pureLocalClient) {
+                self.client.socket.emit(MessageCodes.SM_MOUSE_INPUT, {
+                    clickedX: mousePoint.x,
+                    clickedY: mousePoint.y,
+                    type: event.type
+                })
+            } else {
+                if (client.clientObject.mouseEventInWorld) {
+                    client.clientObject.mouseEventInWorld(mousePoint.x, mousePoint.y);
+                }
+            }
         }
     }
 
     self.initListener = () => {
-        document.onmousedown = event => {
-            if (!self.client.uiHandler.mouseEvent(event)) {
-                self.mouseEvent(event, self);
-                self.client.onMouseEvent(event, client);
-            }
-        }
-
-        document.onmouseup = event => {
-            if (!self.client.uiHandler.mouseEvent(event)) {
-                self.mouseEvent(event, self);
-                self.client.onMouseEvent(event, client);
-            }
-        }
+        document.onmousedown = self.onMouseButtonEvent;
+        document.onmouseup = self.onMouseButtonEvent;
 
         document.onmousemove = event => {
             if (self.client.onMouseMove) {
@@ -1989,9 +1876,6 @@ var MouseListener = (client) => {
             }
             self.client.uiHandler.mouseMove(event);
         }
-
-
-
     }
 
     return self;
