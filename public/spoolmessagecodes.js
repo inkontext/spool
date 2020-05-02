@@ -12,7 +12,7 @@ var MessageCodes = {
     ASIGN_CLIENT_ID: 'asign-id',
 
     SM_KEY_PRESS: 'key-press',
-    SM_MOUSE_CLICKED: 'mouse-clicked',
+    SM_MOUSE_INPUT: 'mouse-clicked',
 
     KI_MOV_LEFT: 'MOV_LEFT',
     KI_MOV_RIGHT: 'MOV_RIGHT',
@@ -22,7 +22,10 @@ var MessageCodes = {
     SERVER_LOADING: 'SERVER_LOADING'
 }
 
-
-module.exports = {
-    ...MessageCodes
+try {
+    module.exports = {
+        ...MessageCodes
+    }
+} catch (e) {
+    console.warn('Module exporting is not present. If you are in client make sure you include files correctly in you index file.')
 }
