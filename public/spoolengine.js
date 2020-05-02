@@ -1033,14 +1033,13 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
             var array = [];
 
             var pixels = data.data;
-            var shape = data.shape;
             // Spawning empty zone map if first zone 
 
             if (!self.zoneMap) {
                 var resArray = [];
-                for (var y = 0; y < shape[1]; y++) {
+                for (var y = 0; y < data.height; y++) {
                     var resLineArray = [];
-                    for (var x = 0; x < shape[0]; x++) {
+                    for (var x = 0; x < data.width; x++) {
                         resLineArray.push({});
                     }
                     resArray.push(resLineArray);
@@ -1051,10 +1050,10 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
 
             // Adding all the zones present in the map 
 
-            for (var y = 0; y < shape[1]; y++) {
+            for (var y = 0; y < data.height; y++) {
                 var lineArray = [];
-                for (var x = 0; x < shape[0]; x++) {
-                    var index = (y * shape[0] + x) * shape[2];
+                for (var x = 0; x < data.width; x++) {
+                    var index = (y * data.width + x) * data.pixelSize;
                     var r = pixels[index];
                     var g = pixels[index + 1];
                     var b = pixels[index + 2];
@@ -1073,8 +1072,8 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                 array.push(lineArray);
             }
 
-            self.mapPxWidth = shape[0];
-            self.mapPxHeight = shape[1];
+            self.mapPxWidth = data.width;
+            self.mapPxHeight = data.height;
 
             // Dividing the tiles into the zones 
 
@@ -1233,21 +1232,22 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
     self.spawnFromImageMap = (fileName, colorToKey, callback, gx = self.gx, gy = self.gy) => {
         FileReader.readImage(fileName, (data) => {
 
+            console.log(data);
+
             var array = [];
 
             var objectKeys = Object.keys(self.keyToConstAndDefs);
 
             var pixels = data.data;
-            var shape = data.shape;
 
             var nonBlack = colorToKey['non-black']
             var colorArray = []
 
-            for (var y = 0; y < shape[1]; y++) {
+            for (var y = 0; y < data.height; y++) {
                 var lineArray = []
                 var colorLine = []
-                for (var x = 0; x < shape[0]; x++) {
-                    var index = (y * shape[0] + x) * shape[2];
+                for (var x = 0; x < data.width; x++) {
+                    var index = (y * data.width + x) * data.pixelSize;
                     var r = pixels[index];
                     var g = pixels[index + 1];
                     var b = pixels[index + 2];

@@ -7,6 +7,9 @@ const FileReader = {
             if (exists) {
                 fs.readFile(fileName, 'utf8', function (err, data) {
                     if (err) throw err;
+
+
+
                     callback(data);
                 });
             } else {
@@ -19,7 +22,12 @@ const FileReader = {
             if (exists) {
                 getPixels(fileName, function (err, data) {
                     if (err) throw err;
-                    callback(data);
+                    callback({
+                        data: data.data,
+                        width: data.shape[0],
+                        height: data.shape[1],
+                        pixelSize: data.shape[2],
+                    });
                 })
             } else {
                 return 'file does not exist'
