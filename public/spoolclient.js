@@ -36,6 +36,10 @@ var Client = (initObject) => {
 
         updateOnLoop: false,
 
+        serverSideLoading: false,
+        clientSideLoading: false,
+
+
         ...initObject
     }
 
@@ -122,7 +126,6 @@ var Client = (initObject) => {
                 }
             }
 
-
             if (!self.firstInit) {
                 if (self.onFirstLoad)
                     self.onFirstLoad(self)
@@ -137,6 +140,12 @@ var Client = (initObject) => {
         self.socket.on(MessageCodes.ASIGN_CLIENT_ID, (data) => {
             self.clientId = data.clientId;
             self.clientObjectFingerprint = data.clientObject;
+        })
+
+        self.socket.on(MessageCodes.SERVER_LOADING, (data) => {
+            console.log(data);
+            self.serverSideLoading = data.loading;
+            self.serverSideLoadingData = data;
         })
 
         //// UPDATING THE STATE ////
