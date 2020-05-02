@@ -1,6 +1,4 @@
 ////// IMPORTS //////
-console.log(typeof SpoolMath);
-
 if (typeof SpoolMath === 'undefined') {
     //var SpoolMath;
     try {
@@ -19,19 +17,19 @@ if (typeof SpoolUtils === 'undefined') {
     } catch (e) {
         console.warn("SpoolUtils require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way");
     }
-    if (!SpoolMath) {
+    if (!SpoolUtils) {
         console.error("SpoolUtils library not present, make sure it is included")
     }
 }
 
 if (typeof FileReader === 'undefined') {
     try {
-        FileReader = require('../spoolfilereader.js').SpoolUtils
+        FileReader = require('../spoolfilereader.js').FileReader
     } catch (e) {
-        console.warn("SpoolUtils require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way");
+        console.warn("FileReader require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way");
     }
     if (!FileReader) {
-        console.error("SpoolUtils library not present, make sure it is included")
+        console.error("FileReader library not present, make sure it is included")
     }
 }
 
@@ -1231,9 +1229,6 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
 
     self.spawnFromImageMap = (fileName, colorToKey, callback, gx = self.gx, gy = self.gy) => {
         FileReader.readImage(fileName, (data) => {
-
-            console.log(data);
-
             var array = [];
 
             var objectKeys = Object.keys(self.keyToConstAndDefs);
