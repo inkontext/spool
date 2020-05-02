@@ -222,10 +222,15 @@ var Handler = (initObject = {}) => {
                                 y: y,
                                 width: self.chunkSize,
                                 height: self.chunkSize,
+                                key: key,
                                 color: SpoolMath.randomHsvColor(0.5, 0.8)
                             },
                             self)
                         self.chunks[key] = chunk;
+
+                        if (self.onChunkCreated) {
+                            self.onChunkCreated(chunk);
+                        }
                     }
 
                     chunk.add(object)
@@ -1694,6 +1699,9 @@ try {
         Perlin
     }
 } catch (e) {
-    console.warn("Most likely module exporting is not present. If you are in client make sure you include files correctly in you index file.");
-    console.warn(e)
+    if (typeof module === 'undefined') {
+        console.log("Modules are not present, you are probably on client, make sure this script is included before the files that require it");
+    } else {
+        console.error(e);
+    }
 }

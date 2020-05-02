@@ -201,5 +201,9 @@ try {
         SpoolRect
     }
 } catch (e) {
-    console.warn('Module exporting is not present. If you are in client make sure you include files correctly in you index file.')
+    if (typeof module === 'undefined') {
+        console.log("Modules are not present, you are probably on client, make sure this script is included before the files that require it");
+    } else {
+        console.error(e);
+    }
 }

@@ -17,7 +17,15 @@ const SpoolUtils = {
     }
 }
 
+try {
+    module.exports = {
+        SpoolUtils
+    }
 
-module.exports = {
-    SpoolUtils
+} catch (e) {
+    if (typeof module === 'undefined') {
+        console.log("Modules are not present, you are probably on client, make sure this script is included before the files that require it");
+    } else {
+        console.error(e);
+    }
 }

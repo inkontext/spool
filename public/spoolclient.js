@@ -857,7 +857,9 @@ var ClientObjectServer = (client, caching = []) => {
 var ClientHandler = (chunkSize, client, pureLocal = false) => {
     var self = Handler({
         client: client,
-        chunkSize: chunkSize
+        chunkSize: chunkSize,
+        chunkConstructor: ClientChunk,
+
     })
 
     var superSelf = {
@@ -892,6 +894,12 @@ var ClientHandler = (chunkSize, client, pureLocal = false) => {
                     }
                 }
             }
+        }
+    }
+
+    self.onChunkCreated = (chunk) => {
+        if (self.textureManager) {
+            self.textureManager.textureObj(chunk);
         }
     }
 
@@ -1014,7 +1022,7 @@ var ClientHandler = (chunkSize, client, pureLocal = false) => {
                         }
                     );
                 } else {
-                    console.warn('invalid chunk added to baking');
+                    console.warn('invalid chunk added to baking:', key);
                 }
             }
 
@@ -1747,7 +1755,7 @@ var Rectangle = (initObject) => {
  * Listener for keyboard
  * @param {object} client - socket.io socket instance important for communication 
  */
-var KeyboardListener = (client) => {
+var KeyboardListener = (client, additionalKeyListeners) => {
     var self = {
         client,
 
@@ -1767,7 +1775,8 @@ var KeyboardListener = (client) => {
             83: {
                 inputMessage: MessageCodes.KI_MOV_DOWN,
                 parameter: 'pressedDown'
-            }
+            },
+            ...additionalKeyListeners
         }
     };
 
