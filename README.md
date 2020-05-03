@@ -18,3 +18,11 @@ cd spool
 ```
 npm install
 ```
+
+## Wiki
+
+We are currently working on simple wiki you can find it [here](https://github.com/sixkey/spool/wiki)
+
+## Boilerplate application
+
+We have an example project [here](https://github.com/sixkey/spool-boilderplate)
