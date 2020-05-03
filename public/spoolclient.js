@@ -1828,8 +1828,6 @@ var MouseListener = (client) => {
     };
 
     self.onMouseButtonEvent = (event) => {
-
-
         if (!self.client.uiHandler.mouseEvent(event)) {
             self.gamePlaneMouseButtonEvent(event);
             self.client.onMouseEvent(event, client);
@@ -1837,7 +1835,6 @@ var MouseListener = (client) => {
     }
 
     self.gamePlaneMouseButtonEvent = (event) => {
-
         if (event.button === 0) {
             var mousePoint = null;
 
@@ -1849,8 +1846,6 @@ var MouseListener = (client) => {
                     y: event.clientY
                 };
             }
-
-
 
             if (!self.client.pureLocalClient) {
                 self.client.socket.emit(MessageCodes.SM_MOUSE_INPUT, {
@@ -1867,8 +1862,18 @@ var MouseListener = (client) => {
     }
 
     self.initListener = () => {
-        document.onmousedown = self.onMouseButtonEvent;
-        document.onmouseup = self.onMouseButtonEvent;
+        document.onmousedown = (e) => {
+            if (self.onMouseDown) {
+                self.onMouseDown(e);
+            }
+            self.onMouseButtonEvent(e);
+        };
+        document.onmouseup = (e) => {
+            if (self.onMouseUp) {
+                self.onMouseUp(e);
+            }
+            self.onMouseButtonEvent(e);
+        };
 
         document.onmousemove = event => {
             if (self.client.onMouseMove) {
