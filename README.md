@@ -1,7 +1,7 @@
 ﻿# Spool
 Spool is a framework for creating socket.io based multiplayer games
 
-![Spool logo](https://github.com/sixkey/spool-boilerplate/blob/master/icons/android-chrome-512x512.png)
+![Spool logo](https://github.com/sixkey/spool-boilerplate/blob/master/icons/android-chrome-256x256.png)
 
 ## Getting started 
 
