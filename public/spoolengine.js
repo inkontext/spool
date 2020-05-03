@@ -955,7 +955,7 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
         })
     }
 
-    self.spawnInRadius = (key, radius, amount, cx = 0, cy = 0) => {
+    self.spawnInRadius = (key, amount, radius, cx = 0, cy = 0) => {
         if (key in self.keyToConstAndDefs) {
             var pair = keyToConstAndDefs[key];
             for (var i = 0; i < amount; i++) {
@@ -976,12 +976,12 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
         }
     }
 
-    self.spawnInRectangle = (key, size, amount, cx = 0, cy = 0) => {
+    self.spawnInRectangle = (key, amount, x, y, width, height) => {
         if (key in self.keyToConstAndDefs) {
             var pair = keyToConstAndDefs[key];
             for (var i = 0; i < amount; i++) {
-                var px = cx - size / 2 + size * Math.random();
-                var py = cy - size / 2 + size * Math.random();
+                var px = x + width * Math.random();
+                var py = y + height * Math.random();
 
                 var object = pair.const({
                     ...pair.defs,
@@ -1020,7 +1020,7 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
         }
     }
 
-    self.addZonesArray = (zoneMaps, colorToZoneType, callback) => {
+    self.addZonesFromImageArray = (zoneMaps, colorToZoneType, callback) => {
         self.addZones(zoneMaps[0], colorToZoneType, () => {
             var slice = zoneMaps.slice(1);
             if (slice.length == 0) {
@@ -1031,7 +1031,7 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
         });
     }
 
-    self.addZones = (zoneMap, colorToZoneType, callback) => {
+    self.addZonesFromImage = (zoneMap, colorToZoneType, callback) => {
         FileReader.readImage(zoneMap, (data) => {
             var array = [];
 
@@ -1099,6 +1099,7 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                     }
                 }
             }
+
             self.zoneCounters = counters;
 
             if (callback) {
@@ -1286,6 +1287,7 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
     }
 
     self.spawnInZone = (key, amount, zoneType, zoneId = null) => {
+
         if (key in self.keyToConstAndDefs) {
             var pair = keyToConstAndDefs[key];
 
@@ -1293,9 +1295,8 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
 
             if (zones) {
                 for (var i = 0; i < amount; i++) {
-
                     var id = zoneId;
-                    if (!id) {
+                    if (id == undefined || id == null) {
                         var keys = Object.keys(self.zones[zoneType]);
                         id = keys[Math.round(Math.random() * (keys.length - 1))];
                     }
@@ -1319,6 +1320,8 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                 }
             }
 
+        } else {
+            console.log('@ObjectSpawner: Object key is not in known by object spawner: ' + key);
         }
     }
 

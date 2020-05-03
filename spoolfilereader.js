@@ -8,12 +8,10 @@ const FileReader = {
                 fs.readFile(fileName, 'utf8', function (err, data) {
                     if (err) throw err;
 
-
-
                     callback(data);
                 });
             } else {
-                return 'file does not exist'
+                console.error(`File ${fileName} doesn't exist`)
             }
         });
     },
@@ -30,7 +28,7 @@ const FileReader = {
                     });
                 })
             } else {
-                return 'file does not exist'
+                console.error(`File '${fileName}' doesn't exist`)
             }
         });
     }
