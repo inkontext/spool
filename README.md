@@ -25,4 +25,4 @@ We are currently working on simple wiki you can find it [here](https://github.co
 
 ## Boilerplate application
 
-We have an example project [here](https://github.com/sixkey/spool-boilderplate)
+We have an example project [here](https://github.com/sixkey/spool-boilerplate)
