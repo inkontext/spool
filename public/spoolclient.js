@@ -1755,7 +1755,7 @@ var Rectangle = (initObject) => {
  * Listener for keyboard
  * @param {object} client - socket.io socket instance important for communication 
  */
-var KeyboardListener = (client, additionalKeyListeners) => {
+var KeyboardListener = (client, initObject) => {
     var self = {
         client,
 
@@ -1776,9 +1776,18 @@ var KeyboardListener = (client, additionalKeyListeners) => {
                 inputMessage: MessageCodes.KI_MOV_DOWN,
                 parameter: 'pressedDown'
             },
-            ...additionalKeyListeners
-        }
+
+        },
+        additionalKeyListeners: {},
+        activeTypes: ['keydown', 'keyup'],
+        ...initObject
     };
+
+    self.handleKeyDown = self.activeTypes.includes('keydown');
+    self.handleKeyUp = self.activeTypes.includes('keyup');
+
+
+    Object.assign(self.keyListeners, self.additionalKeyListeners)
 
     self.onEvent = (event, value) => {
         if (event.keyCode in self.keyListeners) {
@@ -1800,14 +1809,18 @@ var KeyboardListener = (client, additionalKeyListeners) => {
 
     self.initListener = () => {
         document.onkeydown = event => {
-            self.onEvent(event, true);
+            if (self.handleKeyDown) {
+                self.onEvent(event, true);
+            }
             if (self.onKeyDown) {
                 self.onKeyDown(event)
             }
         }
 
         document.onkeyup = event => {
-            self.onEvent(event, false);
+            if (self.handleKeyUp) {
+                self.onEvent(event, false);
+            }
             if (self.onKeyUp) {
                 self.onKeyUp(event)
             }
@@ -1819,43 +1832,45 @@ var KeyboardListener = (client, additionalKeyListeners) => {
 
 /**
  * Listener for mouse clicks
- * @param {object} client - socket.io socket instance important for communication 
+ * @param {object} client - client instance
+ * @param {object} initObject - object that is assigned at the end of self
  */
-var MouseListener = (client) => {
+var MouseListener = (client, initObject) => {
     var self = {
         client,
-        mouseCoordTransformation: null
+        mouseCoordTransformation: null,
+
+        activeButtons: [0, 2],
+        activeTypes: ['mousedown', 'mouseup'],
+        ...initObject
     };
 
-    self.onMouseButtonEvent = (event) => {
+    self.onMouseButtonEvent = (event, x, y) => {
         if (!self.client.uiHandler.mouseEvent(event)) {
-            self.gamePlaneMouseButtonEvent(event);
+            self.gamePlaneMouseButtonEvent(event, x, y);
             self.client.onMouseEvent(event, client);
         }
     }
 
-    self.gamePlaneMouseButtonEvent = (event) => {
-        if (event.button === 0) {
-            var mousePoint = null;
+    self.gamePlaneMouseButtonEvent = (event, x, y) => {
+        if (self.activeButtons.includes(event.button) && self.activeTypes.includes(event.type)) {
+            var value = event.type == 'mousedown' ? true : (event.type == 'mouseup' ? false : null);
 
-            if (self.mouseCoordTransformation) {
-                mousePoint = self.mouseCoordTransformation(event.clientX, event.clientY);
-            } else {
-                mousePoint = {
-                    x: event.clientX,
-                    y: event.clientY
-                };
+            if (value === null) {
+                console.error("@MouseListener, event value is null");
+                return;
             }
 
             if (!self.client.pureLocalClient) {
                 self.client.socket.emit(MessageCodes.SM_MOUSE_INPUT, {
-                    clickedX: mousePoint.x,
-                    clickedY: mousePoint.y,
+                    x: x,
+                    y: y,
+                    value: value,
                     type: event.type
                 })
             } else {
                 if (client.clientObject.mouseEventInWorld) {
-                    client.clientObject.mouseEventInWorld(mousePoint.x, mousePoint.y);
+                    client.clientObject.mouseEventInWorld(x, y, value);
                 }
             }
         }
@@ -1863,16 +1878,35 @@ var MouseListener = (client) => {
 
     self.initListener = () => {
         document.onmousedown = (e) => {
+            var x = e.clientX;
+            var y = e.clientY;
+
+            if (self.mouseCoordTransformation) {
+                var point = self.mouseCoordTransformation(x, y);
+                x = point.x;
+                y = point.y;
+            }
+
             if (self.onMouseDown) {
-                self.onMouseDown(e);
+                self.onMouseDown(e, x, y);
             }
-            self.onMouseButtonEvent(e);
+            self.onMouseButtonEvent(e, x, y);
         };
+
         document.onmouseup = (e) => {
-            if (self.onMouseUp) {
-                self.onMouseUp(e);
+            var x = e.clientX;
+            var y = e.clientY;
+
+            if (self.mouseCoordTransformation) {
+                var point = self.mouseCoordTransformation(x, y);
+                x = point.x;
+                y = point.y;
             }
-            self.onMouseButtonEvent(e);
+
+            if (self.onMouseUp) {
+                self.onMouseUp(e, x, y);
+            }
+            self.onMouseButtonEvent(e, x, y);
         };
 
         document.onmousemove = event => {
