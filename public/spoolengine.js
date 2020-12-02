@@ -1,50 +1,61 @@
 ////// IMPORTS //////
-if (typeof SpoolMath === 'undefined') {
+if (typeof SpoolMath === "undefined") {
     //var SpoolMath;
     try {
-        SpoolMath = require('./spoolmath.js').SpoolMath
+        SpoolMath = require("./spoolmath.js").SpoolMath;
     } catch (e) {
-        console.warn("SpoolMath require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way");
+        console.warn(
+            "SpoolMath require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way"
+        );
     }
     if (!SpoolMath) {
-        console.error("SpoolMath library not present, make sure it is included")
+        console.error(
+            "SpoolMath library not present, make sure it is included"
+        );
     }
 }
 
-if (typeof SpoolUtils === 'undefined') {
+if (typeof SpoolUtils === "undefined") {
     try {
-        SpoolUtils = require('./spoolutils.js').SpoolUtils
+        SpoolUtils = require("./spoolutils.js").SpoolUtils;
     } catch (e) {
-        console.warn("SpoolUtils require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way");
+        console.warn(
+            "SpoolUtils require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way"
+        );
     }
     if (!SpoolUtils) {
-        console.error("SpoolUtils library not present, make sure it is included")
+        console.error(
+            "SpoolUtils library not present, make sure it is included"
+        );
     }
 }
 
-if (typeof FileReader === 'undefined') {
+if (typeof FileReader === "undefined") {
     try {
-        FileReader = require('../spoolfilereader.js').FileReader
+        FileReader = require("../spoolfilereader.js").FileReader;
     } catch (e) {
-        console.warn("FileReader require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way");
+        console.warn(
+            "FileReader require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way"
+        );
     }
     if (!FileReader) {
-        console.error("FileReader library not present, make sure it is included")
+        console.error(
+            "FileReader library not present, make sure it is included"
+        );
     }
 }
 
 try {
-    var Perlin = require('perlin-noise');
+    var Perlin = require("perlin-noise");
 } catch (e) {
     console.warn("Perlin noise is not available without require (server side)");
 }
 
 ////// HANDLER //////
 
-
 /**
  * Chunk holds objects only in certain bounds - used in collision, gravity and more.
- * @param {object} initObject - initObject 
+ * @param {object} initObject - initObject
  * @param {object} handler - ServerHandler
  */
 var Chunk = (initObject, handler) => {
@@ -53,12 +64,12 @@ var Chunk = (initObject, handler) => {
         y: 0, // y-index in the 2d chunks array (position in grid)
         width: 0, // width of the chunk
         height: 0, // height of the chunk
-        handler: handler, // Handler instance 
+        handler: handler, // Handler instance
 
         objects: {}, // all the objects in the chunk
 
-        ...initObject
-    }
+        ...initObject,
+    };
 
     /**
      * Adds object to the chunk
@@ -70,7 +81,7 @@ var Chunk = (initObject, handler) => {
             self.objects[obj.objectType] = {};
         }
         self.objects[obj.objectType][obj.id] = obj;
-    }
+    };
 
     /**
      * Removes object from the chunk
@@ -82,21 +93,21 @@ var Chunk = (initObject, handler) => {
         if (type in self.objects) {
             delete self.objects[type][id];
         }
-    }
+    };
 
     /**
      * Removes object from the chunk
      * @param {object} obj - object fingerprint
      */
     self.remove = (obj) => {
-        self.removeSignature(obj.objectType, obj.id)
-    }
+        self.removeSignature(obj.objectType, obj.id);
+    };
 
     /**
      * Returns the closest object to the coordinates and with attributes
-     * @param {int} x - x-coord of the point 
-     * @param {int} y - y-coord of the point 
-     * @param {object} attributes - attributes we want our object to have 
+     * @param {int} x - x-coord of the point
+     * @param {int} y - y-coord of the point
+     * @param {object} attributes - attributes we want our object to have
      */
     self.getClosestObject = (x, y, attributes) => {
         var res = null;
@@ -115,17 +126,17 @@ var Chunk = (initObject, handler) => {
                 if (res ? tempDistance < res.distance : true) {
                     res = {
                         object: obj,
-                        distance: tempDistance
-                    }
+                        distance: tempDistance,
+                    };
                 }
             }
         }
 
         return res;
-    }
+    };
 
     return self;
-}
+};
 
 /**
  * Handler is object that handles all objects in the game (updates them, renders them, sets chunks)
@@ -135,7 +146,7 @@ var Handler = (initObject = {}) => {
     var self = {
         objectsById: {},
         objects: {}, // All objects in the game
-        chunks: {}, // All the chunks in the game 
+        chunks: {}, // All the chunks in the game
 
         staticKeys: [], // List of objectTypes that are not updated -> for walls, floors, roofs, trees etc.
 
@@ -147,7 +158,7 @@ var Handler = (initObject = {}) => {
         chunkConstructor: Chunk,
 
         ...initObject,
-    }
+    };
 
     //// RESET ////
 
@@ -155,9 +166,9 @@ var Handler = (initObject = {}) => {
         Object.assign(self, {
             objectsById: {},
             objects: {}, // All objects in the game
-            chunks: {}, // All the chunks in the game 
-        })
-    }
+            chunks: {}, // All the chunks in the game
+        });
+    };
 
     //// UPDATING ////
 
@@ -168,27 +179,30 @@ var Handler = (initObject = {}) => {
     self.updateObjectsChunk = (object) => {
         var relocating = false;
 
-        // Getting the chunk indexes in the lists 
+        // Getting the chunk indexes in the lists
         var cx = Math.floor((object.x - object.width / 2) / self.chunkSize);
         var cy = Math.floor((object.y - object.height / 2) / self.chunkSize);
         var cxx = Math.floor((object.x + object.width / 2) / self.chunkSize);
         var cyy = Math.floor((object.y + object.height / 2) / self.chunkSize);
 
-
         if (!object.chunks) {
-            // If object isn't in any chunk relocate 
+            // If object isn't in any chunk relocate
             relocating = true;
-
         } else if (object.chunks.length == 0) {
             // If object has chunks but the array is empty relocate
             relocating = true;
         } else {
-            if (cx != object.chunksX || cy != object.chunksY || cxx != object.chunksXX || cyy != object.chunksYY) {
+            if (
+                cx != object.chunksX ||
+                cy != object.chunksY ||
+                cxx != object.chunksXX ||
+                cyy != object.chunksYY
+            ) {
                 // If the object has chunks but are incorrect relocate
                 relocating = true;
-                object.chunks.forEach(chunk => {
+                object.chunks.forEach((chunk) => {
                     chunk.remove(object);
-                })
+                });
             } else {
                 return;
             }
@@ -198,7 +212,7 @@ var Handler = (initObject = {}) => {
             return;
         }
 
-        // Relocating 
+        // Relocating
 
         object.chunksX = cx;
         object.chunksY = cy;
@@ -210,22 +224,24 @@ var Handler = (initObject = {}) => {
         if (relocating) {
             for (var x = cx; x < cxx + 1; x++) {
                 for (var y = cy; y < cyy + 1; y++) {
-                    var key = `[${x};${y}]`
+                    var key = `[${x};${y}]`;
 
                     var chunk = undefined;
 
                     if (key in self.chunks) {
                         chunk = self.chunks[key];
                     } else {
-                        chunk = self.chunkConstructor({
+                        chunk = self.chunkConstructor(
+                            {
                                 x: x,
                                 y: y,
                                 width: self.chunkSize,
                                 height: self.chunkSize,
                                 key: key,
-                                color: SpoolMath.randomHsvColor(0.5, 0.8)
+                                color: SpoolMath.randomHsvColor(0.5, 0.8),
                             },
-                            self)
+                            self
+                        );
                         self.chunks[key] = chunk;
 
                         if (self.onChunkCreated) {
@@ -233,13 +249,13 @@ var Handler = (initObject = {}) => {
                         }
                     }
 
-                    chunk.add(object)
+                    chunk.add(object);
                     object.chunks.push(chunk);
                     object.chunkColor = chunk.color;
                 }
             }
         }
-    }
+    };
 
     /**
      * Updates all of the objects
@@ -247,7 +263,6 @@ var Handler = (initObject = {}) => {
      */
     self.update = () => {
         for (key in self.objects) {
-
             if (self.staticKeys.includes(key)) {
                 continue;
             }
@@ -285,7 +300,7 @@ var Handler = (initObject = {}) => {
      * Adds object to the handler
      * @param {object} obj - object we want to add need to contain objecType and idf
      */
-    self.add = obj => {
+    self.add = (obj) => {
         // Add to handler
         if (!(obj.objectType in self.objects)) {
             self.objects[obj.objectType] = {};
@@ -305,9 +320,9 @@ var Handler = (initObject = {}) => {
         if (type in self.objects) {
             if (self.objects[type][id]) {
                 if (self.objects[type][id].chunks) {
-                    self.objects[type][id].chunks.forEach(chunk => {
+                    self.objects[type][id].chunks.forEach((chunk) => {
                         chunk.remove(self.objects[type][id]);
-                    })
+                    });
                 }
             }
             delete self.objects[type][id];
@@ -321,22 +336,22 @@ var Handler = (initObject = {}) => {
      * @param {object} obj - object fingerprint
      */
     self.remove = (obj) => {
-        self.removeSignature(obj.objectType, obj.id)
-    }
+        self.removeSignature(obj.objectType, obj.id);
+    };
 
     /**
-     * Removes all the object with object type 
-     * @param {string} key - object type that we want to remove from the handler 
+     * Removes all the object with object type
+     * @param {string} key - object type that we want to remove from the handler
      */
     self.emptyObjectType = (key) => {
         if (key in self.objects) {
             var objects = self.objects[key];
             var ids = Object.keys(objects);
-            ids.forEach(id => {
+            ids.forEach((id) => {
                 self.remove(key, id);
-            })
+            });
         }
-    }
+    };
 
     /**
      * @param {double} objectid - id of the object
@@ -349,13 +364,13 @@ var Handler = (initObject = {}) => {
             }
         }
         return null;
-    }
+    };
 
     /**
      * Returns the closest object to the coordinates and with attributes
-     * @param {int} x - x-coord of the point 
-     * @param {int} y - y-coord of the point 
-     * @param {object} attributes - attributes we want our object to have 
+     * @param {int} x - x-coord of the point
+     * @param {int} y - y-coord of the point
+     * @param {object} attributes - attributes we want our object to have
      */
     self.getClosestObject = (x, y, attributes) => {
         var cx = Math.floor(x / self.chunkSize);
@@ -365,14 +380,14 @@ var Handler = (initObject = {}) => {
 
         var res = null;
 
-        chunks.forEach(chunk => {
+        chunks.forEach((chunk) => {
             var temp = chunk.getClosestObject(x, y, attributes);
             if (temp) {
                 if (res ? temp.distance < res.distance : true) {
-                    res = temp
+                    res = temp;
                 }
             }
-        })
+        });
 
         if (!res) {
             for (key in self.chunks) {
@@ -380,44 +395,44 @@ var Handler = (initObject = {}) => {
                 var temp = chunk.getClosestObject(x, y, attributes);
                 if (temp) {
                     if (res ? temp.distance < res.distance : true) {
-                        res = temp
+                        res = temp;
                     }
                 }
             }
         }
 
         return res;
-    }
+    };
 
     //// MANAGERS ////
 
     /**
-     * Add update manager that is called on object after update 
+     * Add update manager that is called on object after update
      * @param {object} manager - manager (CollisionManager, GravityManager, etc.)
      */
     self.addManager = (manager) => {
         self.managers.push(manager);
-    }
+    };
 
     /**
-     * Add update manager that is called on object before update 
+     * Add update manager that is called on object before update
      * @param {object} manager - manager (CollisionManager, GravityManager, etc.)
      */
     self.addPreManager = (preManager) => {
         self.preManagers.push(preManager);
-    }
+    };
 
     //// CHUNKS ////
 
     /**
-     * Returns chunks in these intervals 
+     * Returns chunks in these intervals
      * @param {int} min_x - lower bound of the x coord interval for the chunks, value included
      * @param {int} min_y - lower bound of the y coord interval for the chunks, value included
      * @param {int} max_x - upper bound of the x coord interval for the chunks, value included
      * @param {int} max_y - upper bound of the y coord interval for the chunks, value included
      */
     self.getChunks = (min_x, min_y, max_x, max_y) => {
-        result = []
+        result = [];
         for (var x = min_x; x <= max_x; x++) {
             for (var y = min_y; y <= max_y; y++) {
                 var key = `[${x};${y}]`;
@@ -427,47 +442,41 @@ var Handler = (initObject = {}) => {
             }
         }
         return result;
-    }
+    };
 
-    // Return 
+    // Return
     return self;
 };
-
 
 ////// MANAGERS //////
 
 /**
- * Manager that simulates circle type of collision 
- * @param {object} handler - ServerHandler instance 
- * @param {array} colPairs - array of object pairs that are casting gravity from first object to second 
+ * Manager that simulates circle type of collision
+ * @param {object} handler - ServerHandler instance
+ * @param {array} colPairs - array of object pairs that are casting gravity from first object to second
  */
 var CollisionManager = (initPack, handler) => {
-
     var self = {
         handler,
-        ...initPack
-    }
+        ...initPack,
+    };
 
-
-
-    self.colPairs.forEach(cp => {
-
-        cp.a.forEach(cpa => {
-            cp.b.forEach(cpb => {
+    self.colPairs.forEach((cp) => {
+        cp.a.forEach((cpa) => {
+            cp.b.forEach((cpb) => {
                 self.colPairs.push({
                     a: cpa,
                     b: cpb,
                     func: cp.func,
                     exception: cp.exception,
                     solid: cp.solid !== undefined ? cp.solid : true,
-                    solidException: cp.solidException
+                    solidException: cp.solidException,
                 });
-            })
-        })
-    })
+            });
+        });
+    });
 
     self.getNeededChunks = (object) => {
-
         if (object.x > object.px) {
             var x = object.px - object.width / 2;
             var xx = object.x + object.width / 2;
@@ -488,26 +497,22 @@ var CollisionManager = (initPack, handler) => {
             Math.floor(x / self.handler.chunkSize),
             Math.floor(y / self.handler.chunkSize),
             Math.floor(xx / self.handler.chunkSize),
-            Math.floor(yy / self.handler.chunkSize))
-    }
+            Math.floor(yy / self.handler.chunkSize)
+        );
+    };
 
     self.update = (object) => {
         var objectType = object.objectType;
 
         if (objectType in handler.objects) {
-
             for (var i = 0; i < self.colPairs.length; i++) {
-
                 var aType = self.colPairs[i].a;
                 var harsh = self.colPairs[i].harsh;
 
                 if (objectType == aType) {
-
                     var bType = self.colPairs[i].b;
 
                     var chunks = self.getNeededChunks(object);
-
-
 
                     for (var j = 0; j < chunks.length; j++) {
                         var chunk = chunks[j];
@@ -517,27 +522,59 @@ var CollisionManager = (initPack, handler) => {
                                 var a = object;
                                 var b = chunk.objects[bType][bKey];
 
-                                if (a.objectType != b.objectType || a.id != b.id) {
-                                    if (!self.colPairs[i].exception ? true : !self.colPairs[i].exception(a, b)) {
-
-                                        if (a.bodyType == 'oval' && b.bodyType == 'oval') {
-                                            var collision = self.objectOvalCollision;
+                                if (
+                                    a.objectType != b.objectType ||
+                                    a.id != b.id
+                                ) {
+                                    if (
+                                        !self.colPairs[i].exception
+                                            ? true
+                                            : !self.colPairs[i].exception(a, b)
+                                    ) {
+                                        if (
+                                            a.bodyType == "oval" &&
+                                            b.bodyType == "oval"
+                                        ) {
+                                            var collision =
+                                                self.objectOvalCollision;
                                         } else {
-                                            var collision = self.objectRectCollision;
+                                            var collision =
+                                                self.objectRectCollision;
                                         }
 
                                         var col = collision(a, b, harsh);
 
                                         if (col) {
                                             if (col.result) {
-                                                if (self.colPairs[i].solid && col.point) {
-                                                    if (self.colPairs[i].solidException ? !self.colPairs[i].solidException(a, b) : true) {
-                                                        a.x = Math.round(col.point.x);
-                                                        a.y = Math.round(col.point.y);
+                                                if (
+                                                    self.colPairs[i].solid &&
+                                                    col.point
+                                                ) {
+                                                    if (
+                                                        self.colPairs[i]
+                                                            .solidException
+                                                            ? !self.colPairs[
+                                                                  i
+                                                              ].solidException(
+                                                                  a,
+                                                                  b
+                                                              )
+                                                            : true
+                                                    ) {
+                                                        a.x = Math.round(
+                                                            col.point.x
+                                                        );
+                                                        a.y = Math.round(
+                                                            col.point.y
+                                                        );
                                                     }
                                                 }
                                                 if (self.colPairs[i].func) {
-                                                    self.colPairs[i].func(a, b, col);
+                                                    self.colPairs[i].func(
+                                                        a,
+                                                        b,
+                                                        col
+                                                    );
                                                 }
                                             }
                                         }
@@ -549,11 +586,10 @@ var CollisionManager = (initPack, handler) => {
                 }
             }
         }
-    }
+    };
 
     self.objectOvalCollision = (a, b) => {
-
-        aradius = Math.max(a.width, a.height) / 2;;
+        aradius = Math.max(a.width, a.height) / 2;
         bradius = Math.max(b.width, b.height) / 2;
 
         if (SpoolMath.distance(a.x, a.y, b.x, b.y) < aradius + bradius) {
@@ -566,27 +602,29 @@ var CollisionManager = (initPack, handler) => {
             var a1 = parseInt(b.x);
             var a2 = parseInt(b.y);
 
-
-            var newX, newY = 0
+            var newX,
+                newY = 0;
 
             if (b1 != b3) {
                 var alpha = (b4 - b2) / (b3 - b1);
                 var beta = b2 - b1 * alpha;
                 var gamma = beta - a2;
 
-                var quadraA = (alpha * alpha + 1);
+                var quadraA = alpha * alpha + 1;
                 var quadraB = 2 * alpha * gamma - 2 * a1;
-                var quadraC = (gamma * gamma + a1 * a1 - r * r);
+                var quadraC = gamma * gamma + a1 * a1 - r * r;
 
-
-                var D = Math.sqrt(Math.pow((quadraB), 2) - 4 * quadraA * quadraC);
+                var D = Math.sqrt(Math.pow(quadraB, 2) - 4 * quadraA * quadraC);
 
                 var x1 = (-quadraB + D) / (2 * quadraA);
                 var x2 = (-quadraB - D) / (2 * quadraA);
                 var y1 = alpha * x1 + beta;
                 var y2 = alpha * x2 + beta;
 
-                if (SpoolMath.distance(x1, y1, b1, b2) < SpoolMath.distance(x2, y2, b1, b2)) {
+                if (
+                    SpoolMath.distance(x1, y1, b1, b2) <
+                    SpoolMath.distance(x2, y2, b1, b2)
+                ) {
                     newX = x1;
                     newY = y1;
                 } else {
@@ -604,7 +642,10 @@ var CollisionManager = (initPack, handler) => {
                 var y1 = (-quadraB + D) / (2 * quadraA);
                 var y2 = (-quadraB - D) / (2 * quadraA);
 
-                if (SpoolMath.distance(x, y1, b1, b2) < SpoolMath.distance(x, y2, b1, b2)) {
+                if (
+                    SpoolMath.distance(x, y1, b1, b2) <
+                    SpoolMath.distance(x, y2, b1, b2)
+                ) {
                     newX = x;
                     newY = y1;
                 } else {
@@ -616,91 +657,106 @@ var CollisionManager = (initPack, handler) => {
             return {
                 result: true,
                 x: newX,
-                y: newY
+                y: newY,
             };
         }
 
         return null;
-    }
+    };
 
-    self.objMovementLine = obj => {
+    self.objMovementLine = (obj) => {
         return {
             x: obj.px,
             y: obj.py,
             xx: obj.x,
-            yy: obj.y
-        }
-    }
+            yy: obj.y,
+        };
+    };
 
     self.objectRectCollision = (a, b, harsh = false) => {
-
         var rx = parseInt(b.x - b.width / 2 - a.width / 2);
         var ry = parseInt(b.y - b.height / 2 - a.height / 2);
         var rxx = parseInt(b.x + b.width / 2 + a.width / 2);
         var ryy = parseInt(b.y + b.height / 2 + a.height / 2);
 
-
         var objMovementLine = self.objMovementLine(a);
 
         var result = {
-            result: rx < a.x && a.x < rxx && ry < a.y && a.y < ryy
+            result: rx < a.x && a.x < rxx && ry < a.y && a.y < ryy,
         };
 
-        if (Math.abs(a.x - b.x) >= Math.abs(a.px - b.x) && Math.abs(a.y - b.y) >= Math.abs(a.py - b.y)) {
+        if (
+            Math.abs(a.x - b.x) >= Math.abs(a.px - b.x) &&
+            Math.abs(a.y - b.y) >= Math.abs(a.py - b.y)
+        ) {
             return result;
         }
 
         var intersections = [];
-        var lines = [{
-            x: rx,
-            y: ry,
-            xx: rx,
-            yy: ryy
-        }, {
-            x: rxx,
-            y: ry,
-            xx: rxx,
-            yy: ryy
-        }, {
-            x: rx,
-            y: ryy,
-            xx: rxx,
-            yy: ryy
-        }, {
-            x: rx,
-            y: ry,
-            xx: rxx,
-            yy: ry
-        }]
+        var lines = [
+            {
+                x: rx,
+                y: ry,
+                xx: rx,
+                yy: ryy,
+            },
+            {
+                x: rxx,
+                y: ry,
+                xx: rxx,
+                yy: ryy,
+            },
+            {
+                x: rx,
+                y: ryy,
+                xx: rxx,
+                yy: ryy,
+            },
+            {
+                x: rx,
+                y: ry,
+                xx: rxx,
+                yy: ry,
+            },
+        ];
 
-        var directions = ['right', 'left', 'bottom', 'top'];
-        var active = [b.leftColIgnore, b.rightColIgnore, b.topColIgnore, b.bottomColIgnore]
+        var directions = ["right", "left", "bottom", "top"];
+        var active = [
+            b.leftColIgnore,
+            b.rightColIgnore,
+            b.topColIgnore,
+            b.bottomColIgnore,
+        ];
         var counter = 0;
 
-        lines.forEach(line => {
-
+        lines.forEach((line) => {
             if (!active[counter]) {
                 var intersection = self.lineIntersection(line, objMovementLine);
                 // handler.add(Line({
                 //     ...line
                 // }));
                 if (intersection) {
-                    intersection.direction = directions[counter]
+                    intersection.direction = directions[counter];
                 }
                 intersections.push(intersection);
             } else {
                 intersections.push(null);
             }
             counter++;
-        })
+        });
 
         var closestIntersection = null;
         var smallestDistance = null;
         var smallestIndex = null;
         counter = 0;
-        intersections.forEach(intersection => {
+        intersections.forEach((intersection) => {
             if (intersection) {
-                var dist = SpoolMath.distance(a.px, a.py, intersection.x, intersection.y);
+                var dist = SpoolMath.distance(
+                    a.px,
+                    a.py,
+                    intersection.x,
+                    intersection.y
+                );
 
                 if (smallestDistance ? dist < smallestDistance : true) {
                     smallestIndex = counter;
@@ -709,7 +765,7 @@ var CollisionManager = (initPack, handler) => {
                 }
             }
             counter++;
-        })
+        });
 
         if (closestIntersection) {
             if (smallestIndex <= 1) {
@@ -719,7 +775,7 @@ var CollisionManager = (initPack, handler) => {
             }
             result.point = {
                 x: closestIntersection.x,
-                y: closestIntersection.y
+                y: closestIntersection.y,
             };
             result.direction = closestIntersection.direction;
             return result;
@@ -727,12 +783,11 @@ var CollisionManager = (initPack, handler) => {
             result.point = {
                 x: a.px,
                 y: a.py,
-            }
+            };
         }
 
         return result;
-
-    }
+    };
 
     /**
      * finds the intersection point of two lines
@@ -751,95 +806,103 @@ var CollisionManager = (initPack, handler) => {
         var y4 = b.yy;
 
         var denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-        if (denominator == 0)
-            return null;
+        if (denominator == 0) return null;
 
-        var xNominator = (x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4);
-        var yNominator = (x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4);
+        var xNominator =
+            (x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4);
+        var yNominator =
+            (x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4);
 
         var px = xNominator / denominator;
         var py = yNominator / denominator;
 
         var offset = 2;
 
-        if (SpoolMath.inInterval(px, x1, x2, offset) && SpoolMath.inInterval(px, x3, x4, offset) && SpoolMath.inInterval(py, y1, y2, offset) && SpoolMath.inInterval(py, y3, y4, offset)) {
+        if (
+            SpoolMath.inInterval(px, x1, x2, offset) &&
+            SpoolMath.inInterval(px, x3, x4, offset) &&
+            SpoolMath.inInterval(py, y1, y2, offset) &&
+            SpoolMath.inInterval(py, y3, y4, offset)
+        ) {
             return {
                 x: px,
-                y: py
-            }
+                y: py,
+            };
         } else {
             return null;
         }
-    }
-
-
+    };
 
     return self;
-}
+};
 
 /**
  * Manager that simulates invisible wall all around the world in set parameter
  * @param {object} handler - instance of ServerHandler
- * @param {array} validObjects - objects that are affected by this outer edge 
+ * @param {array} validObjects - objects that are affected by this outer edge
  */
 var OuterWorldManager = (handler, validObjects) => {
     var self = {
         handler,
-        validObjects // array of objects that contain a and b object types
-    }
+        validObjects, // array of objects that contain a and b object types
+    };
 
     self.update = (object) => {
         if (self.validObjects.includes(object.objectType)) {
             if (object.objectType in self.handler.objects) {
                 var dist = SpoolMath.distance(object.x, object.y, 0, 0);
                 if (dist > OUTER_EDGE) {
-                    object.setAcc('outer-world', dist / 500, SpoolMath.globalAngle(object.x, object.y, 0, 0));
+                    object.setAcc(
+                        "outer-world",
+                        dist / 500,
+                        SpoolMath.globalAngle(object.x, object.y, 0, 0)
+                    );
                 } else {
-                    object.setAcc('outer-world', 0, 0);
+                    object.setAcc("outer-world", 0, 0);
                 }
             }
         }
-    }
+    };
 
     return self;
-}
+};
 
 /**
  * Manager that simulates objectd to object gravity
  * @param {object} handler - instance of ServerHandler
- * @param {array} colPairs - array of object pairs that are casting gravity from first object to second 
+ * @param {array} colPairs - array of object pairs that are casting gravity from first object to second
  */
 var GravityManager = (initPack, handler) => {
     var self = {
         handler,
-        gravityType: 'homogenous',
+        gravityType: "homogenous",
         G: 2,
         colPairs: [], // array of objects that contain a and b object types
-        ...initPack
-    }
+        ...initPack,
+    };
 
     self.update = (object) => {
-        if (self.gravityType == 'homogenous') {
+        if (self.gravityType == "homogenous") {
             self.homGravity(object);
         } else {
             self.vecGravity(object);
         }
-    }
+    };
 
     //// VECTOR GRAVITY ////
 
     self.vecGravity = (object) => {
         var objectType = object.objectType;
 
-        var firstAngle = object.accelerations['gravity'] ? object.accelerations['gravity'].angle : 0;
+        var firstAngle = object.accelerations["gravity"]
+            ? object.accelerations["gravity"].angle
+            : 0;
         object.setAcc("gravity", 0, firstAngle);
 
         if (!object.ground && !object.gravityLock) {
             if (objectType in handler.objects) {
                 for (var i = 0; i < self.colPairs.length; i++) {
-
                     var aType = self.colPairs[i].a;
-
 
                     if (objectType == aType) {
                         var bType = self.colPairs[i].b;
@@ -849,8 +912,15 @@ var GravityManager = (initPack, handler) => {
                                 var a = object;
                                 var b = handler.objects[bType][bKey];
 
-                                if (SpoolMath.objDistance(a, b) < bradius * GRAVITY_RADIUS_COEF) {
-                                    a.addToAcc("gravity", self.objectGravity(a, b), SpoolMath.objGlobalAngle(a, b));
+                                if (
+                                    SpoolMath.objDistance(a, b) <
+                                    bradius * GRAVITY_RADIUS_COEF
+                                ) {
+                                    a.addToAcc(
+                                        "gravity",
+                                        self.objectGravity(a, b),
+                                        SpoolMath.objGlobalAngle(a, b)
+                                    );
                                 }
                             }
                         }
@@ -859,25 +929,26 @@ var GravityManager = (initPack, handler) => {
             }
         }
 
-        object.rotation = object.accelerations["gravity"].angle + Math.PI
-    }
+        object.rotation = object.accelerations["gravity"].angle + Math.PI;
+    };
 
     self.objectGravity = (a, b) => {
-        var F = self.G * a.mass * b.mass / Math.pow(SpoolMath.objDistance(a, b), GRAVITY_RADIUS_POW);
-        return gravity = F / a.mass;
-    }
+        var F =
+            (self.G * a.mass * b.mass) /
+            Math.pow(SpoolMath.objDistance(a, b), GRAVITY_RADIUS_POW);
+        return (gravity = F / a.mass);
+    };
 
     //// HOMOGENOUS ////
 
     self.homGravity = (object) => {
         if (!object.gravityIgnore) {
-            object.setAcc('gravity', self.G, Math.PI / 2 * 3);
+            object.setAcc("gravity", self.G, (Math.PI / 2) * 3);
         }
-    }
+    };
 
     return self;
-}
-
+};
 
 ////// TIMER //////
 
@@ -889,22 +960,22 @@ var SpoolTimer = (duration, event, object = null) => {
         object: object,
         active: true,
         timeLeft: 0,
-    }
+    };
 
     self.update = () => {
-        self.timeLeft = self.startTime + self.duration - Date.now()
+        self.timeLeft = self.startTime + self.duration - Date.now();
         if (self.timeLeft < 0 && self.active) {
             self.event(object);
             self.active = false;
         }
-    }
+    };
 
     self.stop = () => {
         self.active = false;
-    }
+    };
 
     return self;
-}
+};
 
 ////// OBJECTSPAWNER //////
 
@@ -944,16 +1015,16 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
             [true, false, false, true],
             [false, false, false, true],
             [false, false, true, true],
-            [true, true, true, false]
-        ]
-    }
+            [true, true, true, false],
+        ],
+    };
 
     self.reset = () => {
         Object.assign(self, {
             zones: {},
-            zoneCounters: {}
-        })
-    }
+            zoneCounters: {},
+        });
+    };
 
     self.spawnInRadius = (key, amount, radius, cx = 0, cy = 0) => {
         if (key in self.keyToConstAndDefs) {
@@ -968,13 +1039,13 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                 var object = pair.const({
                     ...pair.defs,
                     x: px,
-                    y: py
-                })
+                    y: py,
+                });
 
                 self.handler.add(object);
             }
         }
-    }
+    };
 
     self.spawnInRectangle = (key, amount, x, y, width, height) => {
         if (key in self.keyToConstAndDefs) {
@@ -986,13 +1057,13 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                 var object = pair.const({
                     ...pair.defs,
                     x: px,
-                    y: py
-                })
+                    y: py,
+                });
 
                 self.handler.add(object);
             }
         }
-    }
+    };
 
     self.zoneStep = (x, y, value, id) => {
         if (self.currentZoneMap[y][x]) {
@@ -1018,7 +1089,7 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                 self.zoneStep(x, y + 1, value, id);
             }
         }
-    }
+    };
 
     self.addZonesFromImageArray = (zoneMaps, colorToZoneType, callback) => {
         self.addZones(zoneMaps[0], colorToZoneType, () => {
@@ -1026,17 +1097,17 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
             if (slice.length == 0) {
                 callback();
             } else {
-                self.addZonesArray(slice, colorToZoneType, callback)
+                self.addZonesArray(slice, colorToZoneType, callback);
             }
         });
-    }
+    };
 
     self.addZonesFromImage = (zoneMap, colorToZoneType, callback) => {
         FileReader.readImage(zoneMap, (data) => {
             var array = [];
 
             var pixels = data.data;
-            // Spawning empty zone map if first zone 
+            // Spawning empty zone map if first zone
 
             if (!self.zoneMap) {
                 var resArray = [];
@@ -1051,7 +1122,7 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                 self.zoneMap = resArray;
             }
 
-            // Adding all the zones present in the map 
+            // Adding all the zones present in the map
 
             for (var y = 0; y < data.height; y++) {
                 var lineArray = [];
@@ -1065,7 +1136,7 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                     if (key) {
                         lineArray.push({
                             key: key,
-                            color: SpoolMath.rgbToHex(r, g, b)
+                            color: SpoolMath.rgbToHex(r, g, b),
                         });
                     } else {
                         lineArray.push(null);
@@ -1078,16 +1149,14 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
             self.mapPxWidth = data.width;
             self.mapPxHeight = data.height;
 
-            // Dividing the tiles into the zones 
-
+            // Dividing the tiles into the zones
 
             var counters = self.zoneCounters;
             self.currentZoneMap = array;
 
             for (var y = 0; y < self.currentZoneMap.length; y++) {
                 for (var x = 0; x < self.currentZoneMap[y].length; x++) {
-
-                    var val = self.currentZoneMap[y][x]
+                    var val = self.currentZoneMap[y][x];
 
                     if (val) {
                         if (!(val.key in counters)) {
@@ -1106,18 +1175,25 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                 callback();
             }
         });
-    }
+    };
 
-    self.spawnFromKeyArray = (array, gx = self.gx, gy = self.gy, colorArray = null) => {
+    self.spawnFromKeyArray = (
+        array,
+        gx = self.gx,
+        gy = self.gy,
+        colorArray = null
+    ) => {
         for (var y = 0; y < array.length; y++) {
             for (var x = 0; x < array[y].length; x++) {
                 if (array[y][x]) {
                     var pair = keyToConstAndDefs[array[y][x]];
                     if (pair) {
-
-                        var dependantConst = {}
+                        var dependantConst = {};
                         if (pair.dependantConst) {
-                            dependantConst = pair.dependantConst(self, colorArray ? colorArray[y][x] : null)
+                            dependantConst = pair.dependantConst(
+                                self,
+                                colorArray ? colorArray[y][x] : null
+                            );
                         }
 
                         var object = pair.const({
@@ -1126,16 +1202,17 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                             y: parseInt((-y + array.length / 2) * gy),
                             gridX: x,
                             gridY: y,
-                            ...dependantConst
-                        })
+                            ...dependantConst,
+                        });
 
-                        var valueArray = [array[y][x]]
+                        var valueArray = [array[y][x]];
 
                         if (pair.gridColRemovalSiblings) {
-                            valueArray = [array[y][x], ...pair.gridColRemovalSiblings]
+                            valueArray = [
+                                array[y][x],
+                                ...pair.gridColRemovalSiblings,
+                            ];
                         }
-
-
 
                         if (object.gridColRemoval) {
                             if (x > 0) {
@@ -1159,27 +1236,30 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                                     object.bottomColIgnore = true;
                                 }
                             }
-                            var textureId = self.getColTextureId([!object.leftColIgnore, !object.topColIgnore, !object.rightColIgnore, !object.bottomColIgnore]);
+                            var textureId = self.getColTextureId([
+                                !object.leftColIgnore,
+                                !object.topColIgnore,
+                                !object.rightColIgnore,
+                                !object.bottomColIgnore,
+                            ]);
                             object.textureId = textureId;
                             if (object.onGridColRemoval) {
-                                object.onGridColRemoval()
+                                object.onGridColRemoval();
                             }
                         }
 
                         if (self.zoneMap) {
-                            Object.keys(self.zoneMap[y][x]).forEach(key => {
+                            Object.keys(self.zoneMap[y][x]).forEach((key) => {
                                 object.zones[key] = self.zoneMap[y][x][key];
-                            })
+                            });
                         }
-
-
 
                         self.handler.add(object);
                     }
                 }
             }
         }
-    }
+    };
 
     self.getColTextureId = (array) => {
         for (var j = 0; j < self.colTexturingMap.length; j++) {
@@ -1200,40 +1280,48 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
         }
 
         return 0;
-    }
+    };
 
-    self.spawnFromIndexMap = (fileName, gx = self.gx, gy, separator = ' ', lineSeparator = '\r\n') => {
+    self.spawnFromIndexMap = (
+        fileName,
+        gx = self.gx,
+        gy,
+        separator = " ",
+        lineSeparator = "\r\n"
+    ) => {
         FileReader.readFile(fileName, (data) => {
-
             var array = [];
 
             var objectKeys = Object.keys(self.keyToConstAndDefs);
 
             var lines = data.split(lineSeparator);
-            lines.forEach(line => {
+            lines.forEach((line) => {
                 var keys = line.split(separator);
                 xPointer = 0;
                 var lineArray = [];
-                keys.forEach(key => {
-                    var pair = self.keyToConstAndDefs[objectKeys[parseInt(key) - 1]]
+                keys.forEach((key) => {
+                    var pair =
+                        self.keyToConstAndDefs[objectKeys[parseInt(key) - 1]];
                     if (pair) {
                         lineArray.push(objectKeys[parseInt(key) - 1]);
                     } else {
                         lineArray.push(null);
                     }
-                })
+                });
                 array.push(lineArray);
             });
 
             self.spawnFromKeyArray(array, gx, gy);
-
         });
+    };
 
-
-
-    }
-
-    self.spawnFromImageMap = (fileName, colorToKey, callback, gx = self.gx, gy = self.gy) => {
+    self.spawnFromImageMap = (
+        fileName,
+        colorToKey,
+        callback,
+        gx = self.gx,
+        gy = self.gy
+    ) => {
         FileReader.readImage(fileName, (data) => {
             var array = [];
 
@@ -1241,12 +1329,12 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
 
             var pixels = data.data;
 
-            var nonBlack = colorToKey['non-black']
-            var colorArray = []
+            var nonBlack = colorToKey["non-black"];
+            var colorArray = [];
 
             for (var y = 0; y < data.height; y++) {
-                var lineArray = []
-                var colorLine = []
+                var lineArray = [];
+                var colorLine = [];
                 for (var x = 0; x < data.width; x++) {
                     var index = (y * data.width + x) * data.pixelSize;
                     var r = pixels[index];
@@ -1257,7 +1345,7 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                     var key = colorToKey[colorcode];
 
                     if (nonBlack && !key && (r != 0 || g != 0 || b != 0)) {
-                        key = nonBlack
+                        key = nonBlack;
                     }
 
                     if (key) {
@@ -1266,64 +1354,74 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
                         lineArray.push(null);
                     }
 
-                    colorLine.push([r, g, b, colorcode])
+                    colorLine.push([r, g, b, colorcode]);
                 }
                 array.push(lineArray);
-                colorArray.push(colorLine)
+                colorArray.push(colorLine);
             }
-
-
 
             self.spawnFromKeyArray(array, gx, gy, colorArray);
             if (callback) {
-                callback()
+                callback();
             }
         });
-    }
+    };
 
-    self.spawnRPGWorld = (fileObject, colorToKey, gx = self.gx, gy = self.gy) => {
+    self.spawnRPGWorld = (
+        fileObject,
+        colorToKey,
+        gx = self.gx,
+        gy = self.gy
+    ) => {
         self.spawnFromImageMap(fileObject.ground, colorToKey, gx, gy);
         self.spawnFromImageMap(fileObject.objects, colorToKey, gx, gy);
-    }
+    };
 
     self.spawnInZone = (key, amount, zoneType, zoneId = null) => {
-
         if (key in self.keyToConstAndDefs) {
             var pair = keyToConstAndDefs[key];
 
-            var zones = self.zones[zoneType]
+            var zones = self.zones[zoneType];
 
             if (zones) {
                 for (var i = 0; i < amount; i++) {
                     var id = zoneId;
                     if (id == undefined || id == null) {
                         var keys = Object.keys(self.zones[zoneType]);
-                        id = keys[Math.round(Math.random() * (keys.length - 1))];
+                        id =
+                            keys[Math.round(Math.random() * (keys.length - 1))];
                     }
 
                     var zone = self.zones[zoneType][id];
 
                     if (zone) {
-                        var tile = zone[Math.round(Math.random() * (zone.length - 1))];
+                        var tile =
+                            zone[Math.round(Math.random() * (zone.length - 1))];
 
-                        var px = (tile[0] - self.mapPxWidth / 2) * self.gx + Math.round(Math.random() * self.gx);
-                        var py = (-tile[1] + self.mapPxWidth / 2) * self.gy + Math.round(Math.random() * self.gy);
+                        var px =
+                            (tile[0] - self.mapPxWidth / 2) * self.gx +
+                            Math.round(Math.random() * self.gx);
+                        var py =
+                            (-tile[1] + self.mapPxWidth / 2) * self.gy +
+                            Math.round(Math.random() * self.gy);
 
                         var object = pair.const({
                             ...pair.defs,
                             x: px,
-                            y: py
-                        })
+                            y: py,
+                        });
 
                         self.handler.add(object);
                     }
                 }
             }
-
         } else {
-            console.log('@ObjectSpawner: Object key is not in known by object spawner: ' + key);
+            console.log(
+                "@ObjectSpawner: Object key is not in known by object spawner: " +
+                    key
+            );
         }
-    }
+    };
 
     self.getRandomPositionInZone = (zoneType, zoneId = null) => {
         var id = zoneId;
@@ -1337,21 +1435,24 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
         if (zone) {
             var tile = zone[Math.round(Math.random() * (zone.length - 1))];
 
-            var px = (tile[0] - self.mapPxWidth / 2) * self.gx + Math.round(Math.random() * self.gx);
-            var py = (-tile[1] + self.mapPxHeight / 2) * self.gy + Math.round(Math.random() * self.gy);
+            var px =
+                (tile[0] - self.mapPxWidth / 2) * self.gx +
+                Math.round(Math.random() * self.gx);
+            var py =
+                (-tile[1] + self.mapPxHeight / 2) * self.gy +
+                Math.round(Math.random() * self.gy);
 
-            return ({
+            return {
                 x: px,
-                y: py
-            })
-
+                y: py,
+            };
         } else {
             return null;
         }
-    }
+    };
 
     return self;
-}
+};
 
 ////// ENTITY //////
 
@@ -1387,7 +1488,7 @@ var Entity = (initPack = {}, extending = null) => {
         chunksXX: 0,
         chunksYY: 0,
 
-        color: 'red',
+        color: "red",
         zones: {},
 
         //// GRAVITY PARAMETERS ////
@@ -1401,8 +1502,8 @@ var Entity = (initPack = {}, extending = null) => {
         id: Math.random(), // id of the object
         objectType: "BLANK_ENTITY", // type of the object (used in many dictionaries)
 
-        ...initPack
-    }
+        ...initPack,
+    };
 
     if (extending) {
         var self = extending(defs);
@@ -1429,8 +1530,6 @@ var Entity = (initPack = {}, extending = null) => {
         return change ? self.updatePack() : null;
     };
 
-
-
     /**
      * returns the initialization package -> package used to create object on clients side
      */
@@ -1452,9 +1551,9 @@ var Entity = (initPack = {}, extending = null) => {
 
             color: self.color,
 
-            ...addedValues
-        }
-    }
+            ...addedValues,
+        };
+    };
 
     /**
      * returns update package -> package used to update existing object on clients side
@@ -1474,18 +1573,17 @@ var Entity = (initPack = {}, extending = null) => {
 
     self.authorizedUpdatePack = () => {
         return null;
-    }
+    };
 
     self.setAsyncUpdateValue = (name, value) => {
-
         self.asyncUpdatePackage[name] = value;
         self.asyncUpdateNeeded = true;
-    }
+    };
 
     self.addAsyncUpdatePackage = (pack) => {
         Object.assign(self.asyncUpdatePackage, pack);
         self.asyncUpdateNeeded = true;
-    }
+    };
 
     //// UPDATING ////
 
@@ -1514,14 +1612,19 @@ var Entity = (initPack = {}, extending = null) => {
             self.calculatedVelY += vels.y;
         }
         if (self.px != self.x || self.py != self.y) {
-            self.movementAngle = SpoolMath.globalAngle(self.px, self.py, self.x, self.y);
+            self.movementAngle = SpoolMath.globalAngle(
+                self.px,
+                self.py,
+                self.x,
+                self.y
+            );
             self.moving = true;
             return true;
         } else {
             self.moving = false;
             return true;
         }
-    }
+    };
 
     /**
      * apply an instant kick to the object with value and in certain direction
@@ -1535,7 +1638,7 @@ var Entity = (initPack = {}, extending = null) => {
     self.vectorImpulse = (velX, velY) => {
         self.velX += velX;
         self.velY += velY;
-    }
+    };
 
     /**
      * calculate velocities from the acceleration list
@@ -1555,13 +1658,13 @@ var Entity = (initPack = {}, extending = null) => {
     self.setAcc = (id, acc, angle) => {
         self.accelerations[id] = {
             acc,
-            angle
+            angle,
         };
     };
 
     self.addToAcc = (id, acc, angle) => {
         var lastAcc = {
-            ...self.accelerations[id]
+            ...self.accelerations[id],
         };
 
         var xx = lastAcc.acc * Math.cos(lastAcc.angle) + acc * Math.cos(angle);
@@ -1571,13 +1674,12 @@ var Entity = (initPack = {}, extending = null) => {
         newAngle = Math.atan2(yy, xx);
 
         self.setAcc(id, newAcc, newAngle);
-
-    }
+    };
 
     /**
      * remove acceleration from acceleration list
      */
-    self.removeAcc = id => {
+    self.removeAcc = (id) => {
         delete self.accelerations[id];
     };
 
@@ -1587,7 +1689,7 @@ var Entity = (initPack = {}, extending = null) => {
     self.setVel = (id, vel, angle) => {
         self.velocities[id] = {
             vel,
-            angle
+            angle,
         };
     };
 
@@ -1597,14 +1699,14 @@ var Entity = (initPack = {}, extending = null) => {
     self.setVelVector = (id, vel) => {
         self.velocities[id] = {
             vel: SpoolMath.distance(0, 0, vel[0], vel[1]),
-            angle: SpoolMath.globalAngle(0, 0, vel[0], vel[1])
+            angle: SpoolMath.globalAngle(0, 0, vel[0], vel[1]),
         };
     };
 
     /**
      * remove added velocity from
      */
-    self.removeVel = id => {
+    self.removeVel = (id) => {
         delete self.velocities[id];
     };
 
@@ -1620,60 +1722,65 @@ var Entity = (initPack = {}, extending = null) => {
     self.vectorFromVel = () => {
         return {
             angle: Math.atan2(self.velY, self.velX),
-            value: SpoolMath.distance(self.velX, self.velY, 0, 0)
-        }
-    }
+            value: SpoolMath.distance(self.velX, self.velY, 0, 0),
+        };
+    };
+
+    self.vectorFromVels = (velX, velY) => {
+        return {
+            angle: Math.atan2(velY, velX),
+            value: SpoolMath.distance(velX, velY, 0, 0),
+        };
+    };
 
     //// RETURN ////
     return self;
 };
 
-var InputManager = () => {
-
-}
+var InputManager = () => {};
 
 ////// OBJECT PARAMETERS //////
 
 /**
- * parameters needed for input induced movement 
+ * parameters needed for input induced movement
  */
 var KeyInputParameters = {
     pressedLeft: false,
     pressedUp: false,
     pressedRight: false,
-    pressedDown: false
-}
+    pressedDown: false,
+};
 
 /**
  * parameters needed for gravity manager
  */
 var GravityParameters = {
     mass: 1,
-    gravityLock: false
-}
+    gravityLock: false,
+};
 
 /**
  * parameters needed for collision manager
  */
 var CollisionParameters = {
     px: 0,
-    py: 0
-}
+    py: 0,
+};
 
 /**
  * oval body parameters
  */
 var OvalBodyParameters = {
-    bodyType: 'oval',
+    bodyType: "oval",
     width: 10,
-    height: 10
-}
+    height: 10,
+};
 
 var RectangleBodyParameters = {
-    bodyType: 'rect',
+    bodyType: "rect",
     width: 10,
-    height: 10
-}
+    height: 10,
+};
 
 try {
     module.exports = {
@@ -1699,11 +1806,13 @@ try {
 
         SpoolMath,
         SpoolUtils,
-        Perlin
-    }
+        Perlin,
+    };
 } catch (e) {
-    if (typeof module === 'undefined') {
-        console.log("Modules are not present, you are probably on client, make sure this script is included before the files that require it");
+    if (typeof module === "undefined") {
+        console.log(
+            "Modules are not present, you are probably on client, make sure this script is included before the files that require it"
+        );
     } else {
         console.error(e);
     }
