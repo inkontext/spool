@@ -269,11 +269,31 @@ const SpoolMath = {
     },
 
     average: (list) => {
+        if (list.length == 0) {
+            return 0;
+        }
+
         var total = 0;
         for (var i = 0; i < list.length; i++) {
             total += list[i];
         }
         return total / list.length;
+    },
+
+    weightedAverage: (list, weights) => {
+        var total = 0;
+        var totalWeights = 0;
+
+        for (var i = 0; i < list.length; i++) {
+            total += list[i] * weights[i];
+            totalWeights += weights[i];
+        }
+
+        if (totalWeights == 0) {
+            return 0;
+        }
+
+        return total / totalWeights;
     },
 
     sigmoid: (x) => {

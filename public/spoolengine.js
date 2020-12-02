@@ -1026,6 +1026,21 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
         });
     };
 
+    self.spawn = (key, cx, cy) => {
+        if (key in self.keyToConstAndDefs) {
+            var pair = keyToConstAndDefs[key];
+
+            var object = pair.const({
+                ...pair.defs,
+                x: cx,
+                y: cy,
+            });
+
+            self.handler.add(object);
+            return object;
+        }
+    };
+
     self.spawnInRadius = (key, amount, radius, cx = 0, cy = 0) => {
         if (key in self.keyToConstAndDefs) {
             var pair = keyToConstAndDefs[key];

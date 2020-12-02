@@ -239,7 +239,7 @@ var Client = (initObject) => {
             var delta = Date.now() - self.lastMillisTimer;
 
             if (delta >= 1000) {
-                console.log("FPS:" + self.frameCounter);
+                //console.log("FPS:" + self.frameCounter);
                 self.frameCounter = 0;
                 self.lastMillisTimer = Date.now();
             } else {
