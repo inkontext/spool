@@ -1,5 +1,5 @@
 ////// IMPORTS //////
-if (typeof SpoolMath === "undefined") {
+if (!SpoolMath) {
     //var SpoolMath;
     try {
         SpoolMath = require("./spoolmath.js").SpoolMath;
@@ -15,7 +15,7 @@ if (typeof SpoolMath === "undefined") {
     }
 }
 
-if (typeof SpoolUtils === "undefined") {
+if (SpoolUtils === "undefined") {
     try {
         SpoolUtils = require("./spoolutils.js").SpoolUtils;
     } catch (e) {
@@ -30,7 +30,7 @@ if (typeof SpoolUtils === "undefined") {
     }
 }
 
-if (typeof FileReader === "undefined") {
+if (FileReader === "undefined") {
     try {
         FileReader = require("../spoolfilereader.js").FileReader;
     } catch (e) {
