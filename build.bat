@@ -1,0 +1,1 @@
+uglifyjs -o spool.min.js -c -m -- public/spoolclient.js public/spoolclientfilereader.js public/spoolengine.js public/spoolmath.js public/spoolmessagecodes.js public/spoolrenderer.js public/spoolui.js public/spoolutils.js
