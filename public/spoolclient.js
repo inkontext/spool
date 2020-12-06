@@ -1986,6 +1986,9 @@ var MouseListener = (client, initObject) => {
 
         activeButtons: [0, 2],
         activeTypes: ["mousedown", "mouseup"],
+
+        pressed: false,
+
         ...initObject,
     };
 
@@ -2022,7 +2025,7 @@ var MouseListener = (client, initObject) => {
                 });
             } else {
                 if (client.clientObject.mouseEventInWorld) {
-                    client.clientObject.mouseEventInWorld(x, y, value);
+                    client.clientObject.mouseEventInWorld(x, y, event);
                 }
             }
         }
@@ -2032,6 +2035,8 @@ var MouseListener = (client, initObject) => {
         document.onmousedown = (e) => {
             var x = e.clientX;
             var y = e.clientY;
+
+            self.pressed = true;
 
             if (self.mouseCoordTransformation) {
                 var point = self.mouseCoordTransformation(x, y);
@@ -2049,6 +2054,8 @@ var MouseListener = (client, initObject) => {
             var x = e.clientX;
             var y = e.clientY;
 
+            self.pressed = false;
+
             if (self.mouseCoordTransformation) {
                 var point = self.mouseCoordTransformation(x, y);
                 x = point.x;
@@ -2062,8 +2069,8 @@ var MouseListener = (client, initObject) => {
         };
 
         document.onmousemove = (event) => {
-            if (self.client.onMouseMove) {
-                self.client.onMouseMove(event);
+            if (self.onMouseMove) {
+                self.onMouseMove(event);
             }
             self.client.uiHandler.mouseMove(event);
         };

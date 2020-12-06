@@ -125,7 +125,24 @@ var SpoolRenderer = {
     //// RECT ////
 
     drawRect: (x, y, width, height) => {
-        SpoolRenderer.ctx.drawRect(x, y, width, height);
+        SpoolRenderer.ctx.beginPath();
+        SpoolRenderer.ctx.rect(x, y, width, height);
+        SpoolRenderer.ctx.stroke();
+    },
+
+    tDrawRect: (x, y, width, height) => {
+        const bounds = SpoolRenderer.camera.transformBounds(
+            x,
+            y,
+            width,
+            height
+        );
+        SpoolRenderer.drawRect(
+            bounds.x,
+            bounds.y - bounds.height,
+            bounds.width,
+            bounds.height
+        );
     },
 
     fillRect: (x, y, width, height) => {
@@ -133,6 +150,10 @@ var SpoolRenderer = {
     },
 
     fillSplRect: (rect) => {
+        SpoolRenderer.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+    },
+
+    drawSplRect: (rect) => {
         SpoolRenderer.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
     },
 

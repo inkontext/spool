@@ -1,50 +1,34 @@
 ////// IMPORTS //////
+try {
+    SpoolMath = require("./spoolmath.js").SpoolMath;
+} catch (e) {
+    console.warn(
+        "SpoolMath require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way"
+    );
+}
 if (!SpoolMath) {
-    //var SpoolMath;
-    try {
-        SpoolMath = require("./spoolmath.js").SpoolMath;
-    } catch (e) {
-        console.warn(
-            "SpoolMath require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way"
-        );
-    }
-    if (!SpoolMath) {
-        console.error(
-            "SpoolMath library not present, make sure it is included"
-        );
-    }
+    console.error("SpoolMath library not present, make sure it is included");
 }
-
-if (SpoolUtils === "undefined") {
-    try {
-        SpoolUtils = require("./spoolutils.js").SpoolUtils;
-    } catch (e) {
-        console.warn(
-            "SpoolUtils require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way"
-        );
-    }
-    if (!SpoolUtils) {
-        console.error(
-            "SpoolUtils library not present, make sure it is included"
-        );
-    }
+try {
+    SpoolUtils = require("./spoolutils.js").SpoolUtils;
+} catch (e) {
+    console.warn(
+        "SpoolUtils require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way"
+    );
 }
-
-if (FileReader === "undefined") {
-    try {
-        FileReader = require("../spoolfilereader.js").FileReader;
-    } catch (e) {
-        console.warn(
-            "FileReader require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way"
-        );
-    }
-    if (!FileReader) {
-        console.error(
-            "FileReader library not present, make sure it is included"
-        );
-    }
+if (!SpoolUtils) {
+    console.error("SpoolUtils library not present, make sure it is included");
 }
-
+try {
+    FileReader = require("../spoolfilereader.js").FileReader;
+} catch (e) {
+    console.warn(
+        "FileReader require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way"
+    );
+}
+if (!FileReader) {
+    console.error("FileReader library not present, make sure it is included");
+}
 try {
     var Perlin = require("perlin-noise");
 } catch (e) {
@@ -444,6 +428,48 @@ var Handler = (initObject = {}) => {
         return result;
     };
 
+    /**
+     * @param {object} rect - SpoolRect
+     */
+    self.getChunksForRect = (rect) => {
+        return self.getChunks(
+            Math.floor(rect.x / self.chunkSize),
+            Math.floor(rect.y / self.chunkSize),
+            Math.floor(rect.xx / self.chunkSize),
+            Math.floor(rect.yy / self.chunkSize)
+        );
+    };
+
+    /**
+     * @param {object} rect - SpoolRect
+     */
+    self.getObjectsInRect = (rect, typeList = [], allowBlock = true) => {
+        var chunks = self.getChunksForRect(rect);
+
+        var res = [];
+
+        for (var j = 0; j < chunks.length; j++) {
+            var chunk = chunks[j];
+
+            for (bType in chunk.objects) {
+                onList = typeList.includes(bType);
+                if (onList == allowBlock) {
+                    continue;
+                }
+
+                for (bKey in chunk.objects[bType]) {
+                    var b = chunk.objects[bType][bKey];
+
+                    if (rect.collision(b.getBounds())) {
+                        res.push(b);
+                    }
+                }
+            }
+        }
+
+        return res;
+    };
+
     // Return
     return self;
 };
@@ -493,12 +519,7 @@ var CollisionManager = (initPack, handler) => {
             var yy = object.py + object.height / 2;
         }
 
-        return self.handler.getChunks(
-            Math.floor(x / self.handler.chunkSize),
-            Math.floor(y / self.handler.chunkSize),
-            Math.floor(xx / self.handler.chunkSize),
-            Math.floor(yy / self.handler.chunkSize)
-        );
+        return self.handler.getChunksForRect(SpoolRect(x, y, xx - x, yy - y));
     };
 
     self.update = (object) => {
@@ -1746,6 +1767,31 @@ var Entity = (initPack = {}, extending = null) => {
             angle: Math.atan2(velY, velX),
             value: SpoolMath.distance(velX, velY, 0, 0),
         };
+    };
+
+    self.left = () => {
+        return self.x - self.width / 2;
+    };
+
+    self.top = () => {
+        return self.y - self.height / 2;
+    };
+
+    self.right = () => {
+        return self.x + self.width / 2;
+    };
+
+    self.bottom = () => {
+        return self.y + self.height / 2;
+    };
+
+    self.getBounds = () => {
+        return SpoolRect(
+            self.x - self.width / 2,
+            self.y - self.height / 2,
+            self.width,
+            self.height
+        );
     };
 
     //// RETURN ////

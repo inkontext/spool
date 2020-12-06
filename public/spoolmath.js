@@ -75,6 +75,10 @@ const SpoolMath = {
         return res;
     },
 
+    randRange: (min, max) => {
+        return Math.random() * (max - min) + min;
+    },
+
     randomColor: (min, max) => {
         return `rgb(${Math.floor(
             Math.random() * (max - min) + min
@@ -190,6 +194,10 @@ const SpoolMath = {
         return min - offset <= val && val <= max + offset;
     },
 
+    inRange: (val, a, b) => {
+        return a <= val && val < b;
+    },
+
     numberDefined: (x) => {
         if (x !== undefined && x !== null) {
             return true;
@@ -197,22 +205,26 @@ const SpoolMath = {
             return false;
         }
     },
+
     getYFromCircle: (inX, r) => {
         if (inX <= r && inX >= -r) {
             var y = Math.sqrt(Math.pow(r, 2) - Math.pow(inX, 2));
         }
         return -y;
     },
+
     getYFromMovedCircle: (x, y, inX, r) => {
         movY = SpoolMath.getYFromCircle(inX, r) + y;
         movX = inX + x;
         pos = [movX, movY];
         return pos;
     },
+
     getAngleFromCircle: (radius, inX) => {
         var angle = Math.acos(inX / radius) - Math.PI / 2;
         return angle;
     },
+
     rectangleMouseCollision: (Ax, Ay, width, height, mouseX, mouseY) => {
         if (
             mouseX >= Ax &&
@@ -225,6 +237,7 @@ const SpoolMath = {
             return false;
         }
     },
+
     rotatePoint: (Sx, Sy, Px, Py, angle) => {
         var radius = SpoolMath.distance(Sx, Sy, Px, Py);
         var newAngle = SpoolMath.globalAngle(Sx, -Sy, Px, -Py) - angle;
@@ -302,23 +315,41 @@ const SpoolMath = {
 };
 
 var SpoolRect = (x, y, width, height) => {
-    return {
+    var self = {
         x: x,
         y: y,
+        xx: x + width,
+        yy: y + height,
         width: width,
         height: height,
         cx: x + width / 2,
         cy: y + height / 2,
-        contains: (ax, ay) => {
-            return x <= ax && ax <= x + width && y <= ay && ay <= y + height;
-        },
     };
+
+    self.contains = (ax, ay) => {
+        return self.x <= ax && ax <= self.xx && self.y <= ay && ay <= self.yy;
+    };
+    self.collision = (other) => {
+        return (
+            ((self.x <= other.x && other.x <= self.xx) ||
+                (self.x <= other.xx && other.xx <= self.xx)) &&
+            ((self.y <= other.y && other.y <= self.yy) ||
+                (self.y <= other.yy && other.yy <= self.yy))
+        );
+    };
+
+    return self;
+};
+
+var RadiusRect = (x, y, radx, rady) => {
+    return SpoolRect(x - radx, y - rady, radx * 2, rady * 2);
 };
 
 try {
     module.exports = {
         SpoolMath,
         SpoolRect,
+        RadiusRect,
     };
 } catch (e) {
     if (typeof module === "undefined") {
