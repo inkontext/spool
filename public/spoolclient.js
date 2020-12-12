@@ -282,7 +282,7 @@ var GameArea = (width = 500, height = 500) => {
     };
     self.resize(width, height);
 
-    document.body.appendChild(self.canvas);
+    document.getElementById("spool-root").appendChild(self.canvas);
 
     self.canvas.oncontextmenu = function (e) {
         e.preventDefault();
