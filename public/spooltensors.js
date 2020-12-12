@@ -1,11 +1,24 @@
-const getIndex = (shape, coords, levelSizes = null) => {
+const basicAliases = {
+    x: 0,
+    y: 1,
+    z: 2,
+    w: 3,
+
+    a: 0,
+    b: 1,
+    c: 2,
+    d: 3,
+
+    width: 2,
+    height: 3,
+};
+
+const getIndexAndShape = (shape, coords, levelSizes = null) => {
     var res = 0;
 
     if (!levelSizes) {
         levelSizes = getLevelSizes(shape);
     }
-
-    console.log(shape, coords, levelSizes);
 
     coords.forEach((coord, index) => {
         if (SpoolMath.inRange(coord, 0, shape[index])) {
@@ -17,9 +30,38 @@ const getIndex = (shape, coords, levelSizes = null) => {
 
     var currentShape = shape.slice(coords.length);
 
-    console.log(res, currentShape);
-
     return { index: res, shape: currentShape };
+};
+
+const getVariableIndexAndShape = (s, coords, indexes = null) => {
+    if (indexes === null) {
+        indexes = getIndexesMap(s)[0];
+    }
+
+    var currentIndexesContainer = indexes;
+    var currentShape = s;
+
+    var res = { index: currentIndexesContainer[0], shape: currentShape };
+
+    for (var i = 0; i < coords.length; i++) {
+        var coord = coords[i];
+
+        currentIndexesContainer = currentIndexesContainer[coord];
+        currentShape = currentShape[coord];
+
+        if (currentIndexesContainer.constructor !== Array) {
+            var res = getIndexAndShape(currentShape, coords.slice(i + 1));
+            res.index += currentIndexesContainer;
+            return res;
+        } else {
+            res = {
+                index: currentIndexesContainer[0],
+                shape: currentShape,
+            };
+        }
+    }
+
+    return res;
 };
 
 const getLevelSizes = (shape) => {
@@ -66,162 +108,336 @@ const getIndexesMap = (shape, offset = 0) => {
     ];
 };
 
-var Tensor = (shape, values = null, fun = () => 0) => {
-    // Init
+const getDimensions = (shape) => {
+    return shape.length;
+};
 
-    var self = {
-        shape: shape,
-        d: shape.length,
+const toFixedSize = (str, size = 6) => {
+    var res = str.toString();
+    while (res.length < size) {
+        res += " ";
+    }
+    return res;
+};
+
+const toString = (tensor, index = 0, depth = 0, start = "") => {
+    var res = "";
+
+    var size = tensor.shape.length - depth;
+
+    if (size == 1) {
+        res += start;
+        for (var i = 0; i < tensor.shape[tensor.shape.length - 1]; i++) {
+            var len =
+                tensor.dimension > 1 &&
+                i < tensor.shape[tensor.shape.length - 1] - 1
+                    ? 6
+                    : 0;
+            res += toFixedSize(tensor.get(i + index), len);
+        }
+    } else {
+        if (size != 2) {
+            res += start + "[\n";
+        }
+        for (var i = 0; i < tensor.shape[depth]; i++) {
+            var nxt_index =
+                index +
+                i * tensor.shape.slice(depth + 1).reduce((a, b) => a * b);
+
+            var ths_start = size == 2 && i == 0 ? start + "[ " : start + "  ";
+            var ths_end = size == 2 && i == tensor.shape[depth] - 1 ? "" : "\n";
+            res += toString(tensor, nxt_index, depth + 1, ths_start) + ths_end;
+        }
+        if (size != 2) {
+            res += start + "]";
+        } else {
+            res += " ]";
+        }
+    }
+
+    return res;
+};
+
+//// TENSOR BASE
+
+function TensorBase(shape) {
+    this.shape = shape;
+    this.size = getSize(shape);
+    this.dimension = getDimensions(shape);
+}
+
+TensorBase.prototype.getIndex = function (coords) {
+    return this.getIndexAndShape(coords).index;
+};
+
+TensorBase.prototype.getValue = function (coords) {
+    const index = this.getIndex(coords);
+    return this.get(index);
+};
+
+TensorBase.prototype.T = function () {
+    if (this.dimension != 2) {
+        throw `You can only transpose 2-d tensor, not ${this.d}-d`;
+    }
+
+    var shape = [this.shape[1], this.shape[0]];
+
+    var res = new SubTensor(self, shape);
+
+    res.get = (i) => {
+        var y = Math.floor(i / this.shape[0]);
+        var x = i % this.shape[0];
+
+        return this.get(x * this.shape[1] + y);
     };
 
-    self.size = getSize(shape);
-    self.levelSizes = getLevelSizes(shape);
+    return res;
+};
+
+TensorBase.prototype.apply = function (f = (x, i) => x) {
+    return SpoolTensors.apply(this, f);
+};
+
+TensorBase.prototype.add = function (b) {
+    if (typeof b === "number") {
+        return this.apply((x) => x + b);
+    } else {
+        return this.apply((x, i) => x + b.get(i));
+    }
+};
+
+TensorBase.prototype.sub = function (b) {
+    if (typeof b === "number") {
+        return this.apply((x) => x - b);
+    } else {
+        return this.apply((x, i) => x - b.get(i));
+    }
+};
+
+TensorBase.prototype.mult = function (b) {
+    if (typeof b === "number") {
+        return this.apply((x) => x * b);
+    } else {
+        return this.apply((x, i) => x * b.get(i));
+    }
+};
+
+TensorBase.prototype.toString = function () {
+    return toString(this);
+};
+
+Object.keys(basicAliases).forEach(function (item) {
+    Object.defineProperty(TensorBase.prototype, item, {
+        get: function () {
+            return this.get(basicAliases[item]);
+        },
+        set: function (value) {
+            return this.set(basicAliases[item], value);
+        },
+    });
+});
+
+function Tensor(shape, values = null, fun = () => 0) {
+    //// CONSTRUCTOR ////
+
+    TensorBase.call(this, shape);
+
+    this.type = "fixed";
+    this.levelSizes = getLevelSizes(shape);
 
     if (values) {
-        if (values.length == self.size) {
-            self.values = values;
+        if (values.length == this.size) {
+            this.values = values;
         } else {
             throw `The size of values (${values.length}) doesn't match the shape of the tensor (${shape})`;
         }
     } else {
-        var size = shape.reduce((a, b) => a * b);
-        self.values = Array.from({ length: size }, fun);
+        this.values = Array.from({ length: this.size }, fun);
+    }
+}
+
+Tensor.prototype = Object.create(TensorBase.prototype);
+
+Tensor.prototype.get = function (i) {
+    return this.values[i];
+};
+
+Tensor.prototype.set = function (i, value) {
+    this.values[i] = value;
+    return this.values[i];
+};
+
+Tensor.prototype.getIndexAndShape = function (coords) {
+    return getIndexAndShape(this.shape, coords, this.levelSizes);
+};
+
+Tensor.prototype.subTensor = function (coords) {
+    var newD = this.shape.length - coords.length;
+    if (newD < 0) {
+        throw `${coords.length} coords for ${shape.length} array`;
     }
 
-    // Getting values
-    self.getIndex = (coords) => {
-        return getIndex(self.shape, coords);
-    };
+    let { index, shape } = this.getIndexAndShape(coords);
+    var subSize = getSize(this.shape);
 
-    self.getValue = (coords) => {
-        if (coords.length != shape.length) {
-            throw `${coords.length} coords for ${shape.length} array`;
-        }
-
-        let { index } = self.getIndex(coords);
-
-        return values[index];
-    };
-
-    self.subTensor = (coords) => {
-        var newD = self.shape.length - coords.length;
-        if (newD < 0) {
-            throw `${coords.length} coords for ${shape.length} array`;
-        }
-
-        let { index, shape } = self.getIndex(coords);
-        var subSize = getSize(shape);
-
-        return Tensor(shape, self.values.slice(index, index + subSize));
-    };
-
-    self.toString = () => {
-        if (self.d == 0) {
-            if (self.values.length == 1) {
-                return self.values[0];
-            } else {
-                return "";
-            }
-        }
-
-        if (self.d == 1) {
-            return "[" + self.values.toString() + "]";
-        }
-
-        var res = "";
-        for (var i = 0; i < self.shape[0]; i++) {
-            res += self.subTensor([i]).toString() + "\n";
-        }
-
-        return res;
-    };
-
-    return self;
+    return new SubTensor(this, shape, index, index + subSize);
 };
 
-var VariableTensor = (shape, values) => { 
-    var self = {
-        shape: shape,
-    };
+function VariableTensor(shape, values, fun = () => 0) {
+    //// CONSTRUCTOR ////
 
-    self.indexes = getIndexesMap(shape)[0];
+    TensorBase.call(this, shape);
 
-    self.values = values;
+    this.type = "variable";
+    this.indexes = getIndexesMap(shape)[0];
 
-    self.getIndex = (coords) => {
-        var currentIndexesContainer = self.indexes;
-        var currentShape = self.shape;
-
-        var res = { index: currentIndexesContainer[0], shape: currentShape };
-
-        for (var i = 0; i < coords.length; i++) {
-            var coord = coords[i];
-
-            currentIndexesContainer = currentIndexesContainer[coord];
-            currentShape = currentShape[coord];
-
-            if (currentIndexesContainer.constructor !== Array) {
-                var res = getIndex(currentShape, coords.slice(i + 1));
-                res.index += currentIndexesContainer;
-                return res;
-            } else {
-                res = {
-                    index: currentIndexesContainer[0],
-                    shape: currentShape,
-                };
-            }
+    if (values) {
+        if (values.length == this.size) {
+            this.values = values;
+        } else {
+            throw `The size of values (${values.length}) doesn't match the shape of the tensor (${shape})`;
         }
+    } else {
+        this.values = Array.from({ length: this.size }, fun);
+    }
+}
 
-        return res;
-    };
+VariableTensor.prototype = Object.create(TensorBase.prototype);
 
-    self.subTensor = (coords) => {
-        let { index, shape } = self.getIndex(coords);
-
-        var constructor = Tensor;
-
-        if (shape.length > 0) {
-            if (shape[0].constructor === Array) {
-                constructor = VariableTensor;
-            }
-        }
-
-        var size = getSize(shape);
-
-        return constructor(shape, self.values.slice(index, index + size));
-    };
-
-    self.toString = () => {
-        var res = "";
-
-        for (var i = 0; i < self.shape.length; i++) {
-            res += self.subTensor([i]).toString() + "\n";
-        }
-
-        return res;
-    };
-
-    return self;
+VariableTensor.prototype.get = function (i) {
+    return this.values[i];
 };
 
-var SubTensor = (parent, shape, start, end) => {
-    var self = {
-        parent: parent,
-        shape: shape,
-        start: start,
-        end: end,
-    };
-
-    self.get = (index) => {
-        return parent.get(index + start);
-    };
+VariableTensor.prototype.set = function (i, value) {
+    return (this.values[i] = value);
 };
+
+VariableTensor.prototype.getIndexAndShape = function (coords) {
+    return getVariableIndexAndShape(this.shape, coords, this.indexes);
+};
+
+VariableTensor.prototype.subTensor = function (coords) {
+    let { index, shape } = this.getIndexAndShape(coords);
+    var size = getSize(this.shape);
+    return new SubTensor(this, shape, index, index + size);
+};
+
+VariableTensor.prototype.toString = function () {
+    var res = "";
+
+    for (var i = 0; i < this.shape.length; i++) {
+        res += this.subTensor([i]).toString() + "\n";
+    }
+
+    return res;
+};
+
+const isVariable = (shape) => {
+    if (shape.length > 0) {
+        if (shape[0].constructor === Array) {
+            return true;
+        }
+    }
+    return false;
+};
+
+function SubTensor(parent, shape, start = null, end = null) {
+    //// CONSTRUCTOR ////
+
+    TensorBase.call(this, shape);
+
+    this.parent = parent;
+    this.start = start;
+    this.end = end;
+    this.type = "sub";
+
+    if (this.start === null) {
+        this.start = 0;
+    }
+
+    if (this.end === null) {
+        this.end = getSize(shape);
+    }
+
+    //// FUNCTIONS ////
+
+    if (isVariable(shape)) {
+        this.indexes = getIndexesMap(this.shape)[0];
+        this.getIndexAndShape =
+            VariableTensor.prototype.getVariableIndexAndShape;
+    } else {
+        this.levelSizes = getLevelSizes(this.shape);
+        this.getIndexAndShape = Tensor.prototype.getVariableIndexAndShape;
+    }
+}
+
+SubTensor.prototype = Object.create(TensorBase.prototype);
+
+SubTensor.prototype.get = function (i) {
+    return this.parent.get(i + this.start);
+};
+
+SubTensor.prototype.set = function (i, value) {
+    return this.parent.set(i + this.start, value);
+};
+
+SubTensor.prototype.subTensor = function (coords) {
+    var newD = this.shape.length - coords.length;
+    if (newD < 0) {
+        throw `${coords.length} coords for ${shape.length} array`;
+    }
+
+    let { index, shape } = this.getIndex(coords);
+    var subSize = getSize(shape);
+
+    return new SubTensor(
+        this.parent,
+        shape,
+        index + start,
+        index + start + subSize
+    );
+};
+
+SubTensor.prototype.toString = function () {
+    return new Tensor(this.shape, null, (v, i) => this.get(i)).toString();
+};
+
+var operations = ["apply", ""];
 
 var SpoolTensors = {
     //// INITIALIZERS ////
 
+    // COPY //
+
+    apply: (a, f = (x, i) => x) => {
+        for (var i = 0; i < a.size; i++) {
+            a.set(i, f(a.get(i), i));
+        }
+        return a;
+    },
+
+    copy: (a, f = (x) => x) => {
+        return new (SpoolTensors.constructorForShape(a.shape))(
+            a.shape,
+            null,
+            (v, i) => f(a.get(i))
+        );
+    },
+
+    tensor: (shape, values, fun) => {
+        return new (SpoolTensors.constructorForShape(shape))(
+            shape,
+            values,
+            fun
+        );
+    },
+
+    // CONST //
+
     const: (shape, value) => {
-        return Tensor(shape, null, () => value);
+        return SpoolTensors.tensor(shape, null, () => {
+            value;
+        });
     },
 
     zeros: (shape) => {
@@ -233,7 +449,7 @@ var SpoolTensors = {
     },
 
     constLike: (a, value = 0) => {
-        return SpoolTensors.apply(a, () => value);
+        return SpoolTensors.copy(a, () => value);
     },
 
     zerosLike: (a) => {
@@ -244,34 +460,36 @@ var SpoolTensors = {
         return SpoolTensors.constLike(a, 1);
     },
 
-    randomLike: (a, min = 0, max = 1) => {
-        return SpoolTensors.apply(a, () => SpoolMath.randRange(min, max));
-    },
+    // RANDOM //
 
     random: (shape, min = 0, max = 1) => {
-        return Tensor(shape, null, () => SpoolMath.randRange(min, max));
+        return new Tensor(shape, null, () => SpoolMath.randRange(min, max));
     },
 
-    apply: (a, f) => {
-        return Tensor(a.shape, null, (v, i) => f(a.values[i]));
+    randomLike: (a, min = 0, max = 1) => {
+        return SpoolTensors.copy(a, () => SpoolMath.randRange(min, max));
     },
+
+    // RANGE //
+
+    range: (shape, coef = 1) => {
+        return new (SpoolTensors.constructorForShape(shape))(
+            shape,
+            null,
+            (_, i) => i * coef
+        );
+    },
+
+    //// OPERATIONS ////
 
     elementWiseOperation: (a, b, f) => {
         if (!SpoolUtils.arraysEqual(a.shape, b.shape)) {
             throw `The shapes of the tensors don't match: ${a.shape} != ${b.shape}`;
         }
 
-        var c = Tensor(a.shape);
-
-        for (var i = 0; i < a.size; i++) {
-            c.values[i] = f(a.values[i], b.values[i]);
-        }
-
-        return c;
-    },
-
-    range: (shape, coef = 1) => {
-        return Tensor(shape, null, (v, i) => i * coef);
+        return SpoolTensors.tensor(a.shape, null, (_, i) =>
+            f(a.get(i), b.get(i))
+        );
     },
 
     add: (a, b) => {
@@ -287,16 +505,20 @@ var SpoolTensors = {
     },
 
     dot: (a, b, coordsA = [], coordsB = []) => {
+        if (a.dimension != 2 && b.dimension != 2) {
+            throw `Dot product supports only 2-d tensor dot your (${a.d}d . ${b.d})`;
+        }
+
         aValues = a.values;
         bValues = b.values;
 
-        let aRes = a.getIndex(coordsA);
+        let aRes = a.getIndexAndShape(coordsA);
         let aIndex = aRes.index;
         let aShape = aRes.shape;
         var aHeight = aShape[0];
         var aWidth = aShape[1];
 
-        let bRes = b.getIndex(coordsB);
+        let bRes = b.getIndexAndShape(coordsB);
         let bIndex = bRes.index;
         let bShape = bRes.shape;
         var bHeight = bShape[0];
@@ -322,18 +544,28 @@ var SpoolTensors = {
             }
         }
 
-        console.log(resShape, values);
+        var res = new Tensor(resShape, values);
 
-        return Tensor(resShape, values);
+        return res;
     },
 
     concat: (tensors) => {
-        console.log(tensors.map((tensor) => tensor.values));
-
-        return VariableTensor(
+        return new VariableTensor(
             tensors.map((tensor) => tensor.shape),
             [].concat(...tensors.map((tensor) => tensor.values))
         );
+    },
+
+    constructorForShape: (shape) => {
+        var constructor = Tensor;
+
+        if (shape.length > 0) {
+            if (shape[0].constructor === Array) {
+                constructor = VariableTensor;
+            }
+        }
+
+        return constructor;
     },
 };
 

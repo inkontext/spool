@@ -133,6 +133,190 @@ const SpoolMath = {
         };
     },
 
+    //// GENERATORS ////
+
+    generateLines(fa, fb, count) {
+        var results = [];
+        for (var i = 0; i < count; i++) {
+            results.push(new SpoolLine(fa(i), fb(i)));
+        }
+        return results;
+    },
+
+    //// COLLISION ////
+
+    /**
+     * finds the intersection point of two lines
+     * @param {object} a - line defined as {x, y, xx, yy}
+     * @param {object} b - line defined as {x, y, xx, yy}
+     */
+
+    lineIntersection: (a, b) => {
+        var x1 = a.x;
+        var x2 = a.xx;
+        var y1 = a.y;
+        var y2 = a.yy;
+
+        var x3 = b.x;
+        var x4 = b.xx;
+        var y3 = b.y;
+        var y4 = b.yy;
+
+        var denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+        if (denominator == 0) return null;
+
+        var xNominator =
+            (x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4);
+        var yNominator =
+            (x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4);
+
+        var px = xNominator / denominator;
+        var py = yNominator / denominator;
+
+        var offset = 2;
+
+        if (
+            SpoolMath.inInterval(px, x1, x2, offset) &&
+            SpoolMath.inInterval(px, x3, x4, offset) &&
+            SpoolMath.inInterval(py, y1, y2, offset) &&
+            SpoolMath.inInterval(py, y3, y4, offset)
+        ) {
+            return {
+                x: px,
+                y: py,
+            };
+        } else {
+            return null;
+        }
+    },
+
+    rectCollision: (a, b) => {
+        return (
+            ((a.x <= b.x && b.x <= a.xx) || (a.x <= b.xx && b.xx <= a.xx)) &&
+            ((a.y <= b.y && b.y <= a.yy) || (a.y <= b.yy && b.yy <= a.yy))
+        );
+    },
+
+    getLinesFromRect: (a) => {
+        return [
+            {
+                x: a.x,
+                y: a.y,
+                xx: a.x,
+                yy: a.yy,
+            },
+            {
+                x: a.xx,
+                y: a.y,
+                xx: a.xx,
+                yy: a.yy,
+            },
+            {
+                x: a.x,
+                y: a.yy,
+                xx: a.xx,
+                yy: a.yy,
+            },
+            {
+                x: a.x,
+                y: a.y,
+                xx: a.xx,
+                yy: a.y,
+            },
+        ];
+    },
+
+    getLine: (a, b) => {
+        return { x: a.x, y: a.y, xx: b.x, yy: b.y };
+    },
+
+    movingRectCollision: (a, b, origin, harsh = false) => {
+        var expandedRect = SpoolMath.boundRect(
+            parseInt(b.cx - b.width / 2 - a.width / 2),
+            parseInt(b.cy - b.height / 2 - a.height / 2),
+            parseInt(b.cx + b.width / 2 + a.width / 2),
+            parseInt(b.cy + b.height / 2 + a.height / 2)
+        );
+
+        var result = {
+            result: expandedRect.contains(a.cx, a.cy),
+        };
+
+        if (
+            Math.abs(a.cx - b.cx) >= Math.abs(origin.x - b.cx) &&
+            Math.abs(a.cy - b.cy) >= Math.abs(origin.y - b.cy)
+        ) {
+            return result;
+        }
+
+        var objMovementLine = SpoolMath.getLine(origin, { x: a.cx, y: a.cy });
+
+        var lineCollision = SpoolMath.lineRectCollision(
+            expandedRect,
+            objMovementLine
+        );
+
+        return lineCollision;
+    },
+
+    lineRectCollision: (expandedRect, line) => {
+        var intersections = [];
+        var lines = SpoolMath.getLinesFromRect(expandedRect);
+
+        var directions = ["right", "left", "bottom", "top"];
+        var counter = 0;
+
+        if (expandedRect.contains(line.x, line.y)) {
+            return { x: line.x, y: line.y };
+        }
+
+        if (expandedRect.contains(line.xx, line.yy)) {
+            intersections.push({ x: line.xx, y: line.yy });
+        }
+
+        lines.forEach((l) => {
+            var intersection = SpoolMath.lineIntersection(l, line);
+            if (intersection) {
+                intersection.direction = directions[counter];
+            }
+            intersections.push(intersection);
+            counter++;
+        });
+
+        var closestIntersection = null;
+        var smallestDistance = null;
+        var smallestIndex = null;
+        counter = 0;
+
+        intersections.forEach((intersection) => {
+            if (intersection) {
+                var dist = SpoolMath.distance(
+                    line.x,
+                    origin.y,
+                    intersection.x,
+                    intersection.y
+                );
+
+                if (smallestDistance ? dist < smallestDistance : true) {
+                    smallestIndex = counter;
+                    smallestDistance = dist;
+                    closestIntersection = intersection;
+                }
+            }
+            counter++;
+        });
+
+        if (closestIntersection) {
+            return {
+                x: closestIntersection.x,
+                y: closestIntersection.y,
+                direction: closestIntersection.direction,
+            };
+        }
+
+        return null;
+    },
+
     //// LERP ////
 
     lerp: (start, end, t) => {
@@ -312,37 +496,124 @@ const SpoolMath = {
     sigmoid: (x) => {
         return 1 / (1 + Math.exp(-x));
     },
+
+    boundRect: (left, top, right, bottom) => {
+        return new SpoolRect(left, top, right - left, bottom - top);
+    },
 };
 
-var SpoolRect = (x, y, width, height) => {
-    var self = {
-        x: x,
-        y: y,
-        xx: x + width,
-        yy: y + height,
-        width: width,
-        height: height,
-        cx: x + width / 2,
-        cy: y + height / 2,
-    };
+function SpoolPoint(x, y) {
+    this.x = x;
+    this.y = y;
+}
 
-    self.contains = (ax, ay) => {
-        return self.x <= ax && ax <= self.xx && self.y <= ay && ay <= self.yy;
-    };
-    self.collision = (other) => {
-        return (
-            ((self.x <= other.x && other.x <= self.xx) ||
-                (self.x <= other.xx && other.xx <= self.xx)) &&
-            ((self.y <= other.y && other.y <= self.yy) ||
-                (self.y <= other.yy && other.yy <= self.yy))
-        );
-    };
+function SpoolLine(a, b) {
+    this.a = a;
+    this.b = b;
+}
 
-    return self;
+SpoolLine.prototype.get = function () {
+    return [this.x, this.y, this.xx, this.yy];
 };
+
+Object.defineProperty(SpoolLine.prototype, "x", {
+    get: function () {
+        return this.a.x;
+    },
+    set: function (value) {
+        this.a.x = value;
+    },
+});
+
+Object.defineProperty(SpoolLine.prototype, "y", {
+    get: function () {
+        return this.a.y;
+    },
+    set: function (value) {
+        this.a.y = value;
+    },
+});
+
+Object.defineProperty(SpoolLine.prototype, "xx", {
+    get: function () {
+        return this.b.x;
+    },
+    set: function (value) {
+        this.b.x = value;
+    },
+});
+
+Object.defineProperty(SpoolLine.prototype, "yy", {
+    get: function () {
+        return this.b.y;
+    },
+    set: function (value) {
+        this.b.y = value;
+    },
+});
+
+function SpoolRect(x, y, width, height) {
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.height = height;
+}
+
+SpoolRect.prototype.get = function () {
+    return [this.x, this.y, this.width, this.height];
+};
+
+SpoolRect.prototype.collision = function (other) {
+    return (
+        ((this.x <= other.x && other.x <= this.xx) ||
+            (this.x <= other.xx && other.xx <= this.xx)) &&
+        ((this.y <= other.y && other.y <= this.yy) ||
+            (this.y <= other.yy && other.yy <= this.yy))
+    );
+};
+
+SpoolRect.prototype.contains = function (x, y) {
+    return this.x <= x && x <= this.xx && this.y <= y && y <= this.yy;
+};
+
+Object.defineProperty(SpoolRect.prototype, "cx", {
+    get: function () {
+        return this.x + this.width / 2;
+    },
+    set: function (value) {
+        this.x = value - this.width / 2;
+    },
+});
+
+Object.defineProperty(SpoolRect.prototype, "cy", {
+    get: function () {
+        return this.y + this.height / 2;
+    },
+    set: function (value) {
+        this.y = value - this.height / 2;
+    },
+});
+
+Object.defineProperty(SpoolRect.prototype, "xx", {
+    get: function () {
+        return this.x + this.width;
+    },
+    set: function (value) {
+        this.x = value - this.width;
+    },
+});
+
+Object.defineProperty(SpoolRect.prototype, "yy", {
+    get: function () {
+        return this.y + this.height;
+    },
+    set: function (value) {
+        this.y = value - this.height;
+    },
+});
 
 var RadiusRect = (x, y, radx, rady) => {
-    return SpoolRect(x - radx, y - rady, radx * 2, rady * 2);
+    return new SpoolRect(x - radx, y - rady, radx * 2, rady * 2);
 };
 
 try {

@@ -5,6 +5,7 @@ var SpoolRenderer = {
 
     setColor: (color) => {
         SpoolRenderer.ctx.fillStyle = color;
+        SpoolRenderer.ctx.strokeStyle = color;
     },
 
     setFont: (fontFace, fontSize) => {
@@ -41,10 +42,25 @@ var SpoolRenderer = {
         SpoolRenderer.ctx.fill();
     },
 
+    tDrawPoint: (x, y, rad) => {
+        var a = SpoolRenderer.camera.transformPoint(x, y);
+        SpoolRenderer.fillOval(a.x, a.y, rad);
+    },
+
     drawLine: (x1, y1, x2, y2) => {
         SpoolRenderer.ctx.beginPath();
         SpoolRenderer.ctx.moveTo(x1, y1);
         SpoolRenderer.ctx.lineTo(x2, y2);
+        SpoolRenderer.ctx.stroke();
+    },
+
+    tDrawLine: (x1, y1, x2, y2) => {
+        var a = SpoolRenderer.camera.transformPoint(x1, y1);
+        var b = SpoolRenderer.camera.transformPoint(x2, y2);
+
+        SpoolRenderer.ctx.beginPath();
+        SpoolRenderer.ctx.moveTo(a.x, a.y);
+        SpoolRenderer.ctx.lineTo(b.x, b.y);
         SpoolRenderer.ctx.stroke();
     },
 
@@ -272,5 +288,14 @@ var SpoolRenderer = {
             SpoolRenderer.ctx.strokeText(text, x, y);
         }
         SpoolRenderer.ctx.fillText(text, x, y);
+    },
+
+    tSimpleText: (text, x, y, stroke = null) => {
+        var point = SpoolRenderer.camera.transformPoint(x, y);
+        if (stroke) {
+            SpoolRenderer.ctx.lineWidth = stroke;
+            SpoolRenderer.ctx.strokeText(text, point.x, point.y);
+        }
+        SpoolRenderer.ctx.fillText(text, point.x, point.y);
     },
 };

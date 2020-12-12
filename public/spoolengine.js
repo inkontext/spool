@@ -261,9 +261,8 @@ var Handler = (initObject = {}) => {
                         self.preManagers[i].update(object);
                     }
 
-                    object.update();
-
                     self.updateObjectsChunk(object);
+                    object.update();
 
                     for (var i = 0; i < self.managers.length; i++) {
                         self.managers[i].update(object);
@@ -460,12 +459,17 @@ var Handler = (initObject = {}) => {
                 for (bKey in chunk.objects[bType]) {
                     var b = chunk.objects[bType][bKey];
 
-                    if (rect.collision(b.getBounds())) {
+                    if (!b.SPL_COLL_MARKER && rect.collision(b.getBounds())) {
                         res.push(b);
+                        b.SPL_COLL_MARKER = true;
                     }
                 }
             }
         }
+
+        res.forEach((r) => {
+            delete r.SPL_COLL_MARKER;
+        });
 
         return res;
     };
@@ -519,7 +523,9 @@ var CollisionManager = (initPack, handler) => {
             var yy = object.py + object.height / 2;
         }
 
-        return self.handler.getChunksForRect(SpoolRect(x, y, xx - x, yy - y));
+        return self.handler.getChunksForRect(
+            new SpoolRect(x, y, xx - x, yy - y)
+        );
     };
 
     self.update = (object) => {
@@ -695,163 +701,22 @@ var CollisionManager = (initPack, handler) => {
     };
 
     self.objectRectCollision = (a, b, harsh = false) => {
-        var rx = parseInt(b.x - b.width / 2 - a.width / 2);
-        var ry = parseInt(b.y - b.height / 2 - a.height / 2);
-        var rxx = parseInt(b.x + b.width / 2 + a.width / 2);
-        var ryy = parseInt(b.y + b.height / 2 + a.height / 2);
-
-        var objMovementLine = self.objMovementLine(a);
-
-        var result = {
-            result: rx < a.x && a.x < rxx && ry < a.y && a.y < ryy,
-        };
-
-        if (
-            Math.abs(a.x - b.x) >= Math.abs(a.px - b.x) &&
-            Math.abs(a.y - b.y) >= Math.abs(a.py - b.y)
-        ) {
-            return result;
-        }
-
-        var intersections = [];
-        var lines = [
-            {
-                x: rx,
-                y: ry,
-                xx: rx,
-                yy: ryy,
-            },
-            {
-                x: rxx,
-                y: ry,
-                xx: rxx,
-                yy: ryy,
-            },
-            {
-                x: rx,
-                y: ryy,
-                xx: rxx,
-                yy: ryy,
-            },
-            {
-                x: rx,
-                y: ry,
-                xx: rxx,
-                yy: ry,
-            },
-        ];
-
-        var directions = ["right", "left", "bottom", "top"];
-        var active = [
-            b.leftColIgnore,
-            b.rightColIgnore,
-            b.topColIgnore,
-            b.bottomColIgnore,
-        ];
-        var counter = 0;
-
-        lines.forEach((line) => {
-            if (!active[counter]) {
-                var intersection = self.lineIntersection(line, objMovementLine);
-                // handler.add(Line({
-                //     ...line
-                // }));
-                if (intersection) {
-                    intersection.direction = directions[counter];
-                }
-                intersections.push(intersection);
-            } else {
-                intersections.push(null);
-            }
-            counter++;
-        });
-
-        var closestIntersection = null;
-        var smallestDistance = null;
-        var smallestIndex = null;
-        counter = 0;
-        intersections.forEach((intersection) => {
-            if (intersection) {
-                var dist = SpoolMath.distance(
-                    a.px,
-                    a.py,
-                    intersection.x,
-                    intersection.y
-                );
-
-                if (smallestDistance ? dist < smallestDistance : true) {
-                    smallestIndex = counter;
-                    smallestDistance = dist;
-                    closestIntersection = intersection;
+        var res = SpoolMath.movingRectCollision(
+            a.getBounds(),
+            b.getBounds(),
+            { x: a.px, y: a.py },
+            harsh
+        );
+        if (res.result) {
+            if (res.point && res.direction) {
+                if (res.direction == "left" || res.direction == "right") {
+                    res.point.y = (res.point.y + a.y) / 2;
+                } else {
+                    res.point.x = (res.point.x + a.x) / 2;
                 }
             }
-            counter++;
-        });
-
-        if (closestIntersection) {
-            if (smallestIndex <= 1) {
-                closestIntersection.y = a.y;
-            } else {
-                closestIntersection.x = a.x;
-            }
-            result.point = {
-                x: closestIntersection.x,
-                y: closestIntersection.y,
-            };
-            result.direction = closestIntersection.direction;
-            return result;
-        } else if (harsh) {
-            result.point = {
-                x: a.px,
-                y: a.py,
-            };
         }
-
-        return result;
-    };
-
-    /**
-     * finds the intersection point of two lines
-     * @param {object} a - line defined as {x, y, xx, yy}
-     * @param {object} b - line defined as {x, y, xx, yy}
-     */
-    self.lineIntersection = (a, b) => {
-        var x1 = a.x;
-        var x2 = a.xx;
-        var y1 = a.y;
-        var y2 = a.yy;
-
-        var x3 = b.x;
-        var x4 = b.xx;
-        var y3 = b.y;
-        var y4 = b.yy;
-
-        var denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-        if (denominator == 0) return null;
-
-        var xNominator =
-            (x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4);
-        var yNominator =
-            (x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4);
-
-        var px = xNominator / denominator;
-        var py = yNominator / denominator;
-
-        var offset = 2;
-
-        if (
-            SpoolMath.inInterval(px, x1, x2, offset) &&
-            SpoolMath.inInterval(px, x3, x4, offset) &&
-            SpoolMath.inInterval(py, y1, y2, offset) &&
-            SpoolMath.inInterval(py, y3, y4, offset)
-        ) {
-            return {
-                x: px,
-                y: py,
-            };
-        } else {
-            return null;
-        }
+        return res;
     };
 
     return self;
@@ -1047,7 +912,7 @@ var ObjectSpawner = (handler, keyToConstAndDefs, inputObject = {}) => {
         });
     };
 
-    self.spawn = (key, cx, cy) => {
+    self.spawn = (key, cx = 0, cy = 0) => {
         if (key in self.keyToConstAndDefs) {
             var pair = keyToConstAndDefs[key];
 
@@ -1786,7 +1651,7 @@ var Entity = (initPack = {}, extending = null) => {
     };
 
     self.getBounds = () => {
-        return SpoolRect(
+        return new SpoolRect(
             self.x - self.width / 2,
             self.y - self.height / 2,
             self.width,

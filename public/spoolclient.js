@@ -1497,7 +1497,7 @@ var ClientEntity = (initPack, extending = null) => {
             self.height
         );
         SpoolRenderer.fillInscribedOval(
-            SpoolRect(
+            new SpoolRect(
                 bounds.x - bounds.width / 2,
                 bounds.y - bounds.height / 2,
                 bounds.width,
