@@ -6,9 +6,6 @@ try {
         "SpoolMath require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way"
     );
 }
-if (!SpoolMath) {
-    console.error("SpoolMath library not present, make sure it is included");
-}
 try {
     SpoolUtils = require("./spoolutils.js").SpoolUtils;
 } catch (e) {
@@ -16,18 +13,12 @@ try {
         "SpoolUtils require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way"
     );
 }
-if (!SpoolUtils) {
-    console.error("SpoolUtils library not present, make sure it is included");
-}
 try {
     FileReader = require("../spoolfilereader.js").FileReader;
 } catch (e) {
     console.warn(
         "FileReader require importing failed, require is most likely not present, make sure you are importing SpoolMath in another way"
     );
-}
-if (!FileReader) {
-    console.error("FileReader library not present, make sure it is included");
 }
 try {
     var Perlin = require("perlin-noise");
