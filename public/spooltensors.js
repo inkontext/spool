@@ -25,6 +25,7 @@ const getIndexAndShape = (shape, coords, levelSizes = null) => {
             res += coord * levelSizes[1 + index];
         } else {
             throw `${coord} at ${index}-d is out of range(${shape[index]})`;
+            console.trace();
         }
     });
 
@@ -114,7 +115,7 @@ const getDimensions = (shape) => {
 
 const toFixedSize = (str, size = 6) => {
     var res = str.toString();
-    while (res.length < size) {
+    while ((res.length + 1) % size != 0) {
         res += " ";
     }
     return res;
@@ -124,16 +125,19 @@ const toString = (tensor, index = 0, depth = 0, start = "") => {
     var res = "";
 
     var size = tensor.shape.length - depth;
-
     if (size == 1) {
         res += start;
         for (var i = 0; i < tensor.shape[tensor.shape.length - 1]; i++) {
-            var len =
-                tensor.dimension > 1 &&
-                i < tensor.shape[tensor.shape.length - 1] - 1
-                    ? 6
-                    : 0;
-            res += toFixedSize(tensor.get(i + index), len);
+            var len = 6;
+            var sep = ", ";
+            if (tensor.dimension < 2) {
+                len = 1;
+            }
+            if (i == tensor.shape[tensor.shape.length - 1] - 1) {
+                len = 1;
+                sep = "";
+            }
+            res += toFixedSize(tensor.get(i + index) + sep, len);
         }
     } else {
         if (size != 2) {
@@ -155,7 +159,7 @@ const toString = (tensor, index = 0, depth = 0, start = "") => {
         }
     }
 
-    return res;
+    return tensor.dimension == 1 ? `[${res}]` : res;
 };
 
 //// TENSOR BASE
@@ -432,6 +436,10 @@ var SpoolTensors = {
         );
     },
 
+    vector: (values) => {
+        return new Tensor([values.length], values);
+    },
+
     // CONST //
 
     const: (shape, value) => {
@@ -484,7 +492,9 @@ var SpoolTensors = {
 
     elementWiseOperation: (a, b, f) => {
         if (!SpoolUtils.arraysEqual(a.shape, b.shape)) {
-            throw `The shapes of the tensors don't match: ${a.shape} != ${b.shape}`;
+            throw new Error(
+                `The shapes of the tensors don't match: ${a.shape} != ${b.shape}`
+            );
         }
 
         return SpoolTensors.tensor(a.shape, null, (_, i) =>
@@ -493,20 +503,33 @@ var SpoolTensors = {
     },
 
     add: (a, b) => {
-        return SpoolTensors.elementWiseOperation(a, b, (a, b) => a + b);
+        if (typeof b === "number") {
+            return SpoolTensors.copy(a, (a) => a + b);
+        } else {
+            return SpoolTensors.elementWiseOperation(a, b, (a, b) => a + b);
+        }
     },
 
     sub: (a, b) => {
-        return SpoolTensors.elementWiseOperation(a, b, (a, b) => a - b);
+        if (typeof b === "number") {
+            return SpoolTensors.copy(a, (a) => a - b);
+        } else {
+            return SpoolTensors.elementWiseOperation(a, b, (a, b) => a - b);
+        }
     },
 
     mult: (a, b) => {
-        return SpoolTensors.elementWiseOperation(a, b, (a, b) => a * b);
+        if (typeof b === "number") {
+            return SpoolTensors.copy(a, (a) => a * b);
+        } else {
+            return SpoolTensors.elementWiseOperation(a, b, (a, b) => a * b);
+        }
     },
 
     dot: (a, b, coordsA = [], coordsB = []) => {
         if (a.dimension != 2 && b.dimension != 2) {
             throw `Dot product supports only 2-d tensor dot your (${a.d}d . ${b.d})`;
+            console.trace();
         }
 
         aValues = a.values;
