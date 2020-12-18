@@ -199,7 +199,7 @@ TensorBase.prototype.T = function () {
 };
 
 TensorBase.prototype.apply = function (f = (x, i) => x) {
-    return SpoolTensors.apply(this, f);
+    return SPTensors.apply(this, f);
 };
 
 TensorBase.prototype.add = function (b) {
@@ -408,7 +408,7 @@ SubTensor.prototype.toString = function () {
 
 var operations = ["apply", ""];
 
-var SpoolTensors = {
+var SPTensors = {
     //// INITIALIZERS ////
 
     // COPY //
@@ -421,7 +421,7 @@ var SpoolTensors = {
     },
 
     copy: (a, f = (x) => x) => {
-        return new (SpoolTensors.constructorForShape(a.shape))(
+        return new (SPTensors.constructorForShape(a.shape))(
             a.shape,
             null,
             (v, i) => f(a.get(i))
@@ -429,11 +429,7 @@ var SpoolTensors = {
     },
 
     tensor: (shape, values, fun) => {
-        return new (SpoolTensors.constructorForShape(shape))(
-            shape,
-            values,
-            fun
-        );
+        return new (SPTensors.constructorForShape(shape))(shape, values, fun);
     },
 
     vector: (values) => {
@@ -443,29 +439,29 @@ var SpoolTensors = {
     // CONST //
 
     const: (shape, value) => {
-        return SpoolTensors.tensor(shape, null, () => {
+        return SPTensors.tensor(shape, null, () => {
             value;
         });
     },
 
     zeros: (shape) => {
-        return SpoolTensors.const(shape);
+        return SPTensors.const(shape);
     },
 
     ones: (shape) => {
-        return SpoolTensors.const(shape, 1);
+        return SPTensors.const(shape, 1);
     },
 
     constLike: (a, value = 0) => {
-        return SpoolTensors.copy(a, () => value);
+        return SPTensors.copy(a, () => value);
     },
 
     zerosLike: (a) => {
-        return SpoolTensors.constLike(a);
+        return SPTensors.constLike(a);
     },
 
     onesLike: (a) => {
-        return SpoolTensors.constLike(a, 1);
+        return SPTensors.constLike(a, 1);
     },
 
     // RANDOM //
@@ -475,13 +471,13 @@ var SpoolTensors = {
     },
 
     randomLike: (a, min = 0, max = 1) => {
-        return SpoolTensors.copy(a, () => SpoolMath.randRange(min, max));
+        return SPTensors.copy(a, () => SpoolMath.randRange(min, max));
     },
 
     // RANGE //
 
     range: (shape, coef = 1) => {
-        return new (SpoolTensors.constructorForShape(shape))(
+        return new (SPTensors.constructorForShape(shape))(
             shape,
             null,
             (_, i) => i * coef
@@ -497,32 +493,30 @@ var SpoolTensors = {
             );
         }
 
-        return SpoolTensors.tensor(a.shape, null, (_, i) =>
-            f(a.get(i), b.get(i))
-        );
+        return SPTensors.tensor(a.shape, null, (_, i) => f(a.get(i), b.get(i)));
     },
 
     add: (a, b) => {
         if (typeof b === "number") {
-            return SpoolTensors.copy(a, (a) => a + b);
+            return SPTensors.copy(a, (a) => a + b);
         } else {
-            return SpoolTensors.elementWiseOperation(a, b, (a, b) => a + b);
+            return SPTensors.elementWiseOperation(a, b, (a, b) => a + b);
         }
     },
 
     sub: (a, b) => {
         if (typeof b === "number") {
-            return SpoolTensors.copy(a, (a) => a - b);
+            return SPTensors.copy(a, (a) => a - b);
         } else {
-            return SpoolTensors.elementWiseOperation(a, b, (a, b) => a - b);
+            return SPTensors.elementWiseOperation(a, b, (a, b) => a - b);
         }
     },
 
     mult: (a, b) => {
         if (typeof b === "number") {
-            return SpoolTensors.copy(a, (a) => a * b);
+            return SPTensors.copy(a, (a) => a * b);
         } else {
-            return SpoolTensors.elementWiseOperation(a, b, (a, b) => a * b);
+            return SPTensors.elementWiseOperation(a, b, (a, b) => a * b);
         }
     },
 
@@ -594,7 +588,7 @@ var SpoolTensors = {
 
 try {
     modules.export = {
-        SpoolTensors,
+        SPTensors,
     };
 } catch (e) {
     if (typeof module === "undefined") {

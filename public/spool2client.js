@@ -35,6 +35,31 @@ Canvas.prototype.renderBackground = function () {
 };
 
 Canvas.prototype.clear = function () {
-    this.ctx.clearRect(0, 0, self.canvas.width, self.canvas.height);
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.renderBackground();
+};
+
+function MouseListener() {
+    this.activeTypes = ["mousedown", "mouseup"];
+    this.pressedButtons = Array(3).fill(false);
+    this.m = SPTensors.vector([0, 0]);
+    this.onUpdate = () => {};
+}
+
+MouseListener.prototype.initListener = function () {
+    document.onmousedown = (e) => {
+        this.pressedButtons[e.button] = true;
+        this.onUpdate();
+    };
+
+    document.onmouseup = (e) => {
+        this.pressedButtons[e.button] = false;
+        this.onUpdate();
+    };
+
+    document.onmousemove = (e) => {
+        this.m.x = e.clientX;
+        this.m.y = e.clientY;
+        this.onUpdate();
+    };
 };

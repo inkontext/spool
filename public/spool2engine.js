@@ -1,8 +1,13 @@
+//#region ECS
+
+//#region Coordinator
+
 function Coordinator() {
     this.entities = new Array(1000);
     this.systems = [];
     this.currentId = 0;
     this.returnedIdStack = [];
+    this.usedIds = new Set();
 }
 
 Coordinator.prototype.addSystem = function (system) {
@@ -17,6 +22,7 @@ Coordinator.prototype.add = function (entity) {
         id = this.currentId++;
     }
     entity.id = id;
+    this.usedIds.add(id);
     this.entities[id] = entity;
 
     this.systems.forEach((sys) => {
@@ -28,10 +34,20 @@ Coordinator.prototype.remove = function (entity) {
     this.entities[entity.id] = null;
     this.returnedIdStack.push(entity.id);
     this.currentId;
-
+    this.usedIds.delete(entity.id);
     this.systems.forEach((sys) => {
         sys.remove(entity);
     });
+};
+
+Coordinator.prototype.removeId = function (id) {
+    this.remove(this.entities[id]);
+};
+
+Coordinator.prototype.removeAll = function () {
+    while (this.usedIds.size > 0) {
+        this.removeId(this.usedIds.values().next().value);
+    }
 };
 
 Coordinator.prototype.update = function (ts) {
@@ -40,26 +56,9 @@ Coordinator.prototype.update = function (ts) {
     });
 };
 
-function System(coordinator, signatureList) {
-    this.coordinator = coordinator;
-    this.signature = new Set(signatureList);
-    this.entities = new Set();
-}
+//#endregion
 
-System.prototype.add = function (entity) {
-    console.log(this.signature);
-    this.signature.forEach((s) => {
-        if (entity.signature.has(s)) {
-            this.entities.add(entity.id);
-        }
-    });
-};
-
-System.prototype.remove = function (entity) {
-    this.entities.remove(entity.id);
-};
-
-System.prototype.update = function () {};
+//#region Entity
 
 function Entity() {
     this.id = -1;
@@ -67,13 +66,122 @@ function Entity() {
 }
 
 Entity.prototype.addComponent = function (name, object) {
-    Object.assign(this, object);
+    this[name] = object;
     this.signature.add(name);
+    return this;
 };
+
+Entity.prototype.addTo = function (coordinator) {
+    coordinator.add(this);
+    return this;
+};
+
+//#endregion
+
+//#region Component
+
+function Component(name, values) {
+    this.name = name;
+    this.values = values;
+}
+
+Component.prototype.addTo = function (entity) {
+    entity.addComponent(this.name, this.values);
+};
+
+function defineComponent(name, valFunction) {
+    let res = function (...args) {
+        Component.call(this, name, valFunction(...args));
+    };
+    res.prototype = Object.create(Component.prototype);
+    return res;
+}
+
+function constructObject(...components) {
+    let res = new Entity();
+
+    components.forEach((comp) => {
+        comp.addTo(res);
+    });
+
+    return res;
+}
+
+//#endregion Component
+
+//#region System
+
+function System(coordinator, signatureList) {
+    if (!coordinator) {
+        console.warn(
+            `Your system with signature:${signatureList.toString()} has invalid coordinator: ${coordinator}`
+        );
+    }
+
+    this.coordinator = coordinator;
+    if (!signatureList) {
+        this.signature = null;
+    } else {
+        this.signature = new Set(signatureList);
+    }
+    this.entities = new Set();
+}
+
+System.prototype.add = function (entity) {
+    if (!this.signature) {
+        return;
+    }
+
+    for (let s of this.signature) {
+        if (!entity.signature.has(s)) {
+            return;
+        }
+    }
+    this.entities.add(entity.id);
+};
+
+System.prototype.remove = function (entity) {
+    this.entities.delete(entity.id);
+};
+
+System.prototype.getEntities = function* () {
+    for (let entity of this.entities) {
+        yield this.coordinator.entities[entity];
+    }
+};
+
+System.prototype.addTo = function (coordinator) {
+    coordinator.addSystem(this);
+    return this;
+};
+
+System.prototype.update = function () {};
+
+function defineSystem(signatureList, constructor, update) {
+    let res = function (coordinator, ...args) {
+        System.call(this, coordinator, signatureList);
+        constructor.forEach((key, i) => {
+            this[key] = args[i];
+        });
+    };
+
+    res.prototype = Object.create(System.prototype);
+    res.prototype.update = update;
+    return res;
+}
+
+//#endregion
+
+//#endregion ECS
+
+//#region TIME
+
+//#region Clock
 
 function Clock(frequency, onTick) {
     this.frameTime = 1000 / frequency;
     this.onTick = onTick;
+    this.offset = 0;
 }
 
 Clock.prototype.start = function () {
@@ -86,23 +194,94 @@ Clock.prototype.start = function () {
 
 Clock.prototype.loop = function () {
     let now = Date.now();
-    if (now - this.lastFrameTime >= this.frameTime) {
-        var delta = (now - this.lastFrameTime) / 1000;
-        this.lastFrameTime = now;
+    if (now - this.lastFrameTime >= this.frameTime - this.offset) {
+        var delta = now - this.lastFrameTime;
 
-        this.onTick(delta);
+        this.onTick(delta / this.frameTime);
+
+        this.lastFrameTime = now;
 
         var delta = Date.now() - this.lastMillisTimer;
 
         if (delta >= 1000) {
-            //console.log("FPS:" + this.frameCounter);
+            console.log("FPS:" + this.frameCounter);
             this.frameCounter = 0;
             this.lastMillisTimer = Date.now();
         } else {
             this.frameCounter += 1;
         }
+        this.offset = Date.now() - now;
     }
     setTimeout(() => {
         this.loop();
     });
 };
+
+//#endregion
+
+//#region BrowserClock
+
+function BrowserClock(onTick) {
+    this.onTick = onTick;
+    this.frameTime = 1000 / 60;
+    this.lastFrameTime = 0;
+    this.tickCounter = 0;
+}
+
+BrowserClock.prototype.start = function () {
+    window.requestAnimationFrame((ts) => {
+        this.update(ts);
+    });
+};
+
+BrowserClock.prototype.update = function (ts) {
+    let delta = ts - this.lastFrameTime;
+    this.onTick(delta / this.frameTime);
+
+    this.lastFrameTime = ts;
+    this.tickCounter = (this.tickCounter + 1) % 60;
+
+    window.requestAnimationFrame((ts) => {
+        this.update(ts);
+    });
+};
+
+//#endregion
+
+//#region SimpleTimer
+
+function SimpleTimer(length = 0) {
+    this.start = Date.now();
+    this.length = length;
+}
+
+SimpleTimer.prototype.delta = function () {
+    return Date.now() - this.start;
+};
+
+SimpleTimer.prototype.isDone = function () {
+    return this.delta() >= this.length;
+};
+
+SimpleTimer.prototype.lap = function () {
+    this.start = Date.now();
+    return this.start;
+};
+
+//#endregion
+
+//#region PeriodicLogger
+
+function PeriodicLogger(broswerClock) {
+    this.broswerClock = broswerClock;
+}
+
+PeriodicLogger.prototype.log = function (...strings) {
+    if (this.broswerClock.tickCounter % 60 == 0) {
+        console.log(...strings);
+    }
+};
+
+//#endregion
+
+//#endregion TIME

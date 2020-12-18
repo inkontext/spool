@@ -133,6 +133,28 @@ const SpoolMath = {
         };
     },
 
+    //// PARSING ////
+
+    posDimsToRect(pos, dims) {
+        return SPTensors.link([pos, dims], [4]);
+    },
+
+    posDimsToPolygon(pos, dims) {
+        return new Tensor(
+            [4, 2],
+            [
+                pos.x,
+                pos.y,
+                pos.x + dims.x,
+                pos.y,
+                pos.x + dims.x,
+                pos.y + dims.y,
+                pos.x,
+                pos.y + dims.y,
+            ]
+        );
+    },
+
     //// GENERATORS ////
 
     generateLines(fa, fb, count) {
