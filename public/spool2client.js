@@ -10,7 +10,7 @@ function Canvas(id = null) {
     if (id === null) {
         document.body.appendChild(this.canvas);
     } else {
-        document.getElementById("spool-root").appendChild(this.canvas);
+        document.getElementById(id).appendChild(this.canvas);
     }
 }
 
