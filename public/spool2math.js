@@ -1,6 +1,4 @@
 const SPMath = {
-    //#region GEOMETRY
-
     // Points
 
     polarPoint: (center, radius, angle) => {
@@ -71,6 +69,14 @@ const SPMath = {
     },
 
     // Shapes
+
+    point: function (x, y) {
+        return SPTensors.vector([x, y]);
+    },
+
+    rect: function (x, y, width, height) {
+        return SPTensors.vector([x, y, width, height]);
+    },
 
     getRect: function (pointA, pointB) {
         var x = Math.min(pointA.x, pointB.x);
@@ -203,10 +209,21 @@ const SPMath = {
         return min - offset <= val && val <= max + offset;
     },
 
+    clamp: (val, minV, maxV) => {
+        return Math.max(Math.min(val, maxV), minV);
+    },
+
     /// RANDOM ///
 
     randRange: (min, max) => {
         return Math.random() * (max - min) + min;
+    },
+
+    randPointInRect: (rect) => {
+        return SPTensors.vector([
+            rect.x + SPMath.randRange(0, rect.width),
+            rect.y + SPMath.randRange(0, rect.height),
+        ]);
     },
 
     /// FUNCTIONS ///
@@ -652,6 +669,16 @@ var SPTensors = {
         );
     },
 
+    randomIn: (tensors) => {
+        var values = [];
+        var tValues = tensors.getValues();
+        for (var i = 0; i < size; i++) {
+            values.push(SPMath.randRange(0, tValues[i]));
+        }
+
+        return SPTensors.tensor(tensors.shape, values);
+    },
+
     randomLike: (tensor, min = 0, max = 1) => {
         return SPTensors.copy(tensor, () => SPMath.randRange(min, max));
     },
@@ -717,11 +744,29 @@ var SPTensors = {
         }
     },
 
-    mult: (a, b) => {
+    mult: (a, b, repeat = false) => {
         if (typeof b === "number") {
             return SPTensors.copy(a, (a) => a * b);
         } else {
-            return SPTensors.elementWiseOperation(a, b, (a, b) => a * b);
+            return SPTensors.elementWiseOperation(
+                a,
+                b,
+                (a, b) => a * b,
+                repeat
+            );
+        }
+    },
+
+    div: (a, b, repeat = false) => {
+        if (typeof b === "number") {
+            return SPTensors.copy(a, (a) => a * b);
+        } else {
+            return SPTensors.elementWiseOperation(
+                a,
+                b,
+                (a, b) => a / b,
+                repeat
+            );
         }
     },
 

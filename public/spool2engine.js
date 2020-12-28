@@ -3,7 +3,7 @@
 //#region Coordinator
 
 function Coordinator() {
-    this.entities = new Array(1000);
+    this.entities = new Array(20000);
     this.systems = [];
     this.currentId = 0;
     this.returnedIdStack = [];
@@ -157,12 +157,31 @@ System.prototype.addTo = function (coordinator) {
 
 System.prototype.update = function () {};
 
-function defineSystem(signatureList, constructor, update) {
+/**
+ * @callback updateCallback
+ * @param {number} ts - coef of normal frametime
+ */
+
+/**
+ *
+ * @param {array} signatureList - list of needed components
+ * @param {updateCallback} update - udpate callback
+ * @param {function} constructor - constructor definition example:
+ *                                 (x, y) => ({x, y})
+ *
+ * @returns Object constructor (coordinator, ...args), args are defined via
+ *          constructor argument
+ */
+function defineSystem(signatureList, update, constructor = () => ({})) {
     let res = function (coordinator, ...args) {
         System.call(this, coordinator, signatureList);
-        constructor.forEach((key, i) => {
-            this[key] = args[i];
-        });
+        var constructed = constructor(...args);
+        assert(
+            typeof constructed === "object",
+            "Invalid system constructor, constructor needs to return object"
+        );
+
+        Object.assign(this, constructed);
     };
 
     res.prototype = Object.create(System.prototype);

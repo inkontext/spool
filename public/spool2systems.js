@@ -88,7 +88,7 @@ function entityGetBounds(entity) {
 //#region ChunkSystem
 
 function ChunkSystem(coordinator) {
-    System.call(this, coordinator, ["tran", "rig", "meta", "mov"]);
+    System.call(this, coordinator, ["tran", "rig", "meta"]);
 
     this.map = {};
     this.chunkSize = 250;
@@ -143,19 +143,20 @@ ChunkSystem.prototype.getObjectsInRect = function (pos, dims, predicate) {
         for (var x = a.x; x <= b.x; x++) {
             if (this.map[`${x}-${y}`] !== undefined) {
                 this.map[`${x}-${y}`].forEach((id) => {
-                    var entity = this.coordinator.entities[id];
-                    if (!predicate || predicate(entity)) {
-                        var entDimRect = posRadToBounds(
-                            entity.tran.pos,
-                            entity.rig.rad
-                        );
-                        var a = SPTensors.link(
-                            [entDimRect.pos, entDimRect.dims],
-                            [4]
-                        );
-
-                        if (SPMath.rectCollision(a, rect)) {
-                            res.add(entity);
+                    if (this.coordinator.entities[id]) {
+                        var entity = this.coordinator.entities[id];
+                        if (!predicate || predicate(entity)) {
+                            var entDimRect = posRadToBounds(
+                                entity.tran.pos,
+                                entity.rig.rad
+                            );
+                            var a = SPTensors.link(
+                                [entDimRect.pos, entDimRect.dims],
+                                [4]
+                            );
+                            if (SPMath.rectCollision(rect, a)) {
+                                res.add(entity);
+                            }
                         }
                     }
                 });
@@ -199,13 +200,22 @@ RenderingSystem.prototype = Object.create(System.prototype);
 RenderingSystem.prototype.update = function (ts) {
     for (let entity of this.getEntities()) {
         this.renderer.setColor(entity.mat.color);
+
+        let tranPos = entity.tran.pos;
+        let tranRad = entity.rig.rad;
+
+        if (this.transformer) {
+            tranPos = this.transformer.transformPoint(tranPos);
+            tranRad = this.transformer.transformScale(tranRad);
+        }
+
         if (entity.rig.shape == "aabb") {
             this.renderer.drawRect(
-                SPTensors.sub(entity.tran.pos, entity.rig.rad),
-                SPTensors.mult(entity.rig.rad, 2)
+                SPTensors.sub(tranPos, tranRad),
+                SPTensors.mult(tranRad, 2)
             );
         } else if (entity.rig.shape == "circle") {
-            this.renderer.fillCircle(entity.tran.pos, entity.rig.rad.x);
+            this.renderer.fillCircle(tranPos, tranRad.x);
         } else if (entity.rig.shape == "polygon") {
             let polygon = SPMath.rotatePolygon(
                 entity.rig.polygon,
@@ -213,9 +223,7 @@ RenderingSystem.prototype.update = function (ts) {
                 entity.tran.rot
             );
 
-            this.renderer.fillPolygon(
-                SPTensors.add(polygon, entity.tran.pos, true)
-            );
+            this.renderer.fillPolygon(SPTensors.add(polygon, tranPos, true));
         } else {
             assert(
                 false,
