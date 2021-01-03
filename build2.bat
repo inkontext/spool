@@ -1,1 +1,1 @@
-uglifyjs public/spool2utils.js public/spool2math.js public/spool2engine.js public/spool2systems.js public/spool2renderer.js public/spool2client.js -o spool2.min.js -c -m
+uglifyjs public/spool2utils.js public/spool2math.js public/spool2engine.js public/spool2systems.js public/spool2renderer.js public/spool2client.js public/spool2devui.js -o spool2.min.js -c -m
