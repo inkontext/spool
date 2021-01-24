@@ -152,7 +152,7 @@ const SPMath = {
         var px = xNominator / denominator;
         var py = yNominator / denominator;
 
-        var offset = 2;
+        var offset = 0;
 
         if (
             SPMath.inRange(px, x1, x2, offset) &&
@@ -166,7 +166,45 @@ const SPMath = {
         }
     },
 
-    polygoneLineIntersection: (a, polygon) => {
+    polygonContains: (polygon, point) => {
+        var minx = null;
+        var miny = null;
+        var maxx = null;
+        var maxy = null;
+
+        for (var i = 0; i < polygon.shape[0]; i++) {
+            var pa = polygon.subTensor([i]);
+            if (minx === null || pa.x < minx) {
+                minx = pa.x;
+            }
+            if (miny === null || pa.y < miny) {
+                miny = pa.y;
+            }
+            if (maxx === null || pa.x > maxx) {
+                maxx = pa.x;
+            }
+            if (maxy === null || pa.y > maxy) {
+                maxy = pa.y;
+            }
+        }
+        if (
+            !SPMath.rectContains(
+                SPTensors.vector([minx, miny, maxx - minx, maxy - miny]),
+                point
+            )
+        ) {
+            return false;
+        }
+
+        var intersections = SPMath.polygonLineIntersection(
+            SPTensors.vector([minx - 10, miny - 10, point.x, point.y]),
+            polygon
+        );
+
+        return intersections.length % 2 == 1;
+    },
+
+    polygonLineIntersection: (a, polygon) => {
         var length = polygon.shape[0];
         var res = [];
         for (var i = 0; i < polygon.shape[0]; i++) {

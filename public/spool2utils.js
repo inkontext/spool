@@ -29,3 +29,19 @@ ABList.prototype.allowed = function (value) {
         (!this.allow || this.allow.has(value))
     );
 };
+
+//#region STRINGS
+
+function getHex(value) {
+    assert(0 <= value && value <= 255, "Color out of bounds");
+    var hexchars = "0123456789abcdef";
+    var res =
+        hexchars[Math.floor(value / 16)] + hexchars[Math.floor(value % 16)];
+    return res;
+}
+
+function getColor(r, g, b) {
+    return `#${getHex(r * 255)}${getHex(g * 255)}${getHex(b * 255)}`;
+}
+
+//#endregion

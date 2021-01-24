@@ -102,6 +102,26 @@ Camera.prototype.transformPoint = function (point) {
     return SPTensors.vector([newX, newY]);
 };
 
+Camera.prototype.transformPoints = function (...points) {
+    var res = [];
+    points.forEach((point) => {
+        res.push(this.transformPoint(point));
+    });
+    return res;
+};
+
+Camera.prototype.transformPolygon = function (polygon) {
+    var res = polygon.copy();
+    let length = polygon.shape[0];
+
+    for (var i = 0; i < length; i++) {
+        var point = this.transformPoint(polygon.subTensor([i]));
+        res.set(i * 2, point.x);
+        res.set(i * 2 + 1, point.y);
+    }
+    return res;
+};
+
 Camera.prototype.inverseTransformPoint = function (point) {
     var sin = Math.sin(this.rot);
     var cos = Math.cos(this.rot);

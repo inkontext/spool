@@ -60,6 +60,12 @@ Renderer2D.prototype.fillCircle = function (c, r, aStart = 0, aSpan = 360) {
 
 /// POLYGON ///
 
+/**
+ *
+ * @param {TensorBase} p - [n, 2] shaped tensor representing the different
+ *                         points
+ * @param {bool} closed - closes the polygon path
+ */
 Renderer2D.prototype.polygonPath = function (polygon, close = true) {
     this.ctx.beginPath();
     var startPoint = polygon.subTensor([0]);
@@ -75,11 +81,23 @@ Renderer2D.prototype.polygonPath = function (polygon, close = true) {
     }
 };
 
+/**
+ *
+ * @param {TensorBase} p - [n, 2] shaped tensor representing the different
+ *                         points
+ * @param {bool} closed - closes the polygon path
+ */
 Renderer2D.prototype.drawPolygon = function (p, closed = true) {
     this.polygonPath(p, closed);
     this.ctx.stroke();
 };
 
+/**
+ *
+ * @param {TensorBase} p - [n, 2] shaped tensor representing the different
+ *                         points
+ * @param {bool} closed - closes the polygon path
+ */
 Renderer2D.prototype.fillPolygon = function (p) {
     this.polygonPath(p);
     this.ctx.fill();
@@ -146,5 +164,54 @@ Renderer2D.prototype.drawFunction = function (f, min, max, step, rect) {
     this.drawText(
         max.toFixed(2),
         SPMath.point(rect.x + rect.width, rect.y + rect.height + 20)
+    );
+};
+
+function TransformedRenderer2D(canvas, transformer) {
+    Renderer2D.call(this, canvas);
+    this.transformer = transformer;
+}
+
+TransformedRenderer2D.prototype = Object.create(Renderer2D.prototype);
+
+/// LINE ///
+
+TransformedRenderer2D.prototype.drawLine = function (a, b) {
+    Renderer2D.prototype.drawLine.call(
+        this,
+        ...this.transformer.transformPoints(a, b)
+    );
+};
+
+/// CIRCLE ///
+
+TransformedRenderer2D.prototype.circlePath = function (
+    c,
+    r,
+    aStart = 0,
+    aSpan = 360
+) {
+    Renderer2D.prototype.circlePath.call(
+        this,
+        this.transformer.transformPoint(c),
+        r,
+        aStart,
+        aSpan
+    );
+};
+
+/// POLYGON ///
+
+/**
+ *
+ * @param {TensorBase} p - [n, 2] shaped tensor representing the different
+ *                         points
+ * @param {bool} closed - closes the polygon path
+ */
+TransformedRenderer2D.prototype.polygonPath = function (polygon, close = true) {
+    Renderer2D.prototype.polygonPath.call(
+        this,
+        this.transformer.transformPolygon(polygon),
+        close
     );
 };

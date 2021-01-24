@@ -1,8 +1,8 @@
 //#region Components
 
-const Transform = defineComponent("tran", (pos) => ({
+const Transform = defineComponent("tran", (pos, rot = 0) => ({
     pos: SPTensors.vector(pos),
-    rot: 0,
+    rot,
 }));
 
 const Movement = defineComponent("mov", (vel = [0, 0], acc = [0, 0]) => ({
@@ -26,7 +26,7 @@ const Meta = defineComponent("meta", (type) => ({
 const DNNComponent = defineComponent(
     "dnn",
     (input, hiddenLayerNumber, hiddenLayerSize, output, values = null) => ({
-        network: new dnn(
+        network: new DNN(
             input,
             hiddenLayerSize,
             hiddenLayerNumber,
@@ -220,7 +220,7 @@ RenderingSystem.prototype.update = function (ts) {
             let polygon = SPMath.rotatePolygon(
                 entity.rig.polygon,
                 SPTensors.vector([0, 0]),
-                entity.tran.rot
+                -entity.tran.rot
             );
 
             this.renderer.fillPolygon(SPTensors.add(polygon, tranPos, true));

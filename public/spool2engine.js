@@ -164,7 +164,8 @@ System.prototype.update = function () {};
 
 /**
  *
- * @param {array} signatureList - list of needed components
+ * @param {array} signatureList - list of needed components (if empty than
+ *                                system without objects)
  * @param {updateCallback} update - udpate callback
  * @param {function} constructor - constructor definition example:
  *                                 (x, y) => ({x, y})
@@ -185,6 +186,9 @@ function defineSystem(signatureList, update, constructor = () => ({})) {
     };
 
     res.prototype = Object.create(System.prototype);
+    console.log();
+    assert(typeof update === "function", "Invalid update function");
+
     res.prototype.update = update;
     return res;
 }
