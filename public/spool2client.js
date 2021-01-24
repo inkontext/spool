@@ -57,12 +57,12 @@ function MouseListener(target) {
 MouseListener.prototype.initListener = function () {
     this.target.onmousedown = (e) => {
         this.pressedButtons[e.button] = true;
-        this.onUpdate();
+        this.onUpdate(e);
     };
 
     this.target.onmouseup = (e) => {
         this.pressedButtons[e.button] = false;
-        this.onUpdate();
+        this.onUpdate(e);
     };
 
     this.target.onmousemove = (e) => {
@@ -73,7 +73,7 @@ MouseListener.prototype.initListener = function () {
         this.m.y = e.clientY;
         this.dm.x = this.m.x - px;
         this.dm.y = this.m.y - py;
-        this.onUpdate();
+        this.onUpdate(e);
     };
     return this;
 };
@@ -92,17 +92,30 @@ function Camera(screenSize, pos = [0, 0], rot = 0, scale = [1, 1]) {
 Camera.prototype.transformPoint = function (point) {
     var sin = Math.sin(this.rot);
     var cos = Math.cos(this.rot);
-
     let { x, y } = point;
-
     var newX =
         this.scale.x * ((x - this.pos.x) * cos - (-y + this.pos.y) * sin) +
         this.screenSize.x / 2;
     var newY =
         this.scale.y * ((x - this.pos.x) * sin + (-y + this.pos.y) * cos) +
         this.screenSize.y / 2;
-
     return SPTensors.vector([newX, newY]);
+};
+
+Camera.prototype.inverseTransformPoint = function (point) {
+    var sin = Math.sin(this.rot);
+    var cos = Math.cos(this.rot);
+    let { x, y } = point;
+    var b =
+        this.pos.y -
+        (-sin * (x / this.scale.x - this.screenSize.x / 2) +
+            cos * (y / this.scale.y - this.screenSize.y / 2));
+    var a =
+        cos * (x / this.scale.x - this.screenSize.x / 2) +
+        sin * (y / this.scale.y - this.screenSize.y / 2) +
+        this.pos.x;
+
+    return SPTensors.vector([a, b]);
 };
 
 Camera.prototype.transformScale = function (scale) {

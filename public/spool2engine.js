@@ -238,6 +238,33 @@ Clock.prototype.loop = function () {
 
 //#endregion
 
+//#region IntervalClock
+
+function IntervalClock(onTick, frequency) {
+    this.onTick = onTick;
+    this.frameTime = 1000 / frequency;
+    this.lastFrameTime = Date.now();
+    this.tickCounter = 0;
+}
+
+IntervalClock.prototype.start = function () {
+    this.lastFrameTime = Date.now();
+    setInterval(() => {
+        this.update();
+    }, this.frameTime);
+};
+
+IntervalClock.prototype.update = function () {
+    let now = Date.now();
+    let ts = now - this.lastFrameTime;
+
+    console.log(this);
+    this.onTick(ts);
+    this.tickCounter = (this.tickCounter + 1) % this.frequency;
+
+    this.lastFrameTime = now;
+};
+
 //#region BrowserClock
 
 function BrowserClock(onTick) {

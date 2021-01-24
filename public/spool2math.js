@@ -52,6 +52,11 @@ const SPMath = {
         return points.map((p) => SPTensors.add(p, transform));
     },
 
+    /**
+     * Returns the distance between two points
+     * @param {TensorBase} a - first point
+     * @param {TensorBase} b - second point
+     */
     distance: function (a, b) {
         return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
     },
@@ -185,6 +190,10 @@ const SPMath = {
         return SPTensors.vector([Math.cos(angle), Math.sin(angle)]);
     },
 
+    angleFromVec: (vector) => {
+        return Math.atan2(vector.y, vector.x);
+    },
+
     /// GENERATORS ///
 
     range: function* (start = 0, end = 100, step = 1) {
@@ -224,6 +233,13 @@ const SPMath = {
             rect.x + SPMath.randRange(0, rect.width),
             rect.y + SPMath.randRange(0, rect.height),
         ]);
+    },
+
+    randPointInRadius: (center, radius) => {
+        var angle = SPMath.randRange(0, Math.PI * 2);
+        var distance = SPMath.randRange(0, radius);
+        console.log(angle, distance);
+        return SPMath.polarPoint(center, distance, angle);
     },
 
     /// FUNCTIONS ///
@@ -271,7 +287,14 @@ TensorBase.prototype.getIndex = function (coords) {
     return this.getIndexAndShape(coords).index;
 };
 
+/**
+ *
+ * @param {list} coords - coords in a shape of an array
+ */
 TensorBase.prototype.getValue = function (coords) {
+    if (typeof coords == "number") {
+        coords = [coords];
+    }
     const index = this.getIndex(coords);
     return this.get(index);
 };
@@ -332,6 +355,14 @@ TensorBase.prototype.mult = function (b) {
         return this.apply((x) => x * b);
     } else {
         return this.apply((x, i) => x * b.get(i));
+    }
+};
+
+TensorBase.prototype.div = function (b) {
+    if (typeof b === "number") {
+        return this.apply((x) => x / b);
+    } else {
+        return this.apply((x, i) => x / b.get(i));
     }
 };
 
@@ -596,7 +627,7 @@ LinkTensor.prototype.getIndexAndShape = function (coords) {
 
 var operations = ["apply", ""];
 
-var SPTensors = {
+const SPTensors = {
     //// INITIALIZERS ////
 
     // COPY //
@@ -817,6 +848,23 @@ var SPTensors = {
         return res;
     },
 
+    /**
+     * @param {TensorBase} tensor
+     */
+    abs: (tensor) => {
+        if (tensor.size == 0) {
+            return 0;
+        }
+        var res = 0;
+        for (var i = 0; i < tensor.size; i++) {
+            res += Math.pow(tensor.getValue(i), 2);
+        }
+
+        return Math.sqrt(res);
+    },
+
+    //// CONCAT AND LINKING ////
+
     concat: (tensors, shape) => {
         let values = tensors.map((tensor) => tensor.getValues());
         values = values.flat(1);
@@ -833,6 +881,8 @@ var SPTensors = {
     link: (tensors, shape) => {
         return new LinkTensor(tensors, shape);
     },
+
+    //// MISC ////
 
     constructorForShape: (shape) => {
         var constructor = Tensor;
@@ -852,7 +902,6 @@ var SPTensors = {
         if (!levelSizes) {
             levelSizes = SPTensors.getLevelSizes(shape);
         }
-
         coords.forEach((coord, index) => {
             if (SPMath.inRange(coord, 0, shape[index])) {
                 res += coord * levelSizes[1 + index];
