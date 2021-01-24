@@ -258,7 +258,6 @@ IntervalClock.prototype.update = function () {
     let now = Date.now();
     let ts = now - this.lastFrameTime;
 
-    console.log(this);
     this.onTick(ts);
     this.tickCounter = (this.tickCounter + 1) % this.frequency;
 
