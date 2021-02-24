@@ -102,6 +102,22 @@ Camera.prototype.transformPoint = function (point) {
     return SPTensors.vector([newX, newY]);
 };
 
+Camera.prototype.inverseTransformPoint = function (point) {
+    var sin = Math.sin(this.rot);
+    var cos = Math.cos(this.rot);
+    let { x, y } = point;
+    var b =
+        this.pos.y +
+        sin * (x / this.scale.x - this.screenSize.x / 2) -
+        cos * (y / this.scale.y - this.screenSize.y / 2);
+    var a =
+        this.pos.x +
+        cos * (x / this.scale.x - this.screenSize.x / 2) +
+        sin * (y / this.scale.y - this.screenSize.y / 2);
+
+    return SPTensors.vector([a, b]);
+};
+
 Camera.prototype.transformPoints = function (...points) {
     var res = [];
     points.forEach((point) => {
@@ -120,22 +136,6 @@ Camera.prototype.transformPolygon = function (polygon) {
         res.set(i * 2 + 1, point.y);
     }
     return res;
-};
-
-Camera.prototype.inverseTransformPoint = function (point) {
-    var sin = Math.sin(this.rot);
-    var cos = Math.cos(this.rot);
-    let { x, y } = point;
-    var b =
-        this.pos.y -
-        (-sin * (x / this.scale.x - this.screenSize.x / 2) +
-            cos * (y / this.scale.y - this.screenSize.y / 2));
-    var a =
-        cos * (x / this.scale.x - this.screenSize.x / 2) +
-        sin * (y / this.scale.y - this.screenSize.y / 2) +
-        this.pos.x;
-
-    return SPTensors.vector([a, b]);
 };
 
 Camera.prototype.transformScale = function (scale) {

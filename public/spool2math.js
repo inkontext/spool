@@ -901,6 +901,39 @@ const SPTensors = {
         return Math.sqrt(res);
     },
 
+    //// DETERMINANTS ////
+
+    /**
+     *
+     * @param {TensorBase} tensor
+     */
+    determinant2x2: (tensor) => {
+        assert(
+            tensor.shape == [2, 2],
+            "Incompatible shape for two by two determinant"
+        );
+
+        var values = tensor.getValues();
+        return values[0] * values[3] - values[1] * values[2];
+    },
+
+    /**
+     *
+     * @param {TensorBase} tensor
+     */
+    determinant3x3: (tensor) => {
+        assert(
+            tensor.shape == [3, 3],
+            "Incompatible shape for three by three determinant"
+        );
+        var values = tensor.getValues();
+        return (
+            values[0] * (values[4] * values[8] - values[5] * values[7]) -
+            values[1] * (values[3] * values[8] - values[5] * values[6]) +
+            values[2] * (values[3] * values[7] - values[4] * values[6])
+        );
+    },
+
     //// CONCAT AND LINKING ////
 
     concat: (tensors, shape) => {
